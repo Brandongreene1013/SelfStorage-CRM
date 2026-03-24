@@ -155,7 +155,11 @@ export default function App() {
       {/* Main */}
       <main className="flex-1 p-6 overflow-auto">
         {view === 'Dashboard' && (
-          <Dashboard clients={clients} />
+          <Dashboard
+            clients={clients}
+            meetings={meetings}
+            onNavigateCalendar={() => setView('Calendar')}
+          />
         )}
 
         {view === 'Pipeline' && (
