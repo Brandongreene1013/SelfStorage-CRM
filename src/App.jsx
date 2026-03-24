@@ -1,21 +1,35 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useCRM } from './hooks/useCRM';
 import { useMeetings } from './hooks/useMeetings';
+import { useDailyProgress } from './hooks/useDailyProgress';
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import PipelineBoard from './components/PipelineBoard';
 import ClientCard from './components/ClientCard';
 import Dashboard from './components/Dashboard';
 import Calendar from './components/Calendar';
+import Database from './components/Database';
 import { PIPELINE_STAGES } from './data/constants';
 import './index.css';
 
-const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Calendar'];
+const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
   const { clients, addClient, updateClient, deleteClient, moveClientToStage } = useCRM();
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
+  const { increment: incrementProgress } = useDailyProgress();
+
+  // When a call is logged from Database, auto-increment dashboard counters
+  const handleCallLogged = useCallback((outcome) => {
+    incrementProgress('calls');
+    if (outcome === 'conversation') incrementProgress('conversations');
+    if (outcome === 'appointment') incrementProgress('firstAppts');
+    // Any non-fresh outcome means we reached a facility (got through)
+    if (outcome === 'conversation' || outcome === 'appointment' || outcome === 'voicemail') {
+      incrementProgress('facilities');
+    }
+  }, [incrementProgress]);
 
   const [view, setView] = useState('Dashboard');
   const [filter, setFilter] = useState('All');
@@ -90,7 +104,7 @@ export default function App() {
           ))}
         </nav>
 
-        {view !== 'Calendar' && (
+        {view !== 'Calendar' && view !== 'Database' && (
           <button
             onClick={() => setShowAddModal(true)}
             className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-1.5 shadow"
@@ -98,7 +112,7 @@ export default function App() {
             <span className="text-lg leading-none font-black">+</span> Add Client
           </button>
         )}
-        {view === 'Calendar' && (
+        {(view === 'Calendar' || view === 'Database') && (
           <div className="w-[110px]" />
         )}
       </header>
@@ -209,6 +223,10 @@ export default function App() {
               </div>
             )}
           </div>
+        )}
+
+        {view === 'Database' && (
+          <Database onCallLogged={handleCallLogged} />
         )}
 
         {view === 'Calendar' && (
