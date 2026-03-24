@@ -8,6 +8,8 @@ const EMPTY = {
   type: 'Seller',
   propertyType: 'Self-Storage',
   facilityName: '',
+  phone: '',
+  email: '',
   address: '',
   units: '',
   sqft: '',
@@ -38,6 +40,8 @@ export default function ClientModal({ client, onSave, onClose }) {
         type: client.type ?? 'Seller',
         propertyType: client.propertyType ?? 'Self-Storage',
         facilityName: client.facilityName ?? '',
+        phone: client.phone ?? '',
+        email: client.email ?? '',
         address: client.address ?? '',
         units: client.units ?? '',
         sqft: client.sqft ?? '',
@@ -177,6 +181,32 @@ export default function ClientModal({ client, onSave, onClose }) {
               placeholder="e.g. Sunbelt Storage LLC"
               className={inputCls}
             />
+          </div>
+
+          {/* Phone + Email */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Phone</label>
+              <input
+                name="phone"
+                type="tel"
+                value={form.phone}
+                onChange={handleChange}
+                placeholder="(555) 000-0000"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Email</label>
+              <input
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                placeholder="name@example.com"
+                className={inputCls}
+              />
+            </div>
           </div>
 
           {/* Address */}

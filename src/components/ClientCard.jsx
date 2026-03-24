@@ -68,6 +68,28 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, co
         </a>
       )}
 
+      {/* Phone + Email */}
+      {(client.phone || client.email) && (
+        <div className="flex flex-col gap-0.5 mb-2">
+          {client.phone && (
+            <a
+              href={`tel:${client.phone}`}
+              className="text-xs text-slate-500 hover:text-amber-400 flex items-center gap-1 transition-colors"
+            >
+              📞 {client.phone}
+            </a>
+          )}
+          {client.email && (
+            <a
+              href={`mailto:${client.email}`}
+              className="text-xs text-slate-500 hover:text-amber-400 flex items-center gap-1 transition-colors truncate"
+            >
+              ✉️ {client.email}
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Stats row */}
       {(client.units || client.sqft) && (
         <div className="flex gap-3 mb-2">
