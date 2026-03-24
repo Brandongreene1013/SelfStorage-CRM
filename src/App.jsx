@@ -1,18 +1,21 @@
 import { useState } from 'react';
 import { useCRM } from './hooks/useCRM';
+import { useMeetings } from './hooks/useMeetings';
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import PipelineBoard from './components/PipelineBoard';
 import ClientCard from './components/ClientCard';
 import Dashboard from './components/Dashboard';
+import Calendar from './components/Calendar';
 import { PIPELINE_STAGES } from './data/constants';
 import './index.css';
 
-const VIEWS = ['Dashboard', 'Pipeline', 'Clients'];
+const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
   const { clients, addClient, updateClient, deleteClient, moveClientToStage } = useCRM();
+  const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
 
   const [view, setView] = useState('Dashboard');
   const [filter, setFilter] = useState('All');
@@ -87,15 +90,20 @@ export default function App() {
           ))}
         </nav>
 
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-1.5 shadow"
-        >
-          <span className="text-lg leading-none font-black">+</span> Add Client
-        </button>
+        {view !== 'Calendar' && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-1.5 shadow"
+          >
+            <span className="text-lg leading-none font-black">+</span> Add Client
+          </button>
+        )}
+        {view === 'Calendar' && (
+          <div className="w-[110px]" />
+        )}
       </header>
 
-      {/* Filter bar */}
+      {/* Filter bar — only for Pipeline / Clients */}
       {(view === 'Pipeline' || view === 'Clients') && (
         <div className="bg-slate-900/60 border-b border-slate-800 px-6 py-3 flex flex-wrap items-center gap-3">
           <div className="flex gap-1 bg-slate-800 rounded-lg p-1">
@@ -197,6 +205,16 @@ export default function App() {
               </div>
             )}
           </div>
+        )}
+
+        {view === 'Calendar' && (
+          <Calendar
+            meetings={meetings}
+            clients={clients}
+            onAdd={addMeeting}
+            onUpdate={updateMeeting}
+            onDelete={deleteMeeting}
+          />
         )}
       </main>
 
