@@ -14,3 +14,9 @@ export const PIPELINE_STAGES = [
 export const CLIENT_TYPES = ['Buyer', 'Seller'];
 
 export const STORAGE_CLASSES = ['Class A', 'Class B', 'Class C'];
+
+export const PROPERTY_TYPES = [
+  { value: 'Self-Storage', label: 'Self-Storage', icon: '🏢' },
+  { value: 'Boat/RV Storage', label: 'Boat/RV Storage', icon: '⛵' },
+  { value: 'Land', label: 'Land', icon: '🌿' },
+];
