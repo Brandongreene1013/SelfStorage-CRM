@@ -753,8 +753,24 @@ function CallQueue({ queue, index, setIndex, callNote, setCallNote, callbackDate
         <div className="flex flex-col lg:flex-row gap-6">
           <div className="flex-1 space-y-4">
             <div>
-              <h3 className="text-2xl font-black text-white">{current.facilityName || 'Unknown Facility'}</h3>
-              {current.ownerName && <p className="text-sm text-slate-400 mt-0.5">👤 {current.ownerName}</p>}
+              <h3 className="text-2xl font-black text-white">{current.ownerName || 'Unknown Owner'}</h3>
+              {current.facilityName ? (
+                <a
+                  href={`https://www.google.com/maps/search/${encodeURIComponent([current.facilityName, 'self storage', current.market || current.state].filter(Boolean).join(' '))}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="text-sm text-slate-400 hover:text-blue-400 mt-0.5 inline-flex items-center gap-1 transition-colors"
+                >
+                  {current.facilityName} 🗺
+                </a>
+              ) : (
+                <a
+                  href={`https://www.google.com/maps/search/${encodeURIComponent([(current.ownerName ?? ''), 'self storage', current.market || current.state].filter(Boolean).join(' '))}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="text-sm text-slate-500 hover:text-blue-400 mt-0.5 italic inline-flex items-center gap-1 transition-colors"
+                >
+                  Find facility on Maps 🗺
+                </a>
+              )}
             </div>
             <div className="bg-green-600/10 border border-green-600/30 rounded-xl p-4 flex items-center justify-between">
               <div>
