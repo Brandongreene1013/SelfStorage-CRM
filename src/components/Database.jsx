@@ -367,6 +367,103 @@ function PropertyCard({ contact, onClick }) {
   );
 }
 
+// ─── Add Contact Modal ────────────────────────────────────────────────────────
+function AddContactModal({ listName, onSave, onClose }) {
+  const [form, setForm] = useState({
+    ownerName: '', facilityName: '', phone: '', email: '', address: '', state: '', notes: '',
+  });
+
+  function set(key, val) { setForm(prev => ({ ...prev, [key]: val })); }
+
+  function handleSave() {
+    if (!form.ownerName.trim() && !form.facilityName.trim()) return;
+    onSave(form);
+    setForm({ ownerName: '', facilityName: '', phone: '', email: '', address: '', state: '', notes: '' });
+  }
+
+  function handleSaveAndAnother() {
+    if (!form.ownerName.trim() && !form.facilityName.trim()) return;
+    onSave(form);
+    setForm({ ownerName: '', facilityName: '', phone: '', email: '', address: '', state: '', notes: '' });
+  }
+
+  const fields = [
+    { key: 'ownerName',    label: 'Owner Name *',    placeholder: 'John Smith',             type: 'text' },
+    { key: 'facilityName', label: 'Facility Name',   placeholder: 'ABC Self Storage',        type: 'text' },
+    { key: 'phone',        label: 'Phone',           placeholder: '(555) 000-0000',          type: 'tel'  },
+    { key: 'email',        label: 'Email',           placeholder: 'john@abcstorage.com',     type: 'email'},
+    { key: 'address',      label: 'Address',         placeholder: '123 Main St, City, FL',   type: 'text' },
+  ];
+
+  const canSave = form.ownerName.trim() || form.facilityName.trim();
+
+  return (
+    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-slate-800">
+          <div>
+            <h2 className="text-base font-black text-white">Add Contact</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Adding to: <span className="text-amber-400">{listName}</span></p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
+        </div>
+
+        <div className="p-5 space-y-3">
+          {fields.map(f => (
+            <div key={f.key}>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">{f.label}</label>
+              <input
+                type={f.type}
+                value={form[f.key]}
+                onChange={e => set(f.key, e.target.value)}
+                placeholder={f.placeholder}
+                onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition-colors"
+              />
+            </div>
+          ))}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Notes</label>
+            <textarea
+              value={form.notes}
+              onChange={e => set('notes', e.target.value)}
+              rows={2}
+              placeholder="Any initial notes..."
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 resize-none transition-colors"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between p-5 border-t border-slate-800 gap-3">
+          <button onClick={onClose} className="text-sm text-slate-400 hover:text-white transition-colors">Cancel</button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSaveAndAnother}
+              disabled={!canSave}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all border ${
+                canSave ? 'border-slate-600 text-slate-300 hover:bg-slate-800' : 'border-slate-800 text-slate-600 cursor-not-allowed'
+              }`}
+            >
+              Save + Add Another
+            </button>
+            <button
+              onClick={() => { handleSave(); onClose(); }}
+              disabled={!canSave}
+              className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
+                canSave ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              Save & Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── List Sidebar Item (with inline rename + delete) ─────────────────────────
 function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelete }) {
   const [renaming, setRenaming]       = useState(false);
@@ -448,12 +545,16 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 export default function Database({ onCallLogged }) {
   const {
     lists, contacts,
-    importList, updateContactStatus, updateContactCallback,
+    importList, createList, addContact,
+    updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
   } = useDatabase();
 
   const [subView, setSubView]       = useState('contacts');
-  const [showImport, setShowImport] = useState(false);
+  const [showImport, setShowImport]     = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [showNewList, setShowNewList]   = useState(false);
+  const [newListName, setNewListName]   = useState('');
   // Default to most recent list (last in array), fall back to 'all'
   const [activeListId, setActiveListId] = useState(() => lists.length > 0 ? lists[lists.length - 1].id : 'all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -523,12 +624,21 @@ export default function Database({ onCallLogged }) {
 
       {/* ── LEFT: List Organizer Sidebar ── */}
       <div className="flex-shrink-0 w-56 space-y-2">
+        <div className="flex gap-1.5">
         <button
           onClick={() => setShowImport(true)}
-          className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-3 py-2 rounded-xl text-sm transition-all flex items-center justify-center gap-1.5 shadow"
+          className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-3 py-2 rounded-xl text-sm transition-all flex items-center justify-center gap-1.5 shadow"
         >
-          <span className="text-lg font-black leading-none">+</span> Import List
+          <span className="text-lg font-black leading-none">+</span> Import
         </button>
+        <button
+          onClick={() => setShowNewList(true)}
+          className="bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300 font-bold px-3 py-2 rounded-xl text-sm transition-all flex items-center justify-center gap-1.5"
+          title="Create blank list"
+        >
+          ✎ New
+        </button>
+        </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 py-2.5 border-b border-slate-800">
@@ -652,6 +762,14 @@ export default function Database({ onCallLogged }) {
                 {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
               <span className="text-xs text-slate-600">{filtered.length} contacts</span>
+              {activeListId !== 'all' && (
+                <button
+                  onClick={() => setShowAddContact(true)}
+                  className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
+                >
+                  + Add Person
+                </button>
+              )}
             </div>
 
             {/* Card grid */}
@@ -712,6 +830,64 @@ export default function Database({ onCallLogged }) {
 
       {showImport && (
         <ImportListModal onImport={handleImport} onClose={() => setShowImport(false)} />
+      )}
+
+      {/* ── New Blank List modal ── */}
+      {showNewList && (
+        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowNewList(false)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl p-6 space-y-4"
+            onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-black text-white">Create Blank List</h2>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">List Name *</label>
+              <input
+                autoFocus
+                value={newListName}
+                onChange={e => setNewListName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && newListName.trim()) {
+                    const list = createList(newListName.trim(), 'Internal DB');
+                    setActiveListId(list.id);
+                    setSubView('contacts');
+                    setNewListName('');
+                    setShowNewList(false);
+                  }
+                }}
+                placeholder="e.g. Personal Referrals, Drive-by Prospects..."
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowNewList(false)}
+                className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-all">Cancel</button>
+              <button
+                disabled={!newListName.trim()}
+                onClick={() => {
+                  const list = createList(newListName.trim(), 'Internal DB');
+                  setActiveListId(list.id);
+                  setSubView('contacts');
+                  setNewListName('');
+                  setShowNewList(false);
+                }}
+                className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
+                  newListName.trim() ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                Create List
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Contact modal ── */}
+      {showAddContact && activeListId !== 'all' && (
+        <AddContactModal
+          listName={lists.find(l => l.id === activeListId)?.name ?? ''}
+          onSave={(fields) => addContact(activeListId, fields)}
+          onClose={() => setShowAddContact(false)}
+        />
       )}
     </div>
   );

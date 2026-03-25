@@ -251,6 +251,42 @@ export function useDatabase() {
     }));
   }, []);
 
+  const createList = useCallback((name, source) => {
+    const listId = uuidv4();
+    const list = {
+      id: listId,
+      name,
+      source,
+      importedAt: new Date().toISOString().slice(0, 10),
+      contactCount: 0,
+    };
+    setData(prev => ({ ...prev, lists: [...prev.lists, list] }));
+    return list;
+  }, []);
+
+  const addContact = useCallback((listId, fields) => {
+    const contact = {
+      id: uuidv4(),
+      listId,
+      facilityName: fields.facilityName ?? '',
+      ownerName:    fields.ownerName ?? '',
+      phone:        fields.phone ?? '',
+      email:        fields.email ?? '',
+      address:      fields.address ?? '',
+      state:        fields.state ?? '',
+      market:       fields.market ?? '',
+      units:        fields.units ?? 0,
+      sqft:         fields.sqft ?? 0,
+      status:       'fresh',
+      callHistory:  [],
+      lastCalled:   null,
+      callbackDate: null,
+      notes:        '',
+    };
+    setData(prev => ({ ...prev, contacts: [...prev.contacts, contact] }));
+    return contact;
+  }, []);
+
   const renameList = useCallback((listId, newName) => {
     setData(prev => ({
       ...prev,
@@ -269,6 +305,8 @@ export function useDatabase() {
     lists: data.lists,
     contacts: data.contacts,
     importList,
+    createList,
+    addContact,
     updateContactStatus,
     updateContactCallback,
     updateContactNotes,
