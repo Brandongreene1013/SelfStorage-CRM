@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import MeetingModal from './MeetingModal';
+import { useOutlookCalendar } from '../hooks/useOutlookCalendar';
 
 export default function Calendar({ meetings, clients, onAdd, onUpdate, onDelete }) {
   const today = new Date();
@@ -10,14 +11,19 @@ export default function Calendar({ meetings, clients, onAdd, onUpdate, onDelete 
   const [showModal, setShowModal] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState(null);
 
+  const { connected, account, events: outlookEvents, loading, syncing, error, connect, disconnect, fetchEvents } = useOutlookCalendar();
+
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthLabel = currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
 
+  // Merge local + outlook events for display
+  const allMeetings = [...meetings, ...outlookEvents];
+
   const meetingsByDate = {};
-  meetings.forEach(m => {
+  allMeetings.forEach(m => {
     if (!meetingsByDate[m.date]) meetingsByDate[m.date] = [];
     meetingsByDate[m.date].push(m);
   });
@@ -26,7 +32,7 @@ export default function Calendar({ meetings, clients, onAdd, onUpdate, onDelete 
     (a.startTime ?? '').localeCompare(b.startTime ?? '')
   );
 
-  const upcoming = [...meetings]
+  const upcoming = [...allMeetings]
     .filter(m => m.date >= todayStr)
     .sort((a, b) => (a.date + (a.startTime ?? '')).localeCompare(b.date + (b.startTime ?? '')))
     .slice(0, 6);
@@ -50,144 +56,241 @@ export default function Calendar({ meetings, clients, onAdd, onUpdate, onDelete 
   });
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6">
-      {/* Left: Calendar */}
-      <div className="flex-shrink-0 w-full lg:w-80">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-          {/* Month nav */}
-          <div className="flex items-center justify-between mb-4">
-            <button
-              onClick={() => setCurrentMonth(new Date(year, month - 1, 1))}
-              className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-all text-lg leading-none"
-            >
-              ‹
-            </button>
-            <h2 className="text-sm font-bold text-white">{monthLabel}</h2>
-            <button
-              onClick={() => setCurrentMonth(new Date(year, month + 1, 1))}
-              className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-all text-lg leading-none"
-            >
-              ›
-            </button>
-          </div>
+    <div className="space-y-4">
 
-          {/* Day headers */}
-          <div className="grid grid-cols-7 mb-2">
-            {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
-              <div key={d} className="text-center text-xs font-semibold text-slate-600 py-1">{d}</div>
-            ))}
-          </div>
-
-          {/* Grid */}
-          <div className="grid grid-cols-7 gap-1">
-            {cells.map((day, i) => {
-              if (!day) return <div key={`e-${i}`} />;
-              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const isToday = dateStr === todayStr;
-              const isSelected = dateStr === selectedDate;
-              const count = meetingsByDate[dateStr]?.length ?? 0;
-
-              return (
-                <button
-                  key={dateStr}
-                  onClick={() => setSelectedDate(dateStr)}
-                  className={`relative flex flex-col items-center justify-center rounded-lg py-1.5 text-xs font-semibold transition-all ${
-                    isSelected
-                      ? 'bg-amber-500 text-slate-900'
-                      : isToday
-                        ? 'bg-slate-700 text-white ring-1 ring-amber-500'
-                        : 'hover:bg-slate-800 text-slate-300'
-                  }`}
-                >
-                  {day}
-                  {count > 0 && (
-                    <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${
-                      isSelected ? 'bg-slate-900' : 'bg-amber-500'
-                    }`} />
-                  )}
-                </button>
-              );
-            })}
+      {/* ── Outlook Sync Banner ── */}
+      <div className={`flex items-center justify-between px-4 py-3 rounded-xl border ${
+        connected
+          ? 'bg-blue-600/10 border-blue-600/30'
+          : 'bg-slate-900 border-slate-800'
+      }`}>
+        <div className="flex items-center gap-3">
+          <span className="text-xl">📧</span>
+          <div>
+            {connected ? (
+              <>
+                <p className="text-sm font-semibold text-white">
+                  Outlook Connected
+                  <span className="ml-2 text-xs font-normal text-blue-400">{account?.username}</span>
+                </p>
+                <p className="text-xs text-slate-500">{outlookEvents.length} events synced · Teams meetings included</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-white">Connect Outlook & Teams</p>
+                <p className="text-xs text-slate-500">Sync your Ripco calendar events directly into this view</p>
+              </>
+            )}
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          {connected && (
+            <button onClick={fetchEvents} disabled={syncing}
+              className="text-xs text-blue-400 hover:text-blue-300 font-semibold transition-colors disabled:opacity-50">
+              {syncing ? 'Syncing...' : '↻ Sync'}
+            </button>
+          )}
+          <button
+            onClick={connected ? disconnect : connect}
+            disabled={loading}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              connected
+                ? 'bg-slate-700 hover:bg-red-900/40 text-slate-300 hover:text-red-400 border border-slate-600'
+                : 'bg-blue-600 hover:bg-blue-500 text-white'
+            }`}
+          >
+            {loading ? 'Connecting...' : connected ? 'Disconnect' : 'Connect'}
+          </button>
+        </div>
+      </div>
 
-        {/* Upcoming */}
-        <div className="mt-4 bg-slate-900 border border-slate-800 rounded-2xl p-4">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Upcoming</h3>
-          {upcoming.length === 0 ? (
-            <p className="text-xs text-slate-600 italic">No upcoming meetings scheduled</p>
-          ) : (
-            <div className="space-y-2">
-              {upcoming.map(m => {
-                const client = clients.find(c => c.id === m.clientId);
-                const isPast = m.date < todayStr;
+      {error && (
+        <p className="text-xs text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">{error}</p>
+      )}
+
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Left: Calendar */}
+        <div className="flex-shrink-0 w-full lg:w-80">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            {/* Month nav */}
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setCurrentMonth(new Date(year, month - 1, 1))}
+                className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-all text-lg leading-none">
+                ‹
+              </button>
+              <h2 className="text-sm font-bold text-white">{monthLabel}</h2>
+              <button onClick={() => setCurrentMonth(new Date(year, month + 1, 1))}
+                className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-all text-lg leading-none">
+                ›
+              </button>
+            </div>
+
+            {/* Day headers */}
+            <div className="grid grid-cols-7 mb-2">
+              {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                <div key={d} className="text-center text-xs font-semibold text-slate-600 py-1">{d}</div>
+              ))}
+            </div>
+
+            {/* Grid */}
+            <div className="grid grid-cols-7 gap-1">
+              {cells.map((day, i) => {
+                if (!day) return <div key={`e-${i}`} />;
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const isToday    = dateStr === todayStr;
+                const isSelected = dateStr === selectedDate;
+                const dayMeetings = meetingsByDate[dateStr] ?? [];
+                const hasLocal   = dayMeetings.some(m => !m.isOutlook);
+                const hasOutlook = dayMeetings.some(m => m.isOutlook);
+
                 return (
-                  <button
-                    key={m.id}
-                    onClick={() => setSelectedDate(m.date)}
-                    className="w-full text-left bg-slate-800 hover:border-slate-600 border border-slate-700 rounded-lg px-3 py-2 transition-all"
+                  <button key={dateStr} onClick={() => setSelectedDate(dateStr)}
+                    className={`relative flex flex-col items-center justify-center rounded-lg py-1.5 text-xs font-semibold transition-all ${
+                      isSelected ? 'bg-amber-500 text-slate-900'
+                        : isToday ? 'bg-slate-700 text-white ring-1 ring-amber-500'
+                        : 'hover:bg-slate-800 text-slate-300'
+                    }`}
                   >
-                    <p className="text-xs font-semibold text-white truncate">{m.title}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {new Date(m.date + 'T12:00:00').toLocaleDateString('default', { month: 'short', day: 'numeric' })}
-                      {m.startTime ? ` · ${m.startTime}` : ''}
-                    </p>
-                    {client && <p className="text-xs text-amber-500/70 truncate">{client.name}</p>}
+                    {day}
+                    {(hasLocal || hasOutlook) && (
+                      <div className="flex gap-0.5 mt-0.5">
+                        {hasLocal   && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-slate-900' : 'bg-amber-500'}`} />}
+                        {hasOutlook && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-slate-900' : 'bg-blue-400'}`} />}
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
+
+            {/* Legend */}
+            {connected && (
+              <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-800">
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" /> CRM
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <span className="w-2 h-2 rounded-full bg-blue-400" /> Outlook
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Upcoming */}
+          <div className="mt-4 bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Upcoming</h3>
+            {upcoming.length === 0 ? (
+              <p className="text-xs text-slate-600 italic">No upcoming meetings scheduled</p>
+            ) : (
+              <div className="space-y-2">
+                {upcoming.map(m => {
+                  const client = clients.find(c => c.id === m.clientId);
+                  return (
+                    <button key={m.id} onClick={() => setSelectedDate(m.date)}
+                      className={`w-full text-left border rounded-lg px-3 py-2 transition-all ${
+                        m.isOutlook
+                          ? 'bg-blue-600/10 border-blue-600/20 hover:border-blue-600/40'
+                          : 'bg-slate-800 hover:border-slate-600 border-slate-700'
+                      }`}>
+                      <p className="text-xs font-semibold text-white truncate">{m.title}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {new Date(m.date + 'T12:00:00').toLocaleDateString('default', { month: 'short', day: 'numeric' })}
+                        {m.startTime ? ` · ${m.startTime}` : ''}
+                        {m.isOutlook && <span className="ml-1 text-blue-400">· Outlook</span>}
+                      </p>
+                      {client && <p className="text-xs text-amber-500/70 truncate">{client.name}</p>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Day detail */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-bold text-white">{selectedLabel}</h3>
+            <button onClick={() => { setEditingMeeting(null); setShowModal(true); }}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-3 py-1.5 rounded-lg text-sm transition-all flex items-center gap-1.5">
+              <span className="text-lg font-black leading-none">+</span> Schedule Meeting
+            </button>
+          </div>
+
+          {selectedMeetings.length === 0 ? (
+            <div className="text-center py-20 text-slate-600">
+              <div className="text-5xl mb-3">📅</div>
+              <p className="text-sm">No meetings on this day</p>
+              <button onClick={() => { setEditingMeeting(null); setShowModal(true); }}
+                className="mt-3 text-amber-500 hover:text-amber-400 text-sm font-semibold transition-colors">
+                + Schedule one
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {selectedMeetings.map(m => (
+                m.isOutlook
+                  ? <OutlookEventCard key={m.id} event={m} />
+                  : <MeetingCard key={m.id} meeting={m}
+                      client={clients.find(c => c.id === m.clientId)}
+                      onEdit={() => { setEditingMeeting(m); setShowModal(true); }}
+                      onDelete={() => onDelete(m.id)}
+                    />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {showModal && (
+          <MeetingModal
+            meeting={editingMeeting}
+            defaultDate={selectedDate}
+            clients={clients}
+            onSave={handleSave}
+            onClose={() => { setShowModal(false); setEditingMeeting(null); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OutlookEventCard({ event }) {
+  return (
+    <div className="bg-blue-600/10 border border-blue-600/25 rounded-xl p-4 hover:border-blue-600/40 transition-all">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-bold text-blue-400 bg-blue-600/20 px-1.5 py-0.5 rounded">
+              {event.isOnline ? '🎥 Teams' : '📧 Outlook'}
+            </span>
+          </div>
+          <h4 className="font-bold text-white text-sm">{event.title}</h4>
+          {(event.startTime || event.endTime) && (
+            <p className="text-xs text-slate-400 mt-0.5">
+              🕐 {event.startTime}{event.startTime && event.endTime ? ` – ${event.endTime}` : ''}
+            </p>
+          )}
+          {event.location && <p className="text-xs text-slate-400 mt-0.5">📍 {event.location}</p>}
+          {event.organizer && <p className="text-xs text-slate-500 mt-0.5">Organizer: {event.organizer}</p>}
+          {event.notes && <p className="text-xs text-slate-500 mt-1.5 italic line-clamp-2">{event.notes}</p>}
+        </div>
+        <div className="flex gap-1 flex-shrink-0">
+          {event.onlineMeetingUrl && (
+            <a href={event.onlineMeetingUrl} target="_blank" rel="noopener noreferrer"
+              className="px-2.5 py-1.5 rounded-lg bg-blue-600/30 border border-blue-600/50 text-blue-300 text-xs font-bold hover:bg-blue-600/50 transition-all">
+              Join
+            </a>
+          )}
+          {event.outlookUrl && (
+            <a href={event.outlookUrl} target="_blank" rel="noopener noreferrer"
+              className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white transition-all text-xs"
+              title="Open in Outlook">
+              ↗
+            </a>
           )}
         </div>
       </div>
-
-      {/* Right: Day detail */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-bold text-white">{selectedLabel}</h3>
-          <button
-            onClick={() => { setEditingMeeting(null); setShowModal(true); }}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-3 py-1.5 rounded-lg text-sm transition-all flex items-center gap-1.5"
-          >
-            <span className="text-lg font-black leading-none">+</span> Schedule Meeting
-          </button>
-        </div>
-
-        {selectedMeetings.length === 0 ? (
-          <div className="text-center py-20 text-slate-600">
-            <div className="text-5xl mb-3">📅</div>
-            <p className="text-sm">No meetings on this day</p>
-            <button
-              onClick={() => { setEditingMeeting(null); setShowModal(true); }}
-              className="mt-3 text-amber-500 hover:text-amber-400 text-sm font-semibold transition-colors"
-            >
-              + Schedule one
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {selectedMeetings.map(m => (
-              <MeetingCard
-                key={m.id}
-                meeting={m}
-                client={clients.find(c => c.id === m.clientId)}
-                onEdit={() => { setEditingMeeting(m); setShowModal(true); }}
-                onDelete={() => onDelete(m.id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {showModal && (
-        <MeetingModal
-          meeting={editingMeeting}
-          defaultDate={selectedDate}
-          clients={clients}
-          onSave={handleSave}
-          onClose={() => { setShowModal(false); setEditingMeeting(null); }}
-        />
-      )}
     </div>
   );
 }
