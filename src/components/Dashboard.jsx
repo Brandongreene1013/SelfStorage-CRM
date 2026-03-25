@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { PIPELINE_STAGES } from '../data/constants';
+import FunnelChart from './FunnelChart';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 
 // ─── KPI Strip ────────────────────────────────────────────────────────────────
@@ -352,6 +353,8 @@ export default function Dashboard({ clients, meetings = [], onNavigateCalendar }
             setAnalyticsRange={setAnalyticsRange}
             analyticsData={analyticsData}
           />
+
+          <FunnelChart clients={clients} filter="All" />
         </div>
 
         {/* Right: Meetings + Active Relationships */}
