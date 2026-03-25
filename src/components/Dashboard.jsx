@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
@@ -289,6 +289,122 @@ function ActiveRelationships({ clients }) {
   );
 }
 
+// ─── To-Do Tasks ─────────────────────────────────────────────────────────────
+const TASKS_KEY = 'crm_tasks';
+
+function loadTasks() {
+  try { return JSON.parse(localStorage.getItem(TASKS_KEY)) ?? []; }
+  catch { return []; }
+}
+
+function TodoWidget() {
+  const [tasks, setTasks] = useState(loadTasks);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+  }, [tasks]);
+
+  function addTask() {
+    const text = draft.trim();
+    if (!text) return;
+    setTasks(prev => [{ id: Date.now(), text, done: false }, ...prev]);
+    setDraft('');
+    inputRef.current?.focus();
+  }
+
+  function toggle(id) {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+  }
+
+  function remove(id) {
+    setTasks(prev => prev.filter(t => t.id !== id));
+  }
+
+  function clearDone() {
+    setTasks(prev => prev.filter(t => !t.done));
+  }
+
+  const pending = tasks.filter(t => !t.done).length;
+  const done    = tasks.filter(t => t.done).length;
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">To-Do</h2>
+          <p className="text-xs text-slate-600 mt-0.5">{pending} remaining</p>
+        </div>
+        {done > 0 && (
+          <button onClick={clearDone}
+            className="text-xs text-slate-600 hover:text-red-400 transition-colors font-semibold">
+            Clear done ({done})
+          </button>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="flex gap-2">
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') addTask(); }}
+          placeholder="Add a task..."
+          className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition-colors"
+        />
+        <button
+          onClick={addTask}
+          disabled={!draft.trim()}
+          className={`px-3 py-2 rounded-lg text-sm font-bold transition-all ${
+            draft.trim() ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+          }`}
+        >
+          +
+        </button>
+      </div>
+
+      {/* Task list */}
+      {tasks.length === 0 ? (
+        <p className="text-xs text-slate-700 italic text-center py-3">No tasks yet</p>
+      ) : (
+        <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+          {tasks.map(t => (
+            <div key={t.id}
+              className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border transition-all group ${
+                t.done
+                  ? 'bg-slate-800/30 border-slate-800 opacity-50'
+                  : 'bg-slate-800 border-slate-700'
+              }`}
+            >
+              <button
+                onClick={() => toggle(t.id)}
+                className={`flex-shrink-0 mt-0.5 w-4 h-4 rounded border-2 transition-all flex items-center justify-center ${
+                  t.done
+                    ? 'bg-amber-500 border-amber-500 text-slate-900'
+                    : 'border-slate-600 hover:border-amber-500'
+                }`}
+              >
+                {t.done && <span className="text-xs font-black leading-none">✓</span>}
+              </button>
+              <span className={`flex-1 text-sm leading-snug ${t.done ? 'line-through text-slate-600' : 'text-slate-200'}`}>
+                {t.text}
+              </span>
+              <button
+                onClick={() => remove(t.id)}
+                className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-slate-700 hover:text-red-400 text-xs transition-all leading-none mt-0.5"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard({ clients, meetings = [], onNavigateCalendar }) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
@@ -357,8 +473,9 @@ export default function Dashboard({ clients, meetings = [], onNavigateCalendar }
           <FunnelChart clients={clients} filter="All" />
         </div>
 
-        {/* Right: Meetings + Active Relationships */}
+        {/* Right: To-Do + Meetings + Active Relationships */}
         <div className="space-y-4">
+          <TodoWidget />
           <UpcomingMeetingsWidget
             meetings={meetings}
             clients={clients}
