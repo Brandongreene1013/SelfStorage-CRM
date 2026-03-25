@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useDatabase, US_STATES } from '../hooks/useDatabase';
 import ImportListModal from './ImportListModal';
 
@@ -38,18 +38,77 @@ const SOURCE_COLORS = {
   'Other':       'bg-slate-600/40 text-slate-400 border-slate-600/30',
 };
 
+// ─── Editable field ───────────────────────────────────────────────────────────
+function EditableField({ label, value, placeholder, onChange, mono, href, type = 'text' }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? '');
+  const inputRef = useRef(null);
+
+  useEffect(() => { setDraft(value ?? ''); }, [value]);
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+
+  function commit() {
+    setEditing(false);
+    if (draft !== value) onChange(draft);
+  }
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{label}</p>
+      {editing ? (
+        <input
+          ref={inputRef}
+          type={type}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(value ?? ''); setEditing(false); } }}
+          className={`w-full bg-slate-800 border border-amber-500 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none ${mono ? 'font-mono' : ''}`}
+        />
+      ) : (
+        <div
+          onClick={() => setEditing(true)}
+          className="group flex items-center gap-2 cursor-text rounded-lg px-1 -mx-1 py-0.5 hover:bg-slate-800 transition-all"
+          title="Click to edit"
+        >
+          {value ? (
+            href ? (
+              <a href={href} target="_blank" rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className={`text-sm text-blue-400 hover:text-blue-300 transition-colors ${mono ? 'font-mono' : ''}`}>
+                {value}
+              </a>
+            ) : (
+              <span className={`text-sm text-white ${mono ? 'font-mono text-green-400' : ''}`}>{value}</span>
+            )
+          ) : (
+            <span className="text-sm text-slate-600 italic">{placeholder}</span>
+          )}
+          <span className="opacity-0 group-hover:opacity-100 text-slate-600 text-xs transition-opacity">✏️</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Contact Detail Modal ─────────────────────────────────────────────────────
-function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, onDelete }) {
-  const [notes, setNotes] = useState(contact.notes ?? '');
+function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, onUpdate, onDelete }) {
+  const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
 
-  function saveNotes() {
-    onNotesChange(contact.id, notes);
-  }
+  // Build Google search query for this facility
+  const searchQuery = [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ');
+  const missingInfo = !contact.phone || !contact.email || !contact.address;
+
+  function saveNotes() { onNotesChange(contact.id, notes); }
 
   function handleOutcome(status) {
     onStatusChange(contact.id, status, notes);
     onNotesChange(contact.id, notes);
+  }
+
+  function field(key) {
+    return (val) => onUpdate(contact.id, { [key]: val });
   }
 
   return (
@@ -60,8 +119,8 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
       >
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-slate-800">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <div className="flex-1 min-w-0 pr-3">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${STATUS_COLORS[contact.status] ?? STATUS_COLORS.fresh}`}>
                 {STATUS_LABELS[contact.status] ?? 'Fresh'}
               </span>
@@ -71,69 +130,78 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
                 </span>
               )}
             </div>
-            <h2 className="text-xl font-black text-white leading-tight">
-              {contact.facilityName || 'Unnamed Facility'}
-            </h2>
-            {contact.ownerName && (
-              <p className="text-sm text-slate-400 mt-0.5">👤 {contact.ownerName}</p>
-            )}
+            {/* Facility Name — editable, primary field */}
+            <EditableField
+              label="Facility Name"
+              value={contact.facilityName}
+              placeholder="Click to add facility name"
+              onChange={field('facilityName')}
+            />
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white text-2xl leading-none p-1 ml-3 flex-shrink-0">✕</button>
+          <button onClick={onClose} className="text-slate-500 hover:text-white text-2xl leading-none p-1 flex-shrink-0">✕</button>
         </div>
 
         <div className="flex-1 overflow-auto p-5 space-y-5">
-          {/* Contact info row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Phone */}
-            <div className="bg-green-600/10 border border-green-600/25 rounded-xl p-4">
-              <p className="text-xs font-semibold text-green-400/70 uppercase mb-1">Phone</p>
-              {contact.phone ? (
-                <a
-                  href={`tel:${contact.phone}`}
-                  className="text-xl font-black text-green-400 font-mono tracking-wide hover:text-green-300 transition-colors"
-                >
-                  {contact.phone}
-                </a>
-              ) : (
-                <p className="text-slate-600 text-sm italic">No phone</p>
-              )}
-            </div>
 
-            {/* Email */}
-            <div className="bg-blue-600/10 border border-blue-600/25 rounded-xl p-4">
-              <p className="text-xs font-semibold text-blue-400/70 uppercase mb-1">Email</p>
-              {contact.email ? (
-                <a
-                  href={`mailto:${contact.email}`}
-                  className="text-sm font-semibold text-blue-400 hover:text-blue-300 transition-colors break-all"
-                >
-                  {contact.email}
-                </a>
-              ) : (
-                <p className="text-slate-600 text-sm italic">No email</p>
+          {/* ── Google Business Finder ── */}
+          <div className={`rounded-xl p-4 border ${missingInfo ? 'bg-amber-500/5 border-amber-500/20' : 'bg-slate-800/50 border-slate-700'}`}>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">
+                🔍 Find Business Info
+              </p>
+              {missingInfo && (
+                <span className="text-xs text-amber-400 font-semibold">Missing data detected</span>
               )}
             </div>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 bg-blue-600/20 border border-blue-600/40 text-blue-400 hover:bg-blue-600/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+              >
+                🌐 Google Search
+              </a>
+              <a
+                href={`https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 bg-green-600/20 border border-green-600/40 text-green-400 hover:bg-green-600/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+              >
+                📍 Google Maps
+              </a>
+              <a
+                href={`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&tbm=lcl`}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 bg-yellow-600/20 border border-yellow-600/40 text-yellow-400 hover:bg-yellow-600/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+              >
+                🏢 Business Listing
+              </a>
+              {contact.ownerName && (
+                <a
+                  href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(contact.ownerName + ' self storage')}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 bg-blue-800/20 border border-blue-800/40 text-blue-300 hover:bg-blue-800/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+                >
+                  💼 LinkedIn
+                </a>
+              )}
+            </div>
+            <p className="text-xs text-slate-600 mt-2">Click to open in new tab — copy info back into the fields below</p>
           </div>
 
-          {/* Address */}
-          {contact.address && (
-            <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-start gap-3">
-              <span className="text-lg mt-0.5">📍</span>
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase mb-0.5">Facility Address</p>
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                  {contact.address}
-                </a>
-              </div>
+          {/* ── Editable contact fields ── */}
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <EditableField label="Owner Name" value={contact.ownerName} placeholder="Click to add owner name" onChange={field('ownerName')} />
+              <EditableField label="Phone" value={contact.phone} placeholder="Click to add phone" onChange={field('phone')} mono
+                href={contact.phone ? `tel:${contact.phone}` : null} />
             </div>
-          )}
+            <EditableField label="Email" value={contact.email} placeholder="Click to add email" onChange={field('email')}
+              href={contact.email ? `mailto:${contact.email}` : null} />
+            <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')}
+              href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
+          </div>
 
-          {/* Notes */}
+          {/* ── Call Notes ── */}
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Call Notes</label>
             <textarea
@@ -141,23 +209,20 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
               onChange={e => setNotes(e.target.value)}
               onBlur={saveNotes}
               rows={4}
-              placeholder="Log your call notes here — interest level, next steps, what they said..."
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 resize-none transition-colors"
+              placeholder="Log your call notes — interest level, next steps, what they said..."
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 resize-none"
             />
           </div>
 
-          {/* Log Outcome */}
+          {/* ── Log Outcome ── */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase mb-2">Log Outcome</p>
             <div className="grid grid-cols-3 gap-2">
               {CALL_OUTCOMES.map(o => (
-                <button
-                  key={o.status}
-                  onClick={() => handleOutcome(o.status)}
+                <button key={o.status} onClick={() => handleOutcome(o.status)}
                   className={`border rounded-xl px-3 py-2.5 text-xs font-bold transition-all text-center ${o.color} ${
                     contact.status === o.status ? 'ring-2 ring-offset-1 ring-offset-slate-900 ring-current' : ''
-                  }`}
-                >
+                  }`}>
                   <span className="text-base block">{o.icon}</span>
                   <span className="mt-0.5 block">{o.label}</span>
                 </button>
@@ -165,18 +230,14 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
             </div>
           </div>
 
-          {/* Callback date */}
+          {/* ── Callback date ── */}
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Callback Date</label>
-            <input
-              type="date"
-              value={callbackDate}
-              onChange={e => setCallbackDate(e.target.value)}
-              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
-            />
+            <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)}
+              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
           </div>
 
-          {/* Call history */}
+          {/* ── Call history ── */}
           {contact.callHistory?.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Call History</p>
@@ -184,7 +245,7 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
                 {[...contact.callHistory].reverse().map((h, i) => (
                   <div key={i} className="flex items-start gap-3 text-xs bg-slate-800 rounded-lg px-3 py-2">
                     <span className="text-slate-500 flex-shrink-0">{h.date}</span>
-                    <span className={`font-semibold flex-shrink-0 ${STATUS_COLORS[h.outcome]?.includes('text-') ? STATUS_COLORS[h.outcome].split(' ').find(c => c.startsWith('text-')) : 'text-slate-400'}`}>
+                    <span className={`font-semibold flex-shrink-0 ${STATUS_COLORS[h.outcome]?.split(' ').find(c => c.startsWith('text-')) ?? 'text-slate-400'}`}>
                       {STATUS_LABELS[h.outcome] ?? h.outcome}
                     </span>
                     {h.notes && <span className="text-slate-400 italic truncate">{h.notes}</span>}
@@ -197,16 +258,12 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
 
         {/* Footer */}
         <div className="flex items-center justify-between p-4 border-t border-slate-800">
-          <button
-            onClick={() => { onDelete(contact.id); onClose(); }}
-            className="text-xs text-red-500 hover:text-red-400 transition-colors font-semibold"
-          >
+          <button onClick={() => { onDelete(contact.id); onClose(); }}
+            className="text-xs text-red-500 hover:text-red-400 transition-colors font-semibold">
             Delete Contact
           </button>
-          <button
-            onClick={() => { saveNotes(); onClose(); }}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-5 py-2 rounded-xl text-sm transition-all"
-          >
+          <button onClick={() => { saveNotes(); onClose(); }}
+            className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-5 py-2 rounded-xl text-sm transition-all">
             Save & Close
           </button>
         </div>
@@ -278,12 +335,73 @@ function PropertyCard({ contact, onClick }) {
   );
 }
 
+// ─── List Sidebar Item (with inline rename) ───────────────────────────────────
+function ListSidebarItem({ list: l, count, isActive, onSelect, onRename }) {
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(l.name);
+  const inputRef = useRef(null);
+
+  useEffect(() => { if (renaming) inputRef.current?.focus(); }, [renaming]);
+
+  function commitRename() {
+    setRenaming(false);
+    if (draft.trim() && draft.trim() !== l.name) onRename(draft.trim());
+    else setDraft(l.name);
+  }
+
+  return (
+    <div
+      className={`border-b border-slate-800/50 border-l-2 transition-all ${
+        isActive ? 'bg-amber-500/10 border-l-amber-500' : 'border-l-transparent hover:bg-slate-800'
+      }`}
+    >
+      <div className="flex items-center gap-1 px-3 pt-2.5">
+        {renaming ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setDraft(l.name); setRenaming(false); } }}
+            className="flex-1 bg-slate-700 border border-amber-500 rounded px-2 py-0.5 text-xs text-white focus:outline-none"
+          />
+        ) : (
+          <button
+            onClick={onSelect}
+            className={`flex-1 text-left text-xs font-semibold truncate ${isActive ? 'text-amber-400' : 'text-slate-300'}`}
+          >
+            {l.name}
+          </button>
+        )}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onClick={e => { e.stopPropagation(); setRenaming(true); setDraft(l.name); }}
+            title="Rename list"
+            className="text-slate-600 hover:text-slate-300 text-xs p-0.5 transition-all"
+          >
+            ✏️
+          </button>
+          <span className="text-xs bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-md">{count}</span>
+        </div>
+      </div>
+      <button onClick={onSelect} className="w-full text-left px-3 pb-2.5 pt-0.5">
+        <div className="flex items-center justify-between">
+          <span className={`text-xs border rounded px-1 ${SOURCE_COLORS[l.source] ?? SOURCE_COLORS.Other}`}>
+            {l.source}
+          </span>
+          <span className="text-xs text-slate-600">{l.importedAt}</span>
+        </div>
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Database Component ──────────────────────────────────────────────────
 export default function Database({ onCallLogged }) {
   const {
     lists, contacts,
     importList, updateContactStatus, updateContactCallback,
-    updateContactNotes, deleteList, deleteContact,
+    updateContactNotes, updateContact, deleteList, renameList, deleteContact,
   } = useDatabase();
 
   const [subView, setSubView]       = useState('contacts');
@@ -384,34 +502,16 @@ export default function Database({ onCallLogged }) {
             <p className="text-xs text-slate-600 italic px-3 py-3">No lists yet</p>
           )}
 
-          {lists.map(l => {
-            const count = contacts.filter(c => c.listId === l.id).length;
-            const isActive = activeListId === l.id && subView === 'contacts';
-            return (
-              <button
-                key={l.id}
-                onClick={() => { setActiveListId(l.id); setSubView('contacts'); }}
-                className={`w-full text-left px-3 py-2.5 border-b border-slate-800/50 transition-all ${
-                  isActive
-                    ? 'bg-amber-500/10 border-l-2 border-amber-500'
-                    : 'hover:bg-slate-800 border-l-2 border-transparent'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs font-semibold truncate flex-1 mr-1 ${isActive ? 'text-amber-400' : 'text-slate-300'}`}>
-                    {l.name}
-                  </span>
-                  <span className="text-xs bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-md flex-shrink-0">{count}</span>
-                </div>
-                <div className="flex items-center justify-between mt-0.5">
-                  <span className={`text-xs border rounded px-1 ${SOURCE_COLORS[l.source] ?? SOURCE_COLORS.Other}`}>
-                    {l.source}
-                  </span>
-                  <span className="text-xs text-slate-600">{l.importedAt}</span>
-                </div>
-              </button>
-            );
-          })}
+          {lists.map(l => (
+            <ListSidebarItem
+              key={l.id}
+              list={l}
+              count={contacts.filter(c => c.listId === l.id).length}
+              isActive={activeListId === l.id && subView === 'contacts'}
+              onSelect={() => { setActiveListId(l.id); setSubView('contacts'); }}
+              onRename={(name) => renameList(l.id, name)}
+            />
+          ))}
         </div>
 
         {/* Other views */}
@@ -554,6 +654,7 @@ export default function Database({ onCallLogged }) {
           onClose={() => setOpenContact(null)}
           onStatusChange={handleStatusChangeFromModal}
           onNotesChange={updateContactNotes}
+          onUpdate={updateContact}
           onDelete={(id) => { deleteContact(id); setOpenContact(null); }}
         />
       )}

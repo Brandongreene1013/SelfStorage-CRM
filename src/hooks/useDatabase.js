@@ -215,6 +215,20 @@ export function useDatabase() {
     }));
   }, []);
 
+  const renameList = useCallback((listId, newName) => {
+    setData(prev => ({
+      ...prev,
+      lists: prev.lists.map(l => l.id === listId ? { ...l, name: newName } : l),
+    }));
+  }, []);
+
+  const updateContact = useCallback((contactId, fields) => {
+    setData(prev => ({
+      ...prev,
+      contacts: prev.contacts.map(c => c.id === contactId ? { ...c, ...fields } : c),
+    }));
+  }, []);
+
   return {
     lists: data.lists,
     contacts: data.contacts,
@@ -222,7 +236,9 @@ export function useDatabase() {
     updateContactStatus,
     updateContactCallback,
     updateContactNotes,
+    updateContact,
     deleteList,
+    renameList,
     deleteContact,
   };
 }
