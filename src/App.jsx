@@ -78,11 +78,23 @@ export default function App() {
       {/* Header */}
       <header className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500 flex items-center justify-center font-black text-slate-900 text-xl shadow">
-            🏢
+          {/* Storage Hero logo — Superman-inspired shield */}
+          <div className="w-10 h-10 flex-shrink-0" style={{ filter: 'drop-shadow(0 2px 6px rgba(245,158,11,0.5))' }}>
+            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+              {/* Shield shape */}
+              <path d="M20 2 L36 8 L36 22 C36 31 20 38 20 38 C20 38 4 31 4 22 L4 8 Z"
+                fill="#1e293b" stroke="#f59e0b" strokeWidth="2" />
+              {/* Yellow upper band */}
+              <path d="M20 2 L36 8 L36 14 L4 14 L4 8 Z" fill="#f59e0b" />
+              {/* Red lower fill */}
+              <path d="M4 14 L36 14 L36 22 C36 31 20 38 20 38 C20 38 4 31 4 22 Z" fill="#dc2626" />
+              {/* "S" letter */}
+              <text x="20" y="31" textAnchor="middle" fontSize="15" fontWeight="900"
+                fontFamily="Arial Black, sans-serif" fill="#f59e0b" letterSpacing="-1">S</text>
+            </svg>
           </div>
           <div>
-            <h1 className="text-base font-black text-white leading-tight tracking-tight">SelfStorage CRM</h1>
+            <h1 className="text-base font-black text-white leading-tight tracking-tight">Storage Hero</h1>
             <p className="text-xs text-slate-500 leading-tight">Investment Brokerage Pipeline</p>
           </div>
         </div>
