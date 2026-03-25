@@ -62,25 +62,53 @@ export function parseImportData(text) {
 
   // Score each header against our known fields
   const fieldMap = {};
+  let firstNameIdx = null;
+  let lastNameIdx  = null;
+
   rawHeaders.forEach((h, i) => {
-    const lh = h.toLowerCase();
-    if (!fieldMap.facilityName && /facili|property|storage.*name|self.?storage/i.test(lh)) fieldMap.facilityName = i;
-    else if (!fieldMap.ownerName && /owner|contact|name/i.test(lh)) fieldMap.ownerName = i;
-    else if (!fieldMap.phone && /phone|tel|mobile|cell/i.test(lh)) fieldMap.phone = i;
-    else if (!fieldMap.email && /email|e.?mail/i.test(lh)) fieldMap.email = i;
-    else if (!fieldMap.address && /address|street|location/i.test(lh)) fieldMap.address = i;
-    else if (!fieldMap.city && /city|town/i.test(lh)) fieldMap.city = i;
-    else if (!fieldMap.state && /state|st$/i.test(lh)) fieldMap.state = i;
-    else if (!fieldMap.zip && /zip|postal/i.test(lh)) fieldMap.zip = i;
-    else if (!fieldMap.units && /unit|door|count/i.test(lh)) fieldMap.units = i;
-    else if (!fieldMap.sqft && /sq.*ft|square|size/i.test(lh)) fieldMap.sqft = i;
+    const lh = h.toLowerCase().trim();
+    // Facility — must have facility/property/storage keyword
+    if (!fieldMap.facilityName && /facili|property[\s_]name|storage[\s_]name|business[\s_]name|self.?storage/i.test(lh)) {
+      fieldMap.facilityName = i;
+    // Owner — explicit owner / contact name / full name
+    } else if (!fieldMap.ownerName && /owner|contact[\s_]name|full[\s_]name|^name$|primary[\s_]contact/i.test(lh)) {
+      fieldMap.ownerName = i;
+    // Split first/last name
+    } else if (firstNameIdx == null && /^first[\s_]?name$|^first$/i.test(lh)) {
+      firstNameIdx = i;
+    } else if (lastNameIdx == null && /^last[\s_]?name$|^last$/i.test(lh)) {
+      lastNameIdx = i;
+    } else if (!fieldMap.phone && /phone|tel|mobile|cell/i.test(lh)) {
+      fieldMap.phone = i;
+    } else if (!fieldMap.email && /email|e.?mail/i.test(lh)) {
+      fieldMap.email = i;
+    } else if (!fieldMap.address && /address|street|location/i.test(lh)) {
+      fieldMap.address = i;
+    } else if (!fieldMap.city && /city|town/i.test(lh)) {
+      fieldMap.city = i;
+    } else if (!fieldMap.state && /\bstate\b|\bst\b$/i.test(lh)) {
+      fieldMap.state = i;
+    } else if (!fieldMap.zip && /zip|postal/i.test(lh)) {
+      fieldMap.zip = i;
+    } else if (!fieldMap.units && /unit|door|count/i.test(lh)) {
+      fieldMap.units = i;
+    } else if (!fieldMap.sqft && /sq.*ft|square|size/i.test(lh)) {
+      fieldMap.sqft = i;
+    }
   });
 
-  // If no facilityName found, try the first "name"-ish column
-  if (fieldMap.facilityName == null && fieldMap.ownerName == null) {
-    rawHeaders.forEach((h, i) => {
-      if (/name/i.test(h) && fieldMap.facilityName == null) fieldMap.facilityName = i;
-    });
+  // If still no ownerName, fall back to first+last or any remaining "name" column
+  if (fieldMap.ownerName == null) {
+    if (firstNameIdx != null) {
+      fieldMap._firstNameIdx = firstNameIdx;
+      fieldMap._lastNameIdx  = lastNameIdx;
+    } else {
+      rawHeaders.forEach((h, i) => {
+        if (/name/i.test(h) && fieldMap.ownerName == null && i !== fieldMap.facilityName) {
+          fieldMap.ownerName = i;
+        }
+      });
+    }
   }
 
   const contacts = [];
@@ -115,10 +143,18 @@ export function parseImportData(text) {
       }
     }
 
+    // Build owner name — combine first+last if split columns were detected
+    let ownerName = fieldMap.ownerName != null ? (cols[fieldMap.ownerName] ?? '') : '';
+    if (!ownerName && fieldMap._firstNameIdx != null) {
+      const first = cols[fieldMap._firstNameIdx] ?? '';
+      const last  = fieldMap._lastNameIdx != null ? (cols[fieldMap._lastNameIdx] ?? '') : '';
+      ownerName = [first, last].filter(Boolean).join(' ');
+    }
+
     contacts.push({
       id: uuidv4(),
       facilityName: cols[fieldMap.facilityName] ?? '',
-      ownerName: cols[fieldMap.ownerName] ?? '',
+      ownerName,
       phone: cols[fieldMap.phone] ?? '',
       email: cols[fieldMap.email] ?? '',
       address,

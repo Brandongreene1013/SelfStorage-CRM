@@ -274,13 +274,17 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
 
 // ─── Property Card ────────────────────────────────────────────────────────────
 function PropertyCard({ contact, onClick }) {
+  const mapsQuery = encodeURIComponent(
+    [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ')
+  );
+
   return (
     <div
       onClick={onClick}
       className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-black/30 group"
     >
-      {/* Status badge */}
-      <div className="flex items-center justify-between mb-3">
+      {/* Status + market */}
+      <div className="flex items-center justify-between mb-2">
         <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${STATUS_COLORS[contact.status] ?? STATUS_COLORS.fresh}`}>
           {STATUS_LABELS[contact.status] ?? 'Fresh'}
         </span>
@@ -289,23 +293,51 @@ function PropertyCard({ contact, onClick }) {
         )}
       </div>
 
-      {/* Facility Name */}
-      <h3 className="font-black text-white text-sm leading-tight mb-1 group-hover:text-amber-400 transition-colors line-clamp-2">
-        {contact.facilityName || <span className="text-slate-600 italic">Unnamed Facility</span>}
+      {/* Owner Name — PRIMARY (who you're calling) */}
+      <h3 className="font-black text-white text-base leading-tight group-hover:text-amber-400 transition-colors line-clamp-1">
+        {contact.ownerName || <span className="text-slate-500 italic text-sm font-semibold">Unknown Owner</span>}
       </h3>
 
-      {/* Owner */}
-      {contact.ownerName && (
-        <p className="text-xs text-slate-400 mb-3">👤 {contact.ownerName}</p>
-      )}
+      {/* Facility Name — secondary, with Google Maps link */}
+      <div className="flex items-center gap-1.5 mt-0.5 mb-3 min-h-[1.25rem]">
+        {contact.facilityName ? (
+          <>
+            <span className="text-xs text-slate-400 truncate">{contact.facilityName}</span>
+            <a
+              href={`https://www.google.com/maps/search/${mapsQuery}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              title="Find on Google Maps"
+              className="flex-shrink-0 text-slate-600 hover:text-blue-400 transition-colors text-xs"
+            >
+              🗺
+            </a>
+          </>
+        ) : (
+          <a
+            href={`https://www.google.com/maps/search/${mapsQuery}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="text-xs text-slate-600 hover:text-blue-400 italic transition-colors"
+          >
+            Find facility →
+          </a>
+        )}
+      </div>
 
       <div className="h-px bg-slate-800 mb-3" />
 
       {/* Contact details */}
       <div className="space-y-1.5">
-        {contact.phone && (
+        {contact.phone ? (
           <p className="text-xs font-mono text-green-400 flex items-center gap-1.5">
             <span className="text-slate-500">📞</span> {contact.phone}
+          </p>
+        ) : (
+          <p className="text-xs text-slate-700 italic flex items-center gap-1.5">
+            <span>📞</span> No phone
           </p>
         )}
         {contact.email && (
@@ -335,10 +367,11 @@ function PropertyCard({ contact, onClick }) {
   );
 }
 
-// ─── List Sidebar Item (with inline rename) ───────────────────────────────────
-function ListSidebarItem({ list: l, count, isActive, onSelect, onRename }) {
-  const [renaming, setRenaming] = useState(false);
-  const [draft, setDraft] = useState(l.name);
+// ─── List Sidebar Item (with inline rename + delete) ─────────────────────────
+function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelete }) {
+  const [renaming, setRenaming]       = useState(false);
+  const [draft, setDraft]             = useState(l.name);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => { if (renaming) inputRef.current?.focus(); }, [renaming]);
@@ -373,18 +406,33 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename }) {
             {l.name}
           </button>
         )}
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
-            onClick={e => { e.stopPropagation(); setRenaming(true); setDraft(l.name); }}
-            title="Rename list"
+            onClick={e => { e.stopPropagation(); setRenaming(true); setDraft(l.name); setConfirmDelete(false); }}
+            title="Rename"
             className="text-slate-600 hover:text-slate-300 text-xs p-0.5 transition-all"
-          >
-            ✏️
-          </button>
-          <span className="text-xs bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-md">{count}</span>
+          >✏️</button>
+          <button
+            onClick={e => { e.stopPropagation(); setConfirmDelete(v => !v); setRenaming(false); }}
+            title="Delete list"
+            className="text-slate-600 hover:text-red-400 text-xs p-0.5 transition-all"
+          >🗑</button>
+          <span className="text-xs bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-md ml-0.5">{count}</span>
         </div>
       </div>
-      <button onClick={onSelect} className="w-full text-left px-3 pb-2.5 pt-0.5">
+
+      {/* Confirm delete */}
+      {confirmDelete && (
+        <div className="mx-3 mb-2 mt-1 bg-red-900/30 border border-red-800/50 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2">
+          <span className="text-xs text-red-400 font-semibold">Delete {count} contacts?</span>
+          <div className="flex gap-1.5">
+            <button onClick={() => setConfirmDelete(false)} className="text-xs text-slate-400 hover:text-white transition-all">Cancel</button>
+            <button onClick={() => { onDelete(l.id); setConfirmDelete(false); }} className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-2 py-0.5 rounded transition-all">Delete</button>
+          </div>
+        </div>
+      )}
+
+      <button onClick={onSelect} className="w-full text-left px-3 pb-2 pt-0.5">
         <div className="flex items-center justify-between">
           <span className={`text-xs border rounded px-1 ${SOURCE_COLORS[l.source] ?? SOURCE_COLORS.Other}`}>
             {l.source}
@@ -406,7 +454,8 @@ export default function Database({ onCallLogged }) {
 
   const [subView, setSubView]       = useState('contacts');
   const [showImport, setShowImport] = useState(false);
-  const [activeListId, setActiveListId] = useState('all');
+  // Default to most recent list (last in array), fall back to 'all'
+  const [activeListId, setActiveListId] = useState(() => lists.length > 0 ? lists[lists.length - 1].id : 'all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch]         = useState('');
   const [openContact, setOpenContact] = useState(null);
@@ -458,9 +507,10 @@ export default function Database({ onCallLogged }) {
   }
 
   function handleImport(name, source, rawText) {
-    importList(name, source, rawText);
+    const result = importList(name, source, rawText);
     setShowImport(false);
     setSubView('contacts');
+    if (result?.list?.id) setActiveListId(result.list.id);
   }
 
   // Aggregate stats
@@ -502,7 +552,7 @@ export default function Database({ onCallLogged }) {
             <p className="text-xs text-slate-600 italic px-3 py-3">No lists yet</p>
           )}
 
-          {lists.map(l => (
+          {[...lists].reverse().map(l => (
             <ListSidebarItem
               key={l.id}
               list={l}
@@ -510,6 +560,7 @@ export default function Database({ onCallLogged }) {
               isActive={activeListId === l.id && subView === 'contacts'}
               onSelect={() => { setActiveListId(l.id); setSubView('contacts'); }}
               onRename={(name) => renameList(l.id, name)}
+              onDelete={(id) => { deleteList(id); if (activeListId === id) setActiveListId('all'); }}
             />
           ))}
         </div>
