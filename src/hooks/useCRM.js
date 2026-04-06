@@ -113,7 +113,7 @@ function saveToStorage(data) {
 export function useCRM() {
   const [clients, setClients] = useState(() => {
     const stored = loadFromStorage();
-    return stored ?? SAMPLE_DATA;
+    return stored ?? [];
   });
 
   useEffect(() => {
