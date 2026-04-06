@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-
-const DB_KEY = 'crm_database';
+import { supabase } from '../lib/supabase';
 
 const US_STATES = {
   AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',
@@ -19,7 +18,6 @@ export { US_STATES };
 
 export function extractStateAndMarket(address) {
   if (!address) return { state: '', market: '' };
-  // Match 2-letter state abbreviation (often before zip code)
   const stateAbbrRegex = /\b([A-Z]{2})\b(?:\s*\d{5})?/g;
   let match;
   while ((match = stateAbbrRegex.exec(address)) !== null) {
@@ -36,7 +34,6 @@ export function extractStateAndMarket(address) {
       return { state, market: city ? `${city}, ${state}` : state };
     }
   }
-  // Try full state names
   for (const [abbr, name] of Object.entries(US_STATES)) {
     if (address.toLowerCase().includes(name.toLowerCase())) {
       const parts = address.split(',').map(s => s.trim());
@@ -52,7 +49,6 @@ export function parseImportData(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   if (lines.length < 2) return [];
 
-  // Auto-detect delimiter
   const firstLine = lines[0];
   const tabCount = (firstLine.match(/\t/g) ?? []).length;
   const commaCount = (firstLine.match(/,/g) ?? []).length;
@@ -60,20 +56,16 @@ export function parseImportData(text) {
 
   const rawHeaders = lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
 
-  // Score each header against our known fields
   const fieldMap = {};
   let firstNameIdx = null;
   let lastNameIdx  = null;
 
   rawHeaders.forEach((h, i) => {
     const lh = h.toLowerCase().trim();
-    // Facility — must have facility/property/storage keyword
     if (!fieldMap.facilityName && /facili|property[\s_]name|storage[\s_]name|business[\s_]name|self.?storage/i.test(lh)) {
       fieldMap.facilityName = i;
-    // Owner — explicit owner / contact name / full name
     } else if (!fieldMap.ownerName && /owner|contact[\s_]name|full[\s_]name|^name$|primary[\s_]contact/i.test(lh)) {
       fieldMap.ownerName = i;
-    // Split first/last name
     } else if (firstNameIdx == null && /^first[\s_]?name$|^first$/i.test(lh)) {
       firstNameIdx = i;
     } else if (lastNameIdx == null && /^last[\s_]?name$|^last$/i.test(lh)) {
@@ -97,7 +89,6 @@ export function parseImportData(text) {
     }
   });
 
-  // If still no ownerName, fall back to first+last or any remaining "name" column
   if (fieldMap.ownerName == null) {
     if (firstNameIdx != null) {
       fieldMap._firstNameIdx = firstNameIdx;
@@ -116,7 +107,6 @@ export function parseImportData(text) {
     const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
     if (cols.every(c => !c)) continue;
 
-    // Build full address
     let address = cols[fieldMap.address] ?? '';
     const city = cols[fieldMap.city] ?? '';
     const stateCol = cols[fieldMap.state] ?? '';
@@ -132,9 +122,7 @@ export function parseImportData(text) {
     }
     address = address.trim();
 
-    // Parse state/market from the full address
     let { state, market } = extractStateAndMarket(address);
-    // Fallback: if state column was explicitly provided, use it
     if (!state && stateCol) {
       const upper = stateCol.toUpperCase().trim();
       if (US_STATES[upper]) {
@@ -143,7 +131,6 @@ export function parseImportData(text) {
       }
     }
 
-    // Build owner name — combine first+last if split columns were detected
     let ownerName = fieldMap.ownerName != null ? (cols[fieldMap.ownerName] ?? '') : '';
     if (!ownerName && fieldMap._firstNameIdx != null) {
       const first = cols[fieldMap._firstNameIdx] ?? '';
@@ -152,7 +139,6 @@ export function parseImportData(text) {
     }
 
     contacts.push({
-      id: uuidv4(),
       facilityName: cols[fieldMap.facilityName] ?? '',
       ownerName,
       phone: cols[fieldMap.phone] ?? '',
@@ -160,11 +146,8 @@ export function parseImportData(text) {
       address,
       state,
       market,
-      units: fieldMap.units != null ? parseInt(cols[fieldMap.units]) || 0 : 0,
-      sqft: fieldMap.sqft != null ? parseInt(cols[fieldMap.sqft]) || 0 : 0,
       status: 'fresh',
       callHistory: [],
-      lastCalled: null,
       callbackDate: null,
       notes: '',
     });
@@ -172,138 +155,196 @@ export function parseImportData(text) {
   return { contacts, headers: rawHeaders, fieldMap };
 }
 
-function loadDB() {
-  try {
-    const raw = localStorage.getItem(DB_KEY);
-    return raw ? JSON.parse(raw) : { lists: [], contacts: [] };
-  } catch { return { lists: [], contacts: [] }; }
+// DB row → app shape
+function dbToContact(row) {
+  return {
+    id: row.id,
+    listId: row.list_id,
+    ownerName: row.owner_name ?? '',
+    facilityName: row.facility_name ?? '',
+    phone: row.phone ?? '',
+    email: row.email ?? '',
+    address: row.address ?? '',
+    city: row.city ?? '',
+    state: row.state ?? '',
+    market: row.city && row.state ? `${row.city}, ${row.state}` : (row.state ?? ''),
+    status: row.status ?? 'fresh',
+    notes: row.notes ?? '',
+    callbackDate: row.callback_date ?? null,
+    callHistory: row.call_history ?? [],
+    lastCalled: (row.call_history ?? []).slice(-1)[0]?.date ?? null,
+  };
+}
+
+function dbToList(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    source: row.source ?? '',
+    importedAt: row.created_at?.slice(0, 10) ?? '',
+    contactCount: 0, // computed from contacts array
+  };
 }
 
 export function useDatabase() {
-  const [data, setData] = useState(loadDB);
+  const [lists, setLists] = useState([]);
+  const [contacts, setContacts] = useState([]);
 
   useEffect(() => {
-    localStorage.setItem(DB_KEY, JSON.stringify(data));
-  }, [data]);
-
-  const importList = useCallback((name, source, rawText) => {
-    const { contacts } = parseImportData(rawText);
-    if (contacts.length === 0) return { count: 0 };
-    const listId = uuidv4();
-    const list = {
-      id: listId,
-      name,
-      source,
-      importedAt: new Date().toISOString().slice(0, 10),
-      contactCount: contacts.length,
-    };
-    const taggedContacts = contacts.map(c => ({ ...c, listId }));
-    setData(prev => ({
-      lists: [...prev.lists, list],
-      contacts: [...prev.contacts, ...taggedContacts],
-    }));
-    return { list, count: contacts.length };
+    loadAll();
   }, []);
 
-  const updateContactStatus = useCallback((contactId, status, callNote) => {
+  async function loadAll() {
+    const [listsRes, contactsRes] = await Promise.all([
+      supabase.from('lists').select('*').order('created_at', { ascending: true }),
+      supabase.from('contacts').select('*').order('created_at', { ascending: true }),
+    ]);
+    if (!listsRes.error && listsRes.data) setLists(listsRes.data.map(dbToList));
+    if (!contactsRes.error && contactsRes.data) setContacts(contactsRes.data.map(dbToContact));
+  }
+
+  const importList = useCallback(async (name, source, rawText) => {
+    const { contacts: parsed } = parseImportData(rawText);
+    if (parsed.length === 0) return { count: 0 };
+
+    // Create list
+    const { data: listRow, error: listErr } = await supabase
+      .from('lists')
+      .insert([{ name, source }])
+      .select()
+      .single();
+    if (listErr) return { count: 0 };
+
+    // Insert contacts in batches of 500
+    const rows = parsed.map(c => ({
+      list_id: listRow.id,
+      owner_name: c.ownerName,
+      facility_name: c.facilityName,
+      phone: c.phone,
+      email: c.email,
+      address: c.address,
+      state: c.state,
+      status: 'fresh',
+      call_history: [],
+    }));
+
+    const BATCH = 500;
+    const inserted = [];
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const { data } = await supabase.from('contacts').insert(rows.slice(i, i + BATCH)).select();
+      if (data) inserted.push(...data);
+    }
+
+    const newList = dbToList(listRow);
+    setLists(prev => [...prev, newList]);
+    setContacts(prev => [...prev, ...inserted.map(dbToContact)]);
+    return { list: newList, count: inserted.length };
+  }, []);
+
+  const createList = useCallback(async (name, source) => {
+    const { data: row, error } = await supabase
+      .from('lists')
+      .insert([{ name, source: source ?? '' }])
+      .select()
+      .single();
+    if (!error && row) {
+      const list = dbToList(row);
+      setLists(prev => [...prev, list]);
+      return list;
+    }
+  }, []);
+
+  const deleteList = useCallback(async (listId) => {
+    const { error } = await supabase.from('lists').delete().eq('id', listId);
+    if (!error) {
+      setLists(prev => prev.filter(l => l.id !== listId));
+      setContacts(prev => prev.filter(c => c.listId !== listId));
+    }
+  }, []);
+
+  const renameList = useCallback(async (listId, newName) => {
+    const { error } = await supabase.from('lists').update({ name: newName }).eq('id', listId);
+    if (!error) {
+      setLists(prev => prev.map(l => l.id === listId ? { ...l, name: newName } : l));
+    }
+  }, []);
+
+  const addContact = useCallback(async (listId, fields) => {
+    const { state } = extractStateAndMarket(fields.address ?? '');
+    const { data: row, error } = await supabase
+      .from('contacts')
+      .insert([{
+        list_id: listId,
+        owner_name: fields.ownerName ?? '',
+        facility_name: fields.facilityName ?? '',
+        phone: fields.phone ?? '',
+        email: fields.email ?? '',
+        address: fields.address ?? '',
+        state: fields.state ?? state,
+        status: 'fresh',
+        call_history: [],
+        notes: '',
+      }])
+      .select()
+      .single();
+    if (!error && row) {
+      const contact = dbToContact(row);
+      setContacts(prev => [...prev, contact]);
+      return contact;
+    }
+  }, []);
+
+  const deleteContact = useCallback(async (contactId) => {
+    const { error } = await supabase.from('contacts').delete().eq('id', contactId);
+    if (!error) {
+      setContacts(prev => prev.filter(c => c.id !== contactId));
+    }
+  }, []);
+
+  const updateContact = useCallback(async (contactId, fields) => {
+    const dbFields = {};
+    if (fields.ownerName    !== undefined) dbFields.owner_name    = fields.ownerName;
+    if (fields.facilityName !== undefined) dbFields.facility_name = fields.facilityName;
+    if (fields.phone        !== undefined) dbFields.phone         = fields.phone;
+    if (fields.email        !== undefined) dbFields.email         = fields.email;
+    if (fields.address      !== undefined) dbFields.address       = fields.address;
+    if (fields.state        !== undefined) dbFields.state         = fields.state;
+    if (fields.notes        !== undefined) dbFields.notes         = fields.notes;
+    if (fields.status       !== undefined) dbFields.status        = fields.status;
+    if (fields.callbackDate !== undefined) dbFields.callback_date = fields.callbackDate;
+    if (fields.callHistory  !== undefined) dbFields.call_history  = fields.callHistory;
+    dbFields.updated_at = new Date().toISOString();
+
+    const { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
+    if (!error) {
+      setContacts(prev => prev.map(c => c.id === contactId ? { ...c, ...fields } : c));
+    }
+  }, []);
+
+  const updateContactStatus = useCallback(async (contactId, status, callNote) => {
     const now = new Date().toISOString().slice(0, 10);
-    setData(prev => ({
-      ...prev,
-      contacts: prev.contacts.map(c => {
-        if (c.id !== contactId) return c;
-        return {
-          ...c,
-          status,
-          lastCalled: now,
-          callHistory: [...(c.callHistory ?? []), { date: now, outcome: status, notes: callNote ?? '' }],
-        };
-      }),
-    }));
-  }, []);
+    const contact = contacts.find(c => c.id === contactId);
+    if (!contact) return;
+    const newHistory = [...(contact.callHistory ?? []), { date: now, outcome: status, notes: callNote ?? '' }];
 
-  const updateContactCallback = useCallback((contactId, callbackDate) => {
-    setData(prev => ({
-      ...prev,
-      contacts: prev.contacts.map(c =>
-        c.id === contactId ? { ...c, callbackDate, status: 'callback' } : c
-      ),
-    }));
-  }, []);
+    await updateContact(contactId, {
+      status,
+      callHistory: newHistory,
+      lastCalled: now,
+    });
+  }, [contacts, updateContact]);
 
-  const updateContactNotes = useCallback((contactId, notes) => {
-    setData(prev => ({
-      ...prev,
-      contacts: prev.contacts.map(c => c.id === contactId ? { ...c, notes } : c),
-    }));
-  }, []);
+  const updateContactCallback = useCallback(async (contactId, callbackDate) => {
+    await updateContact(contactId, { callbackDate, status: 'callback' });
+  }, [updateContact]);
 
-  const deleteList = useCallback((listId) => {
-    setData(prev => ({
-      lists: prev.lists.filter(l => l.id !== listId),
-      contacts: prev.contacts.filter(c => c.listId !== listId),
-    }));
-  }, []);
-
-  const deleteContact = useCallback((contactId) => {
-    setData(prev => ({
-      ...prev,
-      contacts: prev.contacts.filter(c => c.id !== contactId),
-    }));
-  }, []);
-
-  const createList = useCallback((name, source) => {
-    const listId = uuidv4();
-    const list = {
-      id: listId,
-      name,
-      source,
-      importedAt: new Date().toISOString().slice(0, 10),
-      contactCount: 0,
-    };
-    setData(prev => ({ ...prev, lists: [...prev.lists, list] }));
-    return list;
-  }, []);
-
-  const addContact = useCallback((listId, fields) => {
-    const contact = {
-      id: uuidv4(),
-      listId,
-      facilityName: fields.facilityName ?? '',
-      ownerName:    fields.ownerName ?? '',
-      phone:        fields.phone ?? '',
-      email:        fields.email ?? '',
-      address:      fields.address ?? '',
-      state:        fields.state ?? '',
-      market:       fields.market ?? '',
-      units:        fields.units ?? 0,
-      sqft:         fields.sqft ?? 0,
-      status:       'fresh',
-      callHistory:  [],
-      lastCalled:   null,
-      callbackDate: null,
-      notes:        '',
-    };
-    setData(prev => ({ ...prev, contacts: [...prev.contacts, contact] }));
-    return contact;
-  }, []);
-
-  const renameList = useCallback((listId, newName) => {
-    setData(prev => ({
-      ...prev,
-      lists: prev.lists.map(l => l.id === listId ? { ...l, name: newName } : l),
-    }));
-  }, []);
-
-  const updateContact = useCallback((contactId, fields) => {
-    setData(prev => ({
-      ...prev,
-      contacts: prev.contacts.map(c => c.id === contactId ? { ...c, ...fields } : c),
-    }));
-  }, []);
+  const updateContactNotes = useCallback(async (contactId, notes) => {
+    await updateContact(contactId, { notes });
+  }, [updateContact]);
 
   return {
-    lists: data.lists,
-    contacts: data.contacts,
+    lists,
+    contacts,
     importList,
     createList,
     addContact,

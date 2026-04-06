@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
 import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
@@ -290,39 +291,41 @@ function ActiveRelationships({ clients }) {
 }
 
 // ─── To-Do Tasks ─────────────────────────────────────────────────────────────
-const TASKS_KEY = 'crm_tasks';
-
-function loadTasks() {
-  try { return JSON.parse(localStorage.getItem(TASKS_KEY)) ?? []; }
-  catch { return []; }
-}
-
 function TodoWidget() {
-  const [tasks, setTasks] = useState(loadTasks);
+  const [tasks, setTasks] = useState([]);
   const [draft, setDraft] = useState('');
   const inputRef = useRef(null);
 
   useEffect(() => {
-    localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
-  }, [tasks]);
+    supabase.from('tasks').select('*').order('created_at', { ascending: false }).then(({ data }) => {
+      if (data) setTasks(data);
+    });
+  }, []);
 
-  function addTask() {
+  async function addTask() {
     const text = draft.trim();
     if (!text) return;
-    setTasks(prev => [{ id: Date.now(), text, done: false }, ...prev]);
+    const { data: row } = await supabase.from('tasks').insert([{ text, done: false }]).select().single();
+    if (row) setTasks(prev => [row, ...prev]);
     setDraft('');
     inputRef.current?.focus();
   }
 
-  function toggle(id) {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+  async function toggle(id) {
+    const task = tasks.find(t => t.id === id);
+    if (!task) return;
+    const { data: row } = await supabase.from('tasks').update({ done: !task.done }).eq('id', id).select().single();
+    if (row) setTasks(prev => prev.map(t => t.id === id ? row : t));
   }
 
-  function remove(id) {
+  async function remove(id) {
+    await supabase.from('tasks').delete().eq('id', id);
     setTasks(prev => prev.filter(t => t.id !== id));
   }
 
-  function clearDone() {
+  async function clearDone() {
+    const doneIds = tasks.filter(t => t.done).map(t => t.id);
+    await supabase.from('tasks').delete().in('id', doneIds);
     setTasks(prev => prev.filter(t => !t.done));
   }
 
