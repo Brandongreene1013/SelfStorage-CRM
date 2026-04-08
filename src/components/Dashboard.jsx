@@ -134,15 +134,12 @@ function TodaysProgress({ today, increment, decrement, todayLabel }) {
 function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsData, selectedMonth, setSelectedMonth }) {
   // Recomputed on every render so it's always accurate regardless of year
   const monthOptions = useMemo(() => {
-    const opts = [];
-    const now = new Date();
-    for (let i = 0; i < 24; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('default', { month: 'long', year: 'numeric' });
-      opts.push({ value, label });
-    }
-    return opts;
+    const year = new Date().getFullYear(); // always current year — auto-updates on Jan 1
+    return Array.from({ length: 12 }, (_, i) => {
+      const value = `${year}-${String(i + 1).padStart(2, '0')}`;
+      const label = new Date(year, i, 1).toLocaleDateString('default', { month: 'long', year: 'numeric' });
+      return { value, label };
+    });
   }, []);
 
   const subLabel = analyticsRange === 'Week' ? 'Last 7 days'
