@@ -131,23 +131,65 @@ function TodaysProgress({ today, increment, decrement, todayLabel }) {
 }
 
 // ─── Productivity Analytics ───────────────────────────────────────────────────
-function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsData }) {
+// Build list of last 24 months for the dropdown
+function getMonthOptions() {
+  const opts = [];
+  const now = new Date();
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('default', { month: 'long', year: 'numeric' });
+    opts.push({ value, label });
+  }
+  return opts;
+}
+const MONTH_OPTIONS = getMonthOptions();
+
+function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsData, selectedMonth, setSelectedMonth }) {
+  const subLabel = analyticsRange === 'Week' ? 'Last 7 days'
+    : analyticsRange === 'Year' ? 'Last 365 days'
+    : analyticsRange === 'Month' ? 'Last 30 days'
+    : MONTH_OPTIONS.find(o => o.value === selectedMonth)?.label ?? '';
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
           <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Productivity Analytics</h2>
-          <p className="text-xs text-slate-600 mt-0.5">Compounded totals · {analyticsRange === 'Week' ? 'Last 7 days' : analyticsRange === 'Month' ? 'Last 30 days' : 'Last 365 days'}</p>
+          <p className="text-xs text-slate-600 mt-0.5">Compounded totals · {subLabel}</p>
         </div>
-        <div className="flex gap-1 bg-slate-800 rounded-lg p-1">
-          {['Week', 'Month', 'Year'].map(r => (
-            <button key={r} onClick={() => setAnalyticsRange(r)}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                analyticsRange === r ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'
+        <div className="flex items-center gap-2">
+          {/* Month picker — only shown when a specific month is selected */}
+          {analyticsRange === 'SpecificMonth' && (
+            <select
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+            >
+              {MONTH_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          )}
+          <div className="flex gap-1 bg-slate-800 rounded-lg p-1">
+            {['Week', 'Month', 'Year'].map(r => (
+              <button key={r} onClick={() => setAnalyticsRange(r)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                  analyticsRange === r ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'
+                }`}>
+                {r}
+              </button>
+            ))}
+            {/* Calendar icon button to pick a specific month */}
+            <button
+              onClick={() => setAnalyticsRange('SpecificMonth')}
+              title="Pick a specific month"
+              className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
+                analyticsRange === 'SpecificMonth' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'
               }`}>
-              {r}
+              ▾
             </button>
-          ))}
+          </div>
         </div>
       </div>
 
@@ -422,12 +464,16 @@ export default function Dashboard({ clients, meetings = [], onNavigateCalendar }
     count: clients.filter(c => c.stageId === s.id).length,
   }));
 
-  const { today, increment, decrement, getWeek, getMonth, getYear } = useDailyProgress();
+  const { today, increment, decrement, getWeek, getMonth, getYear, getSpecificMonth } = useDailyProgress();
   const [analyticsRange, setAnalyticsRange] = useState('Week');
+  const [selectedMonth, setSelectedMonth] = useState(
+    () => new Date().toISOString().slice(0, 7)
+  );
 
   const analyticsData = analyticsRange === 'Week' ? getWeek()
     : analyticsRange === 'Month' ? getMonth()
-    : getYear();
+    : analyticsRange === 'Year' ? getYear()
+    : getSpecificMonth(selectedMonth);
 
   const todayLabel = new Date().toLocaleDateString('default', {
     weekday: 'long', month: 'short', day: 'numeric',
@@ -471,6 +517,8 @@ export default function Dashboard({ clients, meetings = [], onNavigateCalendar }
             analyticsRange={analyticsRange}
             setAnalyticsRange={setAnalyticsRange}
             analyticsData={analyticsData}
+            selectedMonth={selectedMonth}
+            setSelectedMonth={setSelectedMonth}
           />
 
           <FunnelChart clients={clients} filter="All" />

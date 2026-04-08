@@ -110,13 +110,31 @@ export function useDailyProgress() {
     return result;
   }
 
+  // yearMonth = "2025-04"
+  function getSpecificMonth(yearMonth) {
+    const result = { ...DEFAULT_COUNTERS };
+    const [year, month] = yearMonth.split('-').map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const ds = `${yearMonth}-${String(d).padStart(2, '0')}`;
+      const src = ds === today.date ? today : log[ds];
+      if (src) {
+        Object.keys(DEFAULT_COUNTERS).forEach(k => {
+          result[k] += src[k] ?? 0;
+        });
+      }
+    }
+    return result;
+  }
+
   return {
     today,
     log,
     increment,
     decrement,
-    getWeek:  () => sumRange(7),
-    getMonth: () => sumRange(30),
-    getYear:  () => sumRange(365),
+    getWeek:        () => sumRange(7),
+    getMonth:       () => sumRange(30),
+    getYear:        () => sumRange(365),
+    getSpecificMonth,
   };
 }
