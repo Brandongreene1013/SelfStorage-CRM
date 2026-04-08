@@ -131,25 +131,24 @@ function TodaysProgress({ today, increment, decrement, todayLabel }) {
 }
 
 // ─── Productivity Analytics ───────────────────────────────────────────────────
-// Build list of last 24 months for the dropdown
-function getMonthOptions() {
-  const opts = [];
-  const now = new Date();
-  for (let i = 0; i < 24; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const label = d.toLocaleDateString('default', { month: 'long', year: 'numeric' });
-    opts.push({ value, label });
-  }
-  return opts;
-}
-const MONTH_OPTIONS = getMonthOptions();
-
 function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsData, selectedMonth, setSelectedMonth }) {
+  // Recomputed on every render so it's always accurate regardless of year
+  const monthOptions = useMemo(() => {
+    const opts = [];
+    const now = new Date();
+    for (let i = 0; i < 24; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('default', { month: 'long', year: 'numeric' });
+      opts.push({ value, label });
+    }
+    return opts;
+  }, []);
+
   const subLabel = analyticsRange === 'Week' ? 'Last 7 days'
     : analyticsRange === 'Year' ? 'Last 365 days'
     : analyticsRange === 'Month' ? 'Last 30 days'
-    : MONTH_OPTIONS.find(o => o.value === selectedMonth)?.label ?? '';
+    : monthOptions.find(o => o.value === selectedMonth)?.label ?? '';
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
@@ -166,7 +165,7 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
               onChange={e => setSelectedMonth(e.target.value)}
               className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
             >
-              {MONTH_OPTIONS.map(o => (
+              {monthOptions.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
