@@ -185,6 +185,7 @@ export default function App() {
             clients={clients}
             meetings={meetings}
             onNavigateCalendar={() => setView('Calendar')}
+            onAddToPipeline={(data) => { addClient(data); setView('Pipeline'); }}
           />
         )}
 

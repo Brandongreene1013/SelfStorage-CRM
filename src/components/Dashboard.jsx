@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
+import IntelligenceBar from './IntelligenceBar';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 
 // ─── KPI Strip ────────────────────────────────────────────────────────────────
@@ -447,7 +448,7 @@ function TodoWidget() {
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function Dashboard({ clients, meetings = [], onNavigateCalendar }) {
+export default function Dashboard({ clients, meetings = [], onNavigateCalendar, onAddToPipeline }) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
   const inContract  = clients.filter(c => c.stageId === 8).length;
@@ -486,6 +487,9 @@ export default function Dashboard({ clients, meetings = [], onNavigateCalendar }
 
   return (
     <div className="space-y-4">
+
+      {/* ── AI Intelligence Bar ── */}
+      <IntelligenceBar onAddToPipeline={onAddToPipeline} />
 
       {/* ── KPI Strip ── */}
       <KPIStrip stats={kpiStats} />
