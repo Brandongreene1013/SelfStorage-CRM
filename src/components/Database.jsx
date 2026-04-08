@@ -555,8 +555,8 @@ export default function Database({ onCallLogged }) {
   const [showAddContact, setShowAddContact] = useState(false);
   const [showNewList, setShowNewList]   = useState(false);
   const [newListName, setNewListName]   = useState('');
-  // Default to most recent list (last in array), fall back to 'all'
-  const [activeListId, setActiveListId] = useState(() => lists.length > 0 ? lists[lists.length - 1].id : 'all');
+  // Default to no list selected — clean empty state on open
+  const [activeListId, setActiveListId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch]         = useState('');
   const [openContact, setOpenContact] = useState(null);
@@ -568,6 +568,7 @@ export default function Database({ onCallLogged }) {
 
   // Filtered contacts
   const filtered = useMemo(() => {
+    if (activeListId === null) return [];
     return contacts.filter(c => {
       if (activeListId !== 'all' && c.listId !== activeListId) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
@@ -721,6 +722,14 @@ export default function Database({ onCallLogged }) {
 
       {/* ── RIGHT: Main Content ── */}
       <div className="flex-1 min-w-0 space-y-4">
+        {activeListId === null && (
+          <div className="text-center py-32 text-slate-600">
+            <div className="text-5xl mb-4">📂</div>
+            <p className="text-base font-semibold text-slate-500 mb-1">No list selected</p>
+            <p className="text-sm text-slate-600">Select a list from the left, or create a new one.</p>
+          </div>
+        )}
+        {activeListId !== null && (<>
 
         {/* Stats bar */}
         <div className="grid grid-cols-4 gap-3">
@@ -814,6 +823,7 @@ export default function Database({ onCallLogged }) {
         {subView === 'markets' && (
           <MarketsView contacts={contacts} />
         )}
+      </>)}
       </div>
 
       {/* Contact Detail Modal */}
