@@ -8,267 +8,184 @@ export default async function handler(req, res) {
   if (!apiKey) return res.status(500).json({ error: 'API key not configured' });
 
   try {
-    // ── Step 1: Identify county/state from address ──────────────────────────
-    const geoRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 512,
-        messages: [{
-          role: 'user',
-          content: `Parse this address and return ONLY a JSON object, no markdown, no explanation:
-Address: ${address}
+    // ── Step 1: Ask Claude to identify county + build assessor search URL ────
+    const geoRes = await callClaude(apiKey, 'claude-haiku-4-5-20251001', 512, `You are a US property research assistant.
 
+Given this address: "${address}"
+
+Return ONLY a JSON object (no markdown):
 {
-  "streetAddress": "street portion only",
+  "streetAddress": "street number and name only",
   "city": "city",
   "county": "county name without the word County",
-  "state": "two-letter state abbreviation",
+  "state": "two-letter state code",
   "stateFull": "full state name",
-  "zip": "zip code or null",
-  "assessorUrl": "direct property search URL for this specific county assessor/appraiser (the search page, not homepage)",
-  "assessorName": "official name of this county property appraiser office",
-  "sosUrl": "Secretary of State LLC search URL for this state",
-  "sosName": "name of the state SOS/LLC lookup site (e.g. Sunbiz for Florida)"
-}`
-        }]
-      })
-    });
+  "zip": "zip or null",
+  "assessorSearchUrl": "the direct property search URL for this county assessor/appraiser with the address pre-filled as a query parameter if possible, otherwise the search page URL",
+  "assessorName": "official name of this county property appraiser/assessor office",
+  "sosName": "name of the state LLC lookup site e.g. Sunbiz for Florida, Georgia Corporations Division for Georgia, Texas SOS for Texas",
+  "sosSearchUrl": "the base search URL for this state's LLC/entity lookup"
+}`);
 
-    const geoData = await geoRes.json();
-    const geoText = geoData.content?.[0]?.text ?? '{}';
     let geo = {};
-    try { geo = JSON.parse(geoText); } catch { geo = {}; }
+    try { geo = JSON.parse(geoRes); } catch { geo = {}; }
 
-    // ── Step 2: Attempt county assessor scrape ──────────────────────────────
-    let assessorResult = null;
-    if (geo.assessorUrl) {
-      try {
-        const pageRes = await fetch(geo.assessorUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          },
-          signal: AbortSignal.timeout(8000),
-        });
-        const html = await pageRes.text();
-        // Check if we got real HTML content (not a blank JS-rendered page)
-        if (html.length > 5000 && !html.includes('id="root"') && !html.includes('id="app"')) {
-          assessorResult = { reachable: true, html: html.slice(0, 3000) };
-        } else {
-          assessorResult = { reachable: false, reason: 'JavaScript-rendered site' };
-        }
-      } catch {
-        assessorResult = { reachable: false, reason: 'Could not connect' };
-      }
-    }
-
-    // ── Step 3: Use Claude to extract owner from HTML (if we got it) ─────────
-    let ownerInfo = null;
-    if (assessorResult?.reachable && assessorResult.html) {
-      const extractRes = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 256,
-          messages: [{
-            role: 'user',
-            content: `Extract property owner info from this county assessor HTML. Return ONLY JSON:
-HTML snippet: ${assessorResult.html}
-
-{ "ownerName": "string or null", "isLLC": true/false, "entityName": "LLC name if applicable or null" }`
-          }]
-        })
+    if (!geo.assessorSearchUrl) {
+      return res.status(200).json({
+        address, error: 'Could not identify county assessor URL',
+        county: geo.county, state: geo.state, stateFull: geo.stateFull,
       });
-      const extractData = await extractRes.json();
-      const extractText = extractData.content?.[0]?.text ?? '{}';
-      try { ownerInfo = JSON.parse(extractText); } catch { ownerInfo = null; }
     }
 
-    // ── Step 4: Sunbiz / SOS lookup if LLC ──────────────────────────────────
+    // ── Step 2: Fetch assessor page via Jina AI Reader (renders JS) ──────────
+    const jinaUrl = `https://r.jina.ai/${geo.assessorSearchUrl}`;
+    let assessorText = '';
+    try {
+      const jinaRes = await fetch(jinaUrl, {
+        headers: {
+          'Accept': 'text/plain',
+          'X-Timeout': '15',
+          'User-Agent': 'Mozilla/5.0',
+        },
+        signal: AbortSignal.timeout(20000),
+      });
+      assessorText = await jinaRes.text();
+    } catch (e) {
+      assessorText = '';
+    }
+
+    // ── Step 3: Claude extracts owner name from assessor content ─────────────
+    let ownerInfo = { ownerName: null, entityName: null, isLLC: false };
+    if (assessorText.length > 200) {
+      const extractRaw = await callClaude(apiKey, 'claude-haiku-4-5-20251001', 256,
+        `Extract the property owner information from this county assessor page content.
+The property address is: ${address}
+
+Page content:
+${assessorText.slice(0, 4000)}
+
+Return ONLY JSON:
+{
+  "ownerName": "full owner name as listed on the assessor record, or null if not found",
+  "entityName": "LLC or company name if the owner is a business entity, or null",
+  "isLLC": true or false
+}`);
+      try { ownerInfo = JSON.parse(extractRaw); } catch {}
+    }
+
+    // ── Step 4: If LLC, cross-reference Sunbiz or state SOS via Jina ────────
     let sosResult = null;
-    const entityToSearch = ownerInfo?.entityName;
+    const entityToLookup = ownerInfo.entityName ?? (ownerInfo.isLLC ? ownerInfo.ownerName : null);
 
-    if (entityToSearch && geo.state === 'FL') {
-      sosResult = await searchSunbiz(entityToSearch);
-    } else if (entityToSearch && geo.state === 'GA') {
-      sosResult = await searchGeorgiaSOS(entityToSearch, apiKey);
-    } else if (entityToSearch && geo.state === 'TX') {
-      sosResult = await searchTexasSOS(entityToSearch, apiKey);
+    if (entityToLookup) {
+      sosResult = await lookupSOS(entityToLookup, geo.state, geo.sosSearchUrl, apiKey);
     }
 
-    // ── Step 5: Build facility card ─────────────────────────────────────────
-    const card = {
-      address: address,
+    // ── Step 5: Return facility card data ────────────────────────────────────
+    res.status(200).json({
+      address,
       city: geo.city,
       county: geo.county,
       state: geo.state,
       stateFull: geo.stateFull,
 
-      // Owner info
-      ownerName: ownerInfo?.ownerName ?? null,
-      entityName: ownerInfo?.entityName ?? null,
-      isLLC: ownerInfo?.isLLC ?? false,
+      ownerName: ownerInfo.ownerName,
+      entityName: ownerInfo.entityName,
+      isLLC: ownerInfo.isLLC,
 
-      // SOS / Sunbiz result
       registeredAgent: sosResult?.registeredAgent ?? null,
       registeredAgentAddress: sosResult?.registeredAgentAddress ?? null,
       entityStatus: sosResult?.entityStatus ?? null,
       sosDetailUrl: sosResult?.detailUrl ?? null,
 
-      // Sources
       assessorName: geo.assessorName,
-      assessorUrl: geo.assessorUrl,
-      assessorScraped: assessorResult?.reachable ?? false,
+      assessorUrl: geo.assessorSearchUrl,
+      assessorScraped: assessorText.length > 200,
       sosName: geo.sosName,
-      sosUrl: geo.sosUrl,
+      sosUrl: geo.sosSearchUrl,
 
-      // Data source trail
       sources: [
-        assessorResult?.reachable ? `Live: ${geo.assessorName}` : `Link: ${geo.assessorName}`,
+        assessorText.length > 200
+          ? `Live: ${geo.assessorName}`
+          : `Link: ${geo.assessorName}`,
         sosResult ? `Live: ${geo.sosName}` : null,
       ].filter(Boolean),
-    };
-
-    res.status(200).json(card);
+    });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 }
 
-// ── Sunbiz scraper (Florida) ──────────────────────────────────────────────────
-async function searchSunbiz(entityName) {
+// ── SOS lookup via Jina + Claude ───────────────────────────────────────────────
+async function lookupSOS(entityName, stateCode, sosBaseUrl, apiKey) {
   try {
-    const encoded = encodeURIComponent(entityName.trim());
-    const searchUrl = `https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults?inquirytype=EntityName&inquiryDirectionType=ForwardList&searchNameOrder=&masterFileKey=&inquiryIsDomesticEntity=N&searchTerm=${encoded}`;
+    let searchUrl = '';
 
-    const searchRes = await fetch(searchUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      signal: AbortSignal.timeout(8000),
+    if (stateCode === 'FL') {
+      const encoded = encodeURIComponent(entityName.trim());
+      searchUrl = `https://search.sunbiz.org/Inquiry/CorporationSearch/SearchResults?inquirytype=EntityName&inquiryDirectionType=ForwardList&searchNameOrder=&masterFileKey=&inquiryIsDomesticEntity=N&searchTerm=${encoded}`;
+    } else if (stateCode === 'GA') {
+      const encoded = encodeURIComponent(entityName.trim());
+      searchUrl = `https://ecorp.sos.ga.gov/BusinessSearch?businessName=${encoded}&businessType=&businessStatus=A&county=&registered_agent=&principalName=&businessNameType=Contains&pageNumber=0`;
+    } else if (stateCode === 'TX') {
+      const encoded = encodeURIComponent(entityName.trim());
+      searchUrl = `https://mycpa.cpa.state.tx.us/coa/coaSearchBtn?name=${encoded}&type=LLC&status=A`;
+    } else {
+      // Generic: use the base SOS URL
+      searchUrl = sosBaseUrl ?? '';
+    }
+
+    if (!searchUrl) return null;
+
+    // Fetch via Jina
+    const jinaUrl = `https://r.jina.ai/${searchUrl}`;
+    const jinaRes = await fetch(jinaUrl, {
+      headers: { 'Accept': 'text/plain', 'X-Timeout': '15' },
+      signal: AbortSignal.timeout(20000),
     });
-    const searchHtml = await searchRes.text();
+    const sosText = await jinaRes.text();
 
-    // Find first result detail link
-    const linkMatch = searchHtml.match(/href="(\/Inquiry\/CorporationSearch\/SearchResultDetail[^"]+)"/);
-    if (!linkMatch) return null;
+    if (sosText.length < 100) return null;
 
-    const detailUrl = `https://search.sunbiz.org${linkMatch[1]}`;
-    const detailRes = await fetch(detailUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-      signal: AbortSignal.timeout(8000),
-    });
-    const detailHtml = await detailRes.text();
+    // Claude extracts registered agent from SOS text
+    const extractRaw = await callClaude(apiKey, 'claude-haiku-4-5-20251001', 256,
+      `Extract LLC/entity registration info from this state SOS page content.
+Looking for entity: "${entityName}"
 
-    // Extract registered agent name
-    const agentSection = detailHtml.match(/Registered Agent[^<]*<\/span>([\s\S]{0,600})/i);
-    const agentName = agentSection?.[1]?.match(/<span[^>]*>([^<]+)<\/span>/)?.[1]?.trim() ?? null;
+Page content:
+${sosText.slice(0, 4000)}
 
-    // Extract registered agent address
-    const agentAddr = agentSection?.[1]?.match(/(?:span[^>]*>[^<]+<\/span>\s*){1}([\s\S]{0,200})/)?.[0]
-      ?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150) ?? null;
+Return ONLY JSON:
+{
+  "registeredAgent": "registered agent full name or null",
+  "registeredAgentAddress": "registered agent address or null",
+  "entityStatus": "Active / Inactive / etc or null",
+  "detailUrl": "full URL to the entity detail page if visible in the content, or null"
+}`);
 
-    // Extract status
-    const statusMatch = detailHtml.match(/Current Status[^<]*<\/span>[\s\S]*?<span[^>]*>([^<]+)<\/span>/i);
+    try { return JSON.parse(extractRaw); } catch { return null; }
 
-    return {
-      registeredAgent: agentName,
-      registeredAgentAddress: agentAddr,
-      entityStatus: statusMatch?.[1]?.trim() ?? null,
-      detailUrl,
-    };
   } catch {
     return null;
   }
 }
 
-// ── Georgia SOS scraper ────────────────────────────────────────────────────────
-async function searchGeorgiaSOS(entityName, apiKey) {
-  try {
-    const encoded = encodeURIComponent(entityName.trim());
-    const url = `https://ecorp.sos.ga.gov/BusinessSearch?businessName=${encoded}&businessType=LLC&businessStatus=Active&county=&registered_agent=&principalName=&businessNameType=Contains&pageNumber=0`;
-
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' },
-      signal: AbortSignal.timeout(8000),
-    });
-    const html = await res.text();
-
-    if (html.length < 1000) return null;
-
-    // Use Claude to extract agent info from HTML
-    const extractRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 256,
-        messages: [{
-          role: 'user',
-          content: `Extract registered agent from Georgia SOS HTML. Return ONLY JSON:
-HTML: ${html.slice(0, 2000)}
-{ "registeredAgent": "name or null", "entityStatus": "status or null", "detailUrl": "full URL to entity detail page or null" }`
-        }]
-      })
-    });
-    const extractData = await extractRes.json();
-    const text = extractData.content?.[0]?.text ?? '{}';
-    try { return JSON.parse(text); } catch { return null; }
-  } catch {
-    return null;
-  }
-}
-
-// ── Texas SOS scraper ──────────────────────────────────────────────────────────
-async function searchTexasSOS(entityName, apiKey) {
-  try {
-    const encoded = encodeURIComponent(entityName.trim());
-    const url = `https://mycpa.cpa.state.tx.us/coa/coaSearchBtn?name=${encoded}&type=LLC`;
-
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' },
-      signal: AbortSignal.timeout(8000),
-    });
-    const html = await res.text();
-
-    if (html.length < 500) return null;
-
-    const extractRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 256,
-        messages: [{
-          role: 'user',
-          content: `Extract registered agent from Texas SOS HTML. Return ONLY JSON:
-HTML: ${html.slice(0, 2000)}
-{ "registeredAgent": "name or null", "entityStatus": "status or null", "detailUrl": "full URL or null" }`
-        }]
-      })
-    });
-    const extractData = await extractRes.json();
-    const text = extractData.content?.[0]?.text ?? '{}';
-    try { return JSON.parse(text); } catch { return null; }
-  } catch {
-    return null;
-  }
+// ── Claude API helper ──────────────────────────────────────────────────────────
+async function callClaude(apiKey, model, maxTokens, prompt) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+  const data = await res.json();
+  return data.content?.[0]?.text ?? '';
 }
