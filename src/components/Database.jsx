@@ -381,7 +381,7 @@ function PropertyCard({ contact, onClick, onAddToOverview }) {
         <p className="mt-2 text-xs text-slate-600">Last called {contact.lastCalled}</p>
       )}
 
-      {/* Add to Today's Overview */}
+      {/* Add to Brandon's Database */}
       {onAddToOverview && (
         <button
           onClick={handleAddToOverview}
@@ -391,7 +391,7 @@ function PropertyCard({ contact, onClick, onAddToOverview }) {
               : 'bg-transparent border-slate-700 text-slate-500 hover:border-amber-500/40 hover:text-amber-400'
           }`}
         >
-          {added ? '✓ Added to Today' : "★ Add to Today's Overview"}
+          {added ? "✓ Added to Brandon's DB" : "★ Add to Brandon's Database"}
         </button>
       )}
     </div>

@@ -71,7 +71,7 @@ function ProspectCard({ prospect, onUpdate, onRemove, onComplete }) {
         </div>
         <button
           onClick={() => onRemove(prospect.id)}
-          title="Remove from Today's Overview"
+          title="Remove from Brandon's Database"
           className="text-slate-700 hover:text-red-400 transition-colors text-xl leading-none flex-shrink-0 p-0.5"
         >✕</button>
       </div>
@@ -185,7 +185,7 @@ function AddProspectModal({ onSave, onClose }) {
         <div className="flex items-center justify-between p-5 border-b border-slate-800">
           <div>
             <h2 className="text-base font-black text-white">Add Prospect</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Manually add a prospect to today's overview</p>
+            <p className="text-xs text-slate-500 mt-0.5">Manually add a prospect to your database</p>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
         </div>
@@ -241,7 +241,7 @@ function AddProspectModal({ onSave, onClose }) {
               canSave ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
             }`}
           >
-            Add to Overview
+            Add to My Database
           </button>
         </div>
       </div>
@@ -276,7 +276,7 @@ export default function TodaysOverview({ prospects, onAddProspect, onUpdateProsp
       {/* Header row */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3 flex-wrap">
-          <h2 className="text-lg font-black text-white">Today's Prospects</h2>
+          <h2 className="text-lg font-black text-white">Brandon's Database</h2>
           <div className="flex gap-1.5">
             {hot  > 0 && <span className="text-xs bg-red-500/20 border border-red-500/30 text-red-400 font-bold px-2.5 py-0.5 rounded-full">{hot} HOT</span>}
             {warm > 0 && <span className="text-xs bg-amber-500/20 border border-amber-500/30 text-amber-400 font-bold px-2.5 py-0.5 rounded-full">{warm} WARM</span>}
@@ -320,11 +320,11 @@ export default function TodaysOverview({ prospects, onAddProspect, onUpdateProsp
         <div className="text-center py-24 text-slate-600">
           <div className="text-6xl mb-4">🎯</div>
           <p className="text-base font-semibold text-slate-500 mb-2">
-            {prospects.length === 0 ? "No prospects added yet" : `No ${filter} prospects`}
+            {prospects.length === 0 ? "Your database is empty" : `No ${filter} prospects`}
           </p>
           <p className="text-sm text-slate-600 max-w-sm mx-auto">
             {prospects.length === 0
-              ? 'After your call block, add your best prospects here from the Database tab using the ★ button, or click Add Prospect below.'
+              ? 'When a conversation goes well, add them here from the Database tab using the ★ button, or click Add Prospect below.'
               : 'Change the filter above to see other interest levels.'}
           </p>
           {prospects.length === 0 && (

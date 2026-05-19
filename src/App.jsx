@@ -14,7 +14,7 @@ import TodaysOverview from './components/TodaysOverview';
 import { PIPELINE_STAGES } from './data/constants';
 import './index.css';
 
-const VIEWS = ["Today's Overview", 'Dashboard', 'Pipeline', 'Clients', 'Database', 'Calendar'];
+const VIEWS = ["Brandon's Database", 'Dashboard', 'Pipeline', 'Clients', 'Database', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
@@ -119,7 +119,7 @@ export default function App() {
           ))}
         </nav>
 
-        {view !== 'Calendar' && view !== 'Database' && view !== "Today's Overview" && (
+        {view !== 'Calendar' && view !== 'Database' && view !== "Brandon's Database" && (
           <button
             onClick={() => setShowAddModal(true)}
             className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-1.5 shadow"
@@ -127,7 +127,7 @@ export default function App() {
             <span className="text-lg leading-none font-black">+</span> Add Client
           </button>
         )}
-        {(view === 'Calendar' || view === 'Database' || view === "Today's Overview") && (
+        {(view === 'Calendar' || view === 'Database' || view === "Brandon's Database") && (
           <div className="w-[110px]" />
         )}
       </header>
@@ -183,7 +183,7 @@ export default function App() {
 
       {/* Main */}
       <main className="flex-1 p-6 overflow-auto">
-        {view === "Today's Overview" && (
+        {view === "Brandon's Database" && (
           <TodaysOverview
             prospects={prospects}
             onAddProspect={addProspect}
