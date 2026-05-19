@@ -273,10 +273,27 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick }) {
+function PropertyCard({ contact, onClick, onAddToOverview }) {
+  const [added, setAdded] = useState(false);
+
   const mapsQuery = encodeURIComponent(
     [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ')
   );
+
+  function handleAddToOverview(e) {
+    e.stopPropagation();
+    onAddToOverview({
+      contactId:    contact.id,
+      ownerName:    contact.ownerName,
+      facilityName: contact.facilityName,
+      phone:        contact.phone,
+      email:        contact.email,
+      address:      contact.address,
+      interestLevel: 'warm',
+    });
+    setAdded(true);
+    setTimeout(() => setAdded(false), 2500);
+  }
 
   return (
     <div
@@ -362,6 +379,20 @@ function PropertyCard({ contact, onClick }) {
       {/* Last called */}
       {contact.lastCalled && (
         <p className="mt-2 text-xs text-slate-600">Last called {contact.lastCalled}</p>
+      )}
+
+      {/* Add to Today's Overview */}
+      {onAddToOverview && (
+        <button
+          onClick={handleAddToOverview}
+          className={`mt-3 w-full text-xs font-semibold py-1.5 rounded-lg border transition-all ${
+            added
+              ? 'bg-green-600/20 border-green-600/40 text-green-400'
+              : 'bg-transparent border-slate-700 text-slate-500 hover:border-amber-500/40 hover:text-amber-400'
+          }`}
+        >
+          {added ? '✓ Added to Today' : "★ Add to Today's Overview"}
+        </button>
       )}
     </div>
   );
@@ -542,7 +573,7 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 }
 
 // ─── Main Database Component ──────────────────────────────────────────────────
-export default function Database({ onCallLogged }) {
+export default function Database({ onCallLogged, onAddToOverview }) {
   const {
     lists, contacts,
     importList, createList, addContact,
@@ -797,6 +828,7 @@ export default function Database({ onCallLogged }) {
                     key={c.id}
                     contact={c}
                     onClick={() => setOpenContact(c)}
+                    onAddToOverview={onAddToOverview}
                   />
                 ))}
               </div>
