@@ -280,9 +280,9 @@ function PropertyCard({ contact, onClick, onAddToOverview }) {
     [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ')
   );
 
-  function handleAddToOverview(e) {
+  async function handleAddToOverview(e) {
     e.stopPropagation();
-    onAddToOverview({
+    const result = await onAddToOverview({
       contactId:    contact.id,
       ownerName:    contact.ownerName,
       facilityName: contact.facilityName,
@@ -291,8 +291,13 @@ function PropertyCard({ contact, onClick, onAddToOverview }) {
       address:      contact.address,
       interestLevel: 'warm',
     });
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2500);
+    if (result) {
+      setAdded(true);
+      setTimeout(() => setAdded(false), 2500);
+    } else {
+      setAdded(false);
+      alert('Failed to add — check browser console (F12) for details.');
+    }
   }
 
   return (

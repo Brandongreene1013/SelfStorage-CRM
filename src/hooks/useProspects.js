@@ -56,7 +56,11 @@ export function useProspects() {
       }])
       .select()
       .single();
-    if (!error && data) {
+    if (error) {
+      console.error('Failed to add prospect:', error.message, error);
+      return null;
+    }
+    if (data) {
       const p = dbToProspect(data);
       setProspects(prev => [p, ...prev]);
       return p;
