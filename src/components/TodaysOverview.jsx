@@ -9,7 +9,7 @@ const INTEREST = {
 };
 
 // ─── Prospect Card ─────────────────────────────────────────────────────────────
-function ProspectCard({ prospect, onUpdate, onRemove, onComplete }) {
+function ProspectCard({ prospect, onUpdate, onRemove, onComplete, onPromote }) {
   const [notes,    setNotes]    = useState(prospect.notes ?? '');
   const [nextType, setNextType] = useState(prospect.nextActionType ?? '');
   const [nextDate, setNextDate] = useState(prospect.nextActionDate ?? '');
@@ -149,13 +149,22 @@ function ProspectCard({ prospect, onUpdate, onRemove, onComplete }) {
         />
       </div>
 
-      {/* Complete button */}
-      <button
-        onClick={() => onComplete(prospect.id)}
-        className="w-full bg-green-600/20 border border-green-600/40 text-green-400 hover:bg-green-600/30 font-bold px-3 py-2.5 rounded-xl text-xs transition-all mt-auto"
-      >
-        ✓ Mark Complete & Archive
-      </button>
+      {/* Action buttons */}
+      <div className="flex gap-2 mt-auto">
+        <button
+          onClick={() => onPromote(prospect)}
+          className="flex-1 bg-emerald-600/20 border border-emerald-600/40 text-emerald-400 hover:bg-emerald-600/30 font-bold px-3 py-2.5 rounded-xl text-xs transition-all"
+        >
+          🚀 Promote to Pipeline
+        </button>
+        <button
+          onClick={() => onComplete(prospect.id)}
+          className="bg-slate-800 border border-slate-700 text-slate-400 hover:text-green-400 hover:border-green-600/40 font-bold px-3 py-2.5 rounded-xl text-xs transition-all"
+          title="Mark Complete & Archive"
+        >
+          ✓
+        </button>
+      </div>
     </div>
   );
 }
@@ -243,7 +252,7 @@ function AddProspectModal({ onSave, onClose }) {
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-export default function TodaysOverview({ prospects, onAddProspect, onUpdateProspect, onRemoveProspect, onCompleteProspect }) {
+export default function TodaysOverview({ prospects, onAddProspect, onUpdateProspect, onRemoveProspect, onCompleteProspect, onPromoteToPipeline }) {
   const { today } = useDailyProgress();
   const [showAdd, setShowAdd] = useState(false);
   const [filter, setFilter]   = useState('all');
@@ -338,6 +347,7 @@ export default function TodaysOverview({ prospects, onAddProspect, onUpdateProsp
               onUpdate={onUpdateProspect}
               onRemove={onRemoveProspect}
               onComplete={onCompleteProspect}
+              onPromote={onPromoteToPipeline}
             />
           ))}
         </div>

@@ -62,6 +62,28 @@ export default function App() {
     setDeletingClient(null);
   }
 
+  // Promote a prospect from Brandon's Database → Pipeline as a Client
+  const handlePromoteToPipeline = useCallback((prospect) => {
+    addClient({
+      name: prospect.ownerName || prospect.facilityName || 'Unknown',
+      type: 'Seller',
+      propertyType: 'Self-Storage',
+      facilityName: prospect.facilityName ?? '',
+      phone: prospect.phone ?? '',
+      email: prospect.email ?? '',
+      address: prospect.address ?? '',
+      notes: prospect.notes ?? '',
+      stageId: 1,
+      nextActionType: prospect.nextActionType ?? '',
+      nextActionDate: prospect.nextActionDate ?? '',
+      nextActionNote: prospect.nextActionNote ?? '',
+    });
+    // Mark as promoted in Brandon's Database (keep visible with a note)
+    updateProspect(prospect.id, {
+      notes: `${prospect.notes ? prospect.notes + '\n' : ''}[Promoted to Pipeline ${new Date().toISOString().slice(0, 10)}]`,
+    });
+  }, [addClient, updateProspect]);
+
   const visibleClients = clients.filter(c => {
     if (filter !== 'All' && c.type !== filter) return false;
     if (stageFilter !== 0 && c.stageId !== stageFilter) return false;
@@ -190,6 +212,7 @@ export default function App() {
             onUpdateProspect={updateProspect}
             onRemoveProspect={removeProspect}
             onCompleteProspect={completeProspect}
+            onPromoteToPipeline={handlePromoteToPipeline}
           />
         )}
 
