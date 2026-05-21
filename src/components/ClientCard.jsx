@@ -1,7 +1,7 @@
 import { PIPELINE_STAGES, PROPERTY_TYPES } from '../data/constants';
 import { useFileStorage } from '../hooks/useFileStorage';
 
-export default function ClientCard({ client, onEdit, onDelete, onStageChange, compact = false }) {
+export default function ClientCard({ client, onEdit, onDelete, onStageChange, onBookMeeting, compact = false }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
   const { openFile } = useFileStorage();
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
@@ -133,9 +133,37 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, co
         </div>
       )}
 
+      {/* Quick action buttons */}
+      <div className="mt-3 pt-3 border-t border-slate-700 flex gap-2">
+        {client.phone && (
+          <a
+            href={`tel:${client.phone}`}
+            className="flex-1 flex items-center justify-center gap-1.5 bg-green-600/15 border border-green-600/30 text-green-400 hover:bg-green-600/25 font-bold px-2 py-2 rounded-lg text-xs transition-all"
+          >
+            📞 Call
+          </a>
+        )}
+        {client.email && (
+          <a
+            href={`mailto:${client.email}`}
+            className="flex-1 flex items-center justify-center gap-1.5 bg-blue-600/15 border border-blue-600/30 text-blue-400 hover:bg-blue-600/25 font-bold px-2 py-2 rounded-lg text-xs transition-all"
+          >
+            ✉️ Email
+          </a>
+        )}
+        {onBookMeeting && (
+          <button
+            onClick={() => onBookMeeting(client)}
+            className="flex-1 flex items-center justify-center gap-1.5 bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25 font-bold px-2 py-2 rounded-lg text-xs transition-all"
+          >
+            📅 Meet
+          </button>
+        )}
+      </div>
+
       {/* Stage selector (mini) */}
       {!compact && (
-        <div className="mt-3 pt-3 border-t border-slate-700">
+        <div className="mt-2">
           <select
             value={client.stageId}
             onChange={e => onStageChange(client.id, Number(e.target.value))}
