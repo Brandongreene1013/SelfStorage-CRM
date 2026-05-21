@@ -11,7 +11,6 @@ import Dashboard from './components/Dashboard';
 import Calendar from './components/Calendar';
 import Database from './components/Database';
 import TodaysOverview from './components/TodaysOverview';
-import MeetingModal from './components/MeetingModal';
 import { PIPELINE_STAGES } from './data/constants';
 import './index.css';
 
@@ -19,7 +18,7 @@ const VIEWS = ["Brandon's Database", 'Dashboard', 'Pipeline', 'Clients', 'Databa
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
-  const { clients, addClient, updateClient, deleteClient, moveClientToStage } = useCRM();
+  const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction } = useCRM();
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { increment: incrementProgress } = useDailyProgress();
   const { prospects, addProspect, updateProspect, removeProspect, completeProspect } = useProspects();
@@ -43,7 +42,6 @@ export default function App() {
   const [editingClient, setEditingClient] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [deletingClient, setDeletingClient] = useState(null);
-  const [bookingMeetingClient, setBookingMeetingClient] = useState(null);
 
   function handleEdit(client) {
     setEditingClient(client);
@@ -246,7 +244,7 @@ export default function App() {
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                     onStageChange={moveClientToStage}
-                    onBookMeeting={setBookingMeetingClient}
+                    onSetAction={setClientAction}
                   />
                 ))}
               </div>
@@ -289,18 +287,6 @@ export default function App() {
           clientName={deletingClient.name}
           onConfirm={confirmDelete}
           onClose={() => setDeletingClient(null)}
-        />
-      )}
-      {bookingMeetingClient && (
-        <MeetingModal
-          meeting={null}
-          defaultDate={new Date().toISOString().slice(0, 10)}
-          clients={clients}
-          onSave={(data) => {
-            addMeeting({ ...data, clientId: bookingMeetingClient.id });
-            setBookingMeetingClient(null);
-          }}
-          onClose={() => setBookingMeetingClient(null)}
         />
       )}
     </div>

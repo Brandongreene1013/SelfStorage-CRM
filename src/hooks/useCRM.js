@@ -35,6 +35,9 @@ export function useCRM() {
       stageId: row.stage_id,
       storageClass: row.storage_class,
       documents: row.documents ?? [],
+      nextActionType: row.next_action_type ?? '',
+      nextActionDate: row.next_action_date ?? '',
+      nextActionNote: row.next_action_note ?? '',
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -42,7 +45,7 @@ export function useCRM() {
 
   // Map app camelCase → DB snake_case
   function clientToDb(data) {
-    return {
+    const db = {
       name: data.name,
       type: data.type,
       property_type: data.propertyType,
@@ -57,6 +60,10 @@ export function useCRM() {
       storage_class: data.storageClass,
       documents: data.documents ?? [],
     };
+    if (data.nextActionType !== undefined) db.next_action_type = data.nextActionType;
+    if (data.nextActionDate !== undefined) db.next_action_date = data.nextActionDate;
+    if (data.nextActionNote !== undefined) db.next_action_note = data.nextActionNote;
+    return db;
   }
 
   const addClient = useCallback(async (data) => {
@@ -99,5 +106,18 @@ export function useCRM() {
     }
   }, []);
 
-  return { clients, addClient, updateClient, deleteClient, moveClientToStage };
+  const setClientAction = useCallback(async (id, actionFields) => {
+    const db = {};
+    if (actionFields.nextActionType !== undefined) db.next_action_type = actionFields.nextActionType;
+    if (actionFields.nextActionDate !== undefined) db.next_action_date = actionFields.nextActionDate;
+    if (actionFields.nextActionNote !== undefined) db.next_action_note = actionFields.nextActionNote;
+    db.updated_at = new Date().toISOString();
+
+    const { error } = await supabase.from('clients').update(db).eq('id', id);
+    if (!error) {
+      setClients(prev => prev.map(c => c.id === id ? { ...c, ...actionFields } : c));
+    }
+  }, []);
+
+  return { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction };
 }

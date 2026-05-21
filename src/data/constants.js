@@ -20,3 +20,11 @@ export const PROPERTY_TYPES = [
   { value: 'Boat/RV Storage', label: 'Boat/RV Storage', icon: '⛵' },
   { value: 'Land', label: 'Land', icon: '🌿' },
 ];
+
+export const ACTION_TYPES = [
+  { value: 'call',     label: 'Follow-Up Call',   icon: '📞' },
+  { value: 'email',    label: 'Send Email',       icon: '📧' },
+  { value: 'research', label: 'Market Research',  icon: '🔍' },
+  { value: 'meeting',  label: 'Schedule Meeting', icon: '📅' },
+  { value: 'bov',      label: 'BOV Presentation', icon: '📊' },
+];

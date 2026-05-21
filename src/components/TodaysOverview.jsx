@@ -1,19 +1,12 @@
 import { useState } from 'react';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
+import { ACTION_TYPES } from '../data/constants';
 
 const INTEREST = {
   hot:  { label: 'HOT',  bg: 'bg-red-500/20',   border: 'border-red-500/40',   text: 'text-red-400'   },
   warm: { label: 'WARM', bg: 'bg-amber-500/20', border: 'border-amber-500/40', text: 'text-amber-400' },
   cool: { label: 'COOL', bg: 'bg-blue-500/20',  border: 'border-blue-500/40',  text: 'text-blue-400'  },
 };
-
-const ACTION_TYPES = [
-  { value: 'call',     label: '📞 Follow-Up Call'  },
-  { value: 'email',    label: '📧 Send Email'       },
-  { value: 'research', label: '🔍 Market Research'  },
-  { value: 'meeting',  label: '📅 Schedule Meeting' },
-  { value: 'bov',      label: '📊 BOV Presentation' },
-];
 
 // ─── Prospect Card ─────────────────────────────────────────────────────────────
 function ProspectCard({ prospect, onUpdate, onRemove, onComplete }) {
@@ -132,7 +125,7 @@ function ProspectCard({ prospect, onUpdate, onRemove, onComplete }) {
           className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500 transition-colors"
         >
           <option value="">Select action type...</option>
-          {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+          {ACTION_TYPES.map(a => <option key={a.value} value={a.value}>{a.icon} {a.label}</option>)}
         </select>
         <div className="flex items-center gap-2">
           <input
