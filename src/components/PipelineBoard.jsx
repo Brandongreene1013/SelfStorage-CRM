@@ -9,10 +9,10 @@ import {
 } from '@dnd-kit/core';
 import { useDroppable } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
-import { PIPELINE_STAGES } from '../data/constants';
+import { PIPELINE_STAGES, ACTION_TYPES } from '../data/constants';
 
 /* ── Draggable client chip ── */
-function DraggableChip({ client, stage, onEdit }) {
+function DraggableChip({ client, stage, onEdit, onSetAction }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: client.id,
     data: { client },
@@ -21,6 +21,11 @@ function DraggableChip({ client, stage, onEdit }) {
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const actionType = ACTION_TYPES.find(a => a.value === client.nextActionType);
+  const isOverdue = client.nextActionDate && client.nextActionDate < today;
+  const isDueToday = client.nextActionDate === today;
 
   return (
     <div
@@ -63,12 +68,40 @@ function DraggableChip({ client, stage, onEdit }) {
           ✏️
         </button>
       </div>
+
+      {/* Next action indicator */}
+      {actionType ? (
+        <div
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onSetAction?.(client); }}
+          className={`mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-all border ${
+            isOverdue
+              ? 'bg-red-500/10 border-red-500/30 text-red-400'
+              : isDueToday
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                : 'bg-slate-700/50 border-slate-600/50 text-slate-400'
+          }`}
+        >
+          <span>{actionType.icon}</span>
+          <span className="font-semibold truncate">{actionType.label}</span>
+          {isOverdue && <span className="font-black ml-auto flex-shrink-0">OVERDUE</span>}
+          {isDueToday && !isOverdue && <span className="font-black ml-auto flex-shrink-0">TODAY</span>}
+        </div>
+      ) : (
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onSetAction?.(client); }}
+          className="mt-2 w-full text-xs text-slate-600 hover:text-amber-400 border border-dashed border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1.5 transition-all"
+        >
+          + Set Action
+        </button>
+      )}
     </div>
   );
 }
 
 /* ── Droppable column ── */
-function StageColumn({ stage, clients, onEdit, isOver: isOverProp }) {
+function StageColumn({ stage, clients, onEdit, onSetAction, isOver: isOverProp }) {
   const { setNodeRef, isOver } = useDroppable({ id: String(stage.id) });
   const active = isOver || isOverProp;
 
@@ -106,7 +139,7 @@ function StageColumn({ stage, clients, onEdit, isOver: isOverProp }) {
           </div>
         )}
         {clients.map(c => (
-          <DraggableChip key={c.id} client={c} stage={stage} onEdit={onEdit} />
+          <DraggableChip key={c.id} client={c} stage={stage} onEdit={onEdit} onSetAction={onSetAction} />
         ))}
       </div>
     </div>
@@ -129,7 +162,7 @@ function OverlayChip({ client }) {
 }
 
 /* ── Main Pipeline Board ── */
-export default function PipelineBoard({ clients, onEdit, onStageChange, filter }) {
+export default function PipelineBoard({ clients, onEdit, onStageChange, onSetAction, filter }) {
   const [activeClient, setActiveClient] = useState(null);
 
   const sensors = useSensors(
@@ -168,6 +201,7 @@ export default function PipelineBoard({ clients, onEdit, onStageChange, filter }
             stage={stage}
             clients={filteredClients.filter(c => c.stageId === stage.id)}
             onEdit={onEdit}
+            onSetAction={onSetAction}
           />
         ))}
       </div>

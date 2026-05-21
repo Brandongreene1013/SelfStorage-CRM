@@ -1,6 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useDatabase, US_STATES } from '../hooks/useDatabase';
 import ImportListModal from './ImportListModal';
+import ActionModal from './ActionModal';
+import { ACTION_TYPES } from '../data/constants';
 
 const STATUS_LABELS = {
   fresh: 'Fresh',
@@ -273,8 +275,14 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick, onAddToOverview }) {
+function PropertyCard({ contact, onClick, onAddToOverview, onSetAction }) {
   const [added, setAdded] = useState(false);
+  const [showAction, setShowAction] = useState(false);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const actionType = ACTION_TYPES.find(a => a.value === contact.nextActionType);
+  const isOverdue = contact.nextActionDate && contact.nextActionDate < today;
+  const isDueToday = contact.nextActionDate === today;
 
   const mapsQuery = encodeURIComponent(
     [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ')
@@ -384,6 +392,46 @@ function PropertyCard({ contact, onClick, onAddToOverview }) {
       {/* Last called */}
       {contact.lastCalled && (
         <p className="mt-2 text-xs text-slate-600">Last called {contact.lastCalled}</p>
+      )}
+
+      {/* Next action */}
+      <div className="mt-2">
+        {actionType ? (
+          <button
+            onClick={e => { e.stopPropagation(); setShowAction(true); }}
+            className={`w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-all border ${
+              isOverdue
+                ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                : isDueToday
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                  : 'bg-slate-800/60 border-slate-700 text-slate-400'
+            }`}
+          >
+            <span>{actionType.icon}</span>
+            <span className="font-semibold truncate">{actionType.label}</span>
+            {isOverdue && <span className="font-black ml-auto flex-shrink-0">OVERDUE</span>}
+            {isDueToday && !isOverdue && <span className="font-black ml-auto flex-shrink-0">TODAY</span>}
+          </button>
+        ) : (
+          <button
+            onClick={e => { e.stopPropagation(); setShowAction(true); }}
+            className="w-full text-xs text-slate-600 hover:text-amber-400 border border-dashed border-slate-700 hover:border-amber-500/40 rounded-lg px-2.5 py-1.5 transition-all"
+          >
+            + Set Action
+          </button>
+        )}
+      </div>
+
+      {showAction && (
+        <ActionModal
+          name={contact.ownerName || contact.facilityName || 'Contact'}
+          subtitle={contact.facilityName}
+          actionType={contact.nextActionType}
+          actionDate={contact.nextActionDate}
+          actionNote={contact.nextActionNote}
+          onSave={(fields) => onSetAction(contact.id, fields)}
+          onClose={() => setShowAction(false)}
+        />
       )}
 
       {/* Add to Brandon's Database */}
@@ -834,6 +882,7 @@ export default function Database({ onCallLogged, onAddToOverview }) {
                     contact={c}
                     onClick={() => setOpenContact(c)}
                     onAddToOverview={onAddToOverview}
+                    onSetAction={(id, fields) => updateContact(id, fields)}
                   />
                 ))}
               </div>

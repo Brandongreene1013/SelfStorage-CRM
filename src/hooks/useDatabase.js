@@ -173,6 +173,9 @@ function dbToContact(row) {
     callbackDate: row.callback_date ?? null,
     callHistory: row.call_history ?? [],
     lastCalled: (row.call_history ?? []).slice(-1)[0]?.date ?? null,
+    nextActionType: row.next_action_type ?? '',
+    nextActionDate: row.next_action_date ?? '',
+    nextActionNote: row.next_action_note ?? '',
   };
 }
 
@@ -311,8 +314,11 @@ export function useDatabase() {
     if (fields.state        !== undefined) dbFields.state         = fields.state;
     if (fields.notes        !== undefined) dbFields.notes         = fields.notes;
     if (fields.status       !== undefined) dbFields.status        = fields.status;
-    if (fields.callbackDate !== undefined) dbFields.callback_date = fields.callbackDate;
-    if (fields.callHistory  !== undefined) dbFields.call_history  = fields.callHistory;
+    if (fields.callbackDate    !== undefined) dbFields.callback_date    = fields.callbackDate;
+    if (fields.callHistory     !== undefined) dbFields.call_history     = fields.callHistory;
+    if (fields.nextActionType  !== undefined) dbFields.next_action_type = fields.nextActionType;
+    if (fields.nextActionDate  !== undefined) dbFields.next_action_date = fields.nextActionDate;
+    if (fields.nextActionNote  !== undefined) dbFields.next_action_note = fields.nextActionNote;
     dbFields.updated_at = new Date().toISOString();
 
     const { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
