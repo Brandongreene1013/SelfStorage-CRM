@@ -315,39 +315,37 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, isMaster
         )}
       </div>
 
-      {/* Owner Name — PRIMARY (who you're calling) */}
-      <h3 className="font-black text-white text-base leading-tight group-hover:text-amber-400 transition-colors line-clamp-1">
-        {contact.ownerName || <span className="text-slate-500 italic text-sm font-semibold">Unknown Owner</span>}
-      </h3>
-
-      {/* Facility Name — secondary, with Google Maps link */}
-      <div className="flex items-center gap-1.5 mt-0.5 mb-3 min-h-[1.25rem]">
-        {contact.facilityName ? (
-          <>
-            <span className="text-xs text-slate-400 truncate">{contact.facilityName}</span>
-            <a
-              href={`https://www.google.com/maps/search/${mapsQuery}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              title="Find on Google Maps"
-              className="flex-shrink-0 text-slate-600 hover:text-blue-400 transition-colors text-xs"
-            >
-              🗺
-            </a>
-          </>
-        ) : (
+      {/* Facility Name — PRIMARY, in your face */}
+      {contact.facilityName ? (
+        <div className="flex items-center gap-2 mb-1.5">
           <a
             href={`https://www.google.com/maps/search/${mapsQuery}`}
             target="_blank"
             rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            className="text-xs text-slate-600 hover:text-blue-400 italic transition-colors"
+            className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 rounded-lg px-2.5 py-1 hover:bg-amber-500/25 transition-all min-w-0"
           >
-            Find facility →
+            <span className="text-sm flex-shrink-0">🏢</span>
+            <span className="text-sm font-bold text-amber-400 truncate">{contact.facilityName}</span>
+            <span className="text-xs text-amber-600 flex-shrink-0">🗺</span>
           </a>
-        )}
-      </div>
+        </div>
+      ) : (
+        <a
+          href={`https://www.google.com/maps/search/${mapsQuery}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          className="inline-flex items-center gap-1 mb-1.5 text-xs text-slate-600 hover:text-blue-400 italic transition-colors"
+        >
+          🏢 Find facility →
+        </a>
+      )}
+
+      {/* Owner Name */}
+      <h3 className="font-bold text-white text-sm leading-tight group-hover:text-amber-400 transition-colors line-clamp-1 mb-2">
+        {contact.ownerName || <span className="text-slate-500 italic text-sm font-semibold">Unknown Owner</span>}
+      </h3>
 
       <div className="h-px bg-slate-800 mb-3" />
 
