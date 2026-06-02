@@ -189,9 +189,12 @@ function dbToList(row) {
   };
 }
 
+const MASTER_DB_NAME = 'Master Database';
+
 export function useDatabase() {
   const [lists, setLists] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [masterListId, setMasterListId] = useState(null);
 
   useEffect(() => {
     loadAll();
@@ -202,8 +205,26 @@ export function useDatabase() {
       supabase.from('lists').select('*').order('created_at', { ascending: true }),
       supabase.from('contacts').select('*').order('created_at', { ascending: true }),
     ]);
-    if (!listsRes.error && listsRes.data) setLists(listsRes.data.map(dbToList));
+
+    let loadedLists = [];
+    if (!listsRes.error && listsRes.data) loadedLists = listsRes.data.map(dbToList);
     if (!contactsRes.error && contactsRes.data) setContacts(contactsRes.data.map(dbToContact));
+
+    // Find or create Master Database list
+    let master = loadedLists.find(l => l.name === MASTER_DB_NAME);
+    if (!master) {
+      const { data: row, error } = await supabase
+        .from('lists')
+        .insert([{ name: MASTER_DB_NAME, source: 'Internal DB' }])
+        .select()
+        .single();
+      if (!error && row) {
+        master = dbToList(row);
+        loadedLists = [master, ...loadedLists];
+      }
+    }
+    if (master) setMasterListId(master.id);
+    setLists(loadedLists);
   }
 
   const importList = useCallback(async (name, source, rawText) => {
@@ -348,9 +369,48 @@ export function useDatabase() {
     await updateContact(contactId, { notes });
   }, [updateContact]);
 
+  // Copy a contact into the Master Database list
+  const addToMasterDB = useCallback(async (contact) => {
+    if (!masterListId) return null;
+    // Check if already in Master DB (by owner name + facility name)
+    const alreadyExists = contacts.some(c =>
+      c.listId === masterListId &&
+      c.ownerName === contact.ownerName &&
+      c.facilityName === contact.facilityName
+    );
+    if (alreadyExists) return 'exists';
+
+    const { data: row, error } = await supabase
+      .from('contacts')
+      .insert([{
+        list_id: masterListId,
+        owner_name: contact.ownerName ?? '',
+        facility_name: contact.facilityName ?? '',
+        phone: contact.phone ?? '',
+        email: contact.email ?? '',
+        address: contact.address ?? '',
+        state: contact.state ?? '',
+        notes: contact.notes ?? '',
+        status: contact.status === 'fresh' ? 'conversation' : (contact.status ?? 'conversation'),
+        call_history: contact.callHistory ?? [],
+        next_action_type: contact.nextActionType ?? '',
+        next_action_date: contact.nextActionDate ?? '',
+        next_action_note: contact.nextActionNote ?? '',
+      }])
+      .select()
+      .single();
+    if (!error && row) {
+      const newContact = dbToContact(row);
+      setContacts(prev => [...prev, newContact]);
+      return newContact;
+    }
+    return null;
+  }, [masterListId, contacts]);
+
   return {
     lists,
     contacts,
+    masterListId,
     importList,
     createList,
     addContact,
@@ -361,5 +421,6 @@ export function useDatabase() {
     deleteList,
     renameList,
     deleteContact,
+    addToMasterDB,
   };
 }

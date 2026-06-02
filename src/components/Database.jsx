@@ -275,7 +275,7 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick, onAddToOverview, onSetAction }) {
+function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, isMasterDB }) {
   const [added, setAdded] = useState(false);
   const [showAction, setShowAction] = useState(false);
 
@@ -288,23 +288,15 @@ function PropertyCard({ contact, onClick, onAddToOverview, onSetAction }) {
     [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ')
   );
 
-  async function handleAddToOverview(e) {
+  async function handleAddToMasterDB(e) {
     e.stopPropagation();
-    const result = await onAddToOverview({
-      contactId:    contact.id,
-      ownerName:    contact.ownerName,
-      facilityName: contact.facilityName,
-      phone:        contact.phone,
-      email:        contact.email,
-      address:      contact.address,
-      interestLevel: 'warm',
-    });
-    if (result) {
+    const result = await onAddToMasterDB(contact);
+    if (result === 'exists') {
       setAdded(true);
       setTimeout(() => setAdded(false), 2500);
-    } else {
-      setAdded(false);
-      alert('Failed to add — check browser console (F12) for details.');
+    } else if (result) {
+      setAdded(true);
+      setTimeout(() => setAdded(false), 2500);
     }
   }
 
@@ -434,17 +426,17 @@ function PropertyCard({ contact, onClick, onAddToOverview, onSetAction }) {
         />
       )}
 
-      {/* Add to Brandon's Database */}
-      {onAddToOverview && (
+      {/* Add to Master Database */}
+      {onAddToMasterDB && !isMasterDB && (
         <button
-          onClick={handleAddToOverview}
+          onClick={handleAddToMasterDB}
           className={`mt-3 w-full text-xs font-semibold py-1.5 rounded-lg border transition-all ${
             added
               ? 'bg-green-600/20 border-green-600/40 text-green-400'
               : 'bg-transparent border-slate-700 text-slate-500 hover:border-amber-500/40 hover:text-amber-400'
           }`}
         >
-          {added ? "✓ Added to Brandon's DB" : "★ Add to Brandon's Database"}
+          {added ? '✓ Added to Master DB' : '★ Add to Master Database'}
         </button>
       )}
     </div>
@@ -626,12 +618,13 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 }
 
 // ─── Main Database Component ──────────────────────────────────────────────────
-export default function Database({ onCallLogged, onAddToOverview }) {
+export default function Database({ onCallLogged }) {
   const {
-    lists, contacts,
+    lists, contacts, masterListId,
     importList, createList, addContact,
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
+    addToMasterDB,
   } = useDatabase();
 
   const [subView, setSubView]       = useState('contacts');
@@ -730,6 +723,23 @@ export default function Database({ onCallLogged, onAddToOverview }) {
             Lists
           </p>
 
+          {/* Master Database — pinned at top */}
+          {masterListId && (
+            <button
+              onClick={() => { setActiveListId(masterListId); setSubView('contacts'); }}
+              className={`w-full text-left px-3 py-2.5 flex items-center justify-between transition-all text-sm border-b border-slate-800/50 ${
+                activeListId === masterListId && subView === 'contacts'
+                  ? 'bg-emerald-500/10 text-emerald-400 border-l-2 border-emerald-500'
+                  : 'text-emerald-400/70 hover:text-emerald-400 hover:bg-slate-800 border-l-2 border-transparent'
+              }`}
+            >
+              <span className="font-bold flex items-center gap-1.5">⭐ Master Database</span>
+              <span className="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 px-1.5 py-0.5 rounded-md">
+                {contacts.filter(c => c.listId === masterListId).length}
+              </span>
+            </button>
+          )}
+
           {/* All contacts */}
           <button
             onClick={() => { setActiveListId('all'); setSubView('contacts'); }}
@@ -747,7 +757,7 @@ export default function Database({ onCallLogged, onAddToOverview }) {
             <p className="text-xs text-slate-600 italic px-3 py-3">No lists yet</p>
           )}
 
-          {[...lists].reverse().map(l => (
+          {[...lists].reverse().filter(l => l.id !== masterListId).map(l => (
             <ListSidebarItem
               key={l.id}
               list={l}
@@ -786,8 +796,8 @@ export default function Database({ onCallLogged, onAddToOverview }) {
           ))}
         </div>
 
-        {/* Delete list button */}
-        {activeListId !== 'all' && (
+        {/* Delete list button — not for Master Database */}
+        {activeListId !== 'all' && activeListId !== masterListId && (
           <button
             onClick={() => {
               const l = lists.find(x => x.id === activeListId);
@@ -881,8 +891,9 @@ export default function Database({ onCallLogged, onAddToOverview }) {
                     key={c.id}
                     contact={c}
                     onClick={() => setOpenContact(c)}
-                    onAddToOverview={onAddToOverview}
+                    onAddToMasterDB={addToMasterDB}
                     onSetAction={(id, fields) => updateContact(id, fields)}
+                    isMasterDB={activeListId === masterListId}
                   />
                 ))}
               </div>

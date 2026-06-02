@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react';
 import { useCRM } from './hooks/useCRM';
 import { useMeetings } from './hooks/useMeetings';
 import { useDailyProgress } from './hooks/useDailyProgress';
-import { useProspects } from './hooks/useProspects';
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import PipelineBoard from './components/PipelineBoard';
@@ -10,19 +9,17 @@ import ClientCard from './components/ClientCard';
 import Dashboard from './components/Dashboard';
 import Calendar from './components/Calendar';
 import Database from './components/Database';
-import TodaysOverview from './components/TodaysOverview';
 import ActionModal from './components/ActionModal';
 import { PIPELINE_STAGES } from './data/constants';
 import './index.css';
 
-const VIEWS = ["Brandon's Database", 'Dashboard', 'Pipeline', 'Clients', 'Database', 'Calendar'];
+const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
   const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction } = useCRM();
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { increment: incrementProgress } = useDailyProgress();
-  const { prospects, addProspect, updateProspect, removeProspect, completeProspect } = useProspects();
 
   // When a call is logged from Database, auto-increment dashboard counters
   const handleCallLogged = useCallback((outcome) => {
@@ -64,27 +61,6 @@ export default function App() {
     setDeletingClient(null);
   }
 
-  // Promote a prospect from Brandon's Database → Pipeline as a Client
-  const handlePromoteToPipeline = useCallback((prospect) => {
-    addClient({
-      name: prospect.ownerName || prospect.facilityName || 'Unknown',
-      type: 'Seller',
-      propertyType: 'Self-Storage',
-      facilityName: prospect.facilityName ?? '',
-      phone: prospect.phone ?? '',
-      email: prospect.email ?? '',
-      address: prospect.address ?? '',
-      notes: prospect.notes ?? '',
-      stageId: 1,
-      nextActionType: prospect.nextActionType ?? '',
-      nextActionDate: prospect.nextActionDate ?? '',
-      nextActionNote: prospect.nextActionNote ?? '',
-    });
-    // Mark as promoted in Brandon's Database (keep visible with a note)
-    updateProspect(prospect.id, {
-      notes: `${prospect.notes ? prospect.notes + '\n' : ''}[Promoted to Pipeline ${new Date().toISOString().slice(0, 10)}]`,
-    });
-  }, [addClient, updateProspect]);
 
   const visibleClients = clients.filter(c => {
     if (filter !== 'All' && c.type !== filter) return false;
@@ -143,7 +119,7 @@ export default function App() {
           ))}
         </nav>
 
-        {view !== 'Calendar' && view !== 'Database' && view !== "Brandon's Database" && (
+        {view !== 'Calendar' && view !== 'Database' && (
           <button
             onClick={() => setShowAddModal(true)}
             className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-1.5 shadow"
@@ -151,7 +127,7 @@ export default function App() {
             <span className="text-lg leading-none font-black">+</span> Add Client
           </button>
         )}
-        {(view === 'Calendar' || view === 'Database' || view === "Brandon's Database") && (
+        {(view === 'Calendar' || view === 'Database') && (
           <div className="w-[110px]" />
         )}
       </header>
@@ -207,17 +183,6 @@ export default function App() {
 
       {/* Main */}
       <main className="flex-1 p-6 overflow-auto">
-        {view === "Brandon's Database" && (
-          <TodaysOverview
-            prospects={prospects}
-            onAddProspect={addProspect}
-            onUpdateProspect={updateProspect}
-            onRemoveProspect={removeProspect}
-            onCompleteProspect={completeProspect}
-            onPromoteToPipeline={handlePromoteToPipeline}
-          />
-        )}
-
         {view === 'Dashboard' && (
           <Dashboard
             clients={clients}
@@ -279,7 +244,7 @@ export default function App() {
         )}
 
         {view === 'Database' && (
-          <Database onCallLogged={handleCallLogged} onAddToOverview={addProspect} />
+          <Database onCallLogged={handleCallLogged} />
         )}
 
         {view === 'Calendar' && (
