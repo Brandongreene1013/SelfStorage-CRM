@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
-import IntelligenceBar from './IntelligenceBar';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 
 // ─── KPI Strip ────────────────────────────────────────────────────────────────
@@ -487,9 +486,6 @@ export default function Dashboard({ clients, meetings = [], onNavigateCalendar, 
 
   return (
     <div className="space-y-4">
-
-      {/* ── AI Intelligence Bar ── */}
-      <IntelligenceBar onAddToPipeline={onAddToPipeline} />
 
       {/* ── KPI Strip ── */}
       <KPIStrip stats={kpiStats} />
