@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES } from '../data/constants';
+import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { useFileStorage } from '../hooks/useFileStorage';
 import ActionModal from './ActionModal';
 
@@ -39,6 +39,26 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
                 {stage.id}. {stage.short}
               </span>
             )}
+            {(() => {
+              const temp = LEAD_TEMPS.find(t => t.value === client.leadTemp);
+              const order = ['', 'hot', 'warm', 'cold'];
+              function cycleTemp() {
+                const idx = order.indexOf(client.leadTemp ?? '');
+                const next = order[(idx + 1) % order.length];
+                onSetAction(client.id, { leadTemp: next });
+              }
+              return temp ? (
+                <button onClick={cycleTemp} title="Click to change lead temperature"
+                  className={`text-xs font-black px-2 py-0.5 rounded-full border transition-all ${temp.bg} ${temp.border} ${temp.text}`}>
+                  {temp.icon} {temp.label}
+                </button>
+              ) : (
+                <button onClick={cycleTemp} title="Set lead temperature"
+                  className="text-xs font-semibold px-2 py-0.5 rounded-full border border-dashed border-slate-600 text-slate-600 hover:text-slate-400 hover:border-slate-500 transition-all">
+                  + Temp
+                </button>
+              );
+            })()}
           </div>
           <h3 className="font-bold text-white text-sm mt-1 truncate">{client.name}</h3>
           {client.facilityName && (

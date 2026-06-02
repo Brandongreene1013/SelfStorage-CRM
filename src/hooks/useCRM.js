@@ -38,6 +38,7 @@ export function useCRM() {
       nextActionType: row.next_action_type ?? '',
       nextActionDate: row.next_action_date ?? '',
       nextActionNote: row.next_action_note ?? '',
+      leadTemp: row.lead_temp ?? '',
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -63,6 +64,7 @@ export function useCRM() {
     if (data.nextActionType !== undefined) db.next_action_type = data.nextActionType;
     if (data.nextActionDate !== undefined) db.next_action_date = data.nextActionDate;
     if (data.nextActionNote !== undefined) db.next_action_note = data.nextActionNote;
+    if (data.leadTemp !== undefined) db.lead_temp = data.leadTemp;
     return db;
   }
 
@@ -111,6 +113,7 @@ export function useCRM() {
     if (actionFields.nextActionType !== undefined) db.next_action_type = actionFields.nextActionType;
     if (actionFields.nextActionDate !== undefined) db.next_action_date = actionFields.nextActionDate;
     if (actionFields.nextActionNote !== undefined) db.next_action_note = actionFields.nextActionNote;
+    if (actionFields.leadTemp       !== undefined) db.lead_temp        = actionFields.leadTemp;
     db.updated_at = new Date().toISOString();
 
     const { error } = await supabase.from('clients').update(db).eq('id', id);

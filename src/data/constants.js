@@ -21,6 +21,12 @@ export const PROPERTY_TYPES = [
   { value: 'Land', label: 'Land', icon: '🌿' },
 ];
 
+export const LEAD_TEMPS = [
+  { value: 'hot',  label: 'HOT',  icon: '🔥', bg: 'bg-red-500/20',   border: 'border-red-500/40',   text: 'text-red-400'   },
+  { value: 'warm', label: 'WARM', icon: '🟡', bg: 'bg-amber-500/20', border: 'border-amber-500/40', text: 'text-amber-400' },
+  { value: 'cold', label: 'COLD', icon: '🧊', bg: 'bg-blue-500/20',  border: 'border-blue-500/40',  text: 'text-blue-400'  },
+];
+
 export const ACTION_TYPES = [
   { value: 'call',     label: 'Follow-Up Call',   icon: '📞' },
   { value: 'email',    label: 'Send Email',       icon: '📧' },

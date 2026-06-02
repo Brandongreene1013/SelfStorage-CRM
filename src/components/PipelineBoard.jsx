@@ -9,7 +9,7 @@ import {
 } from '@dnd-kit/core';
 import { useDroppable } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
-import { PIPELINE_STAGES, ACTION_TYPES } from '../data/constants';
+import { PIPELINE_STAGES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 
 /* ── Draggable client chip ── */
 function DraggableChip({ client, stage, onEdit, onSetAction }) {
@@ -39,12 +39,22 @@ function DraggableChip({ client, stage, onEdit, onSetAction }) {
     >
       <div className="flex items-start justify-between gap-1">
         <div className="flex-1 min-w-0">
-          <div className={`inline-block text-xs font-bold px-1.5 py-0.5 rounded mb-1 ${
-            client.type === 'Buyer'
-              ? 'bg-blue-900/60 text-blue-300'
-              : 'bg-amber-900/60 text-amber-300'
-          }`}>
-            {client.type}
+          <div className="flex items-center gap-1 mb-1 flex-wrap">
+            <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+              client.type === 'Buyer'
+                ? 'bg-blue-900/60 text-blue-300'
+                : 'bg-amber-900/60 text-amber-300'
+            }`}>
+              {client.type}
+            </span>
+            {(() => {
+              const temp = LEAD_TEMPS.find(t => t.value === client.leadTemp);
+              return temp ? (
+                <span className={`text-xs font-black px-1.5 py-0.5 rounded border ${temp.bg} ${temp.border} ${temp.text}`}>
+                  {temp.icon}
+                </span>
+              ) : null;
+            })()}
           </div>
           <p className="text-sm font-semibold text-white truncate leading-tight">{client.name}</p>
           {client.facilityName && (

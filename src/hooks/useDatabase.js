@@ -176,6 +176,7 @@ function dbToContact(row) {
     nextActionType: row.next_action_type ?? '',
     nextActionDate: row.next_action_date ?? '',
     nextActionNote: row.next_action_note ?? '',
+    leadTemp: row.lead_temp ?? '',
   };
 }
 
@@ -340,6 +341,7 @@ export function useDatabase() {
     if (fields.nextActionType  !== undefined) dbFields.next_action_type = fields.nextActionType;
     if (fields.nextActionDate  !== undefined) dbFields.next_action_date = fields.nextActionDate;
     if (fields.nextActionNote  !== undefined) dbFields.next_action_note = fields.nextActionNote;
+    if (fields.leadTemp        !== undefined) dbFields.lead_temp        = fields.leadTemp;
     dbFields.updated_at = new Date().toISOString();
 
     const { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);

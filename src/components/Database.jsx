@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useDatabase, US_STATES } from '../hooks/useDatabase';
 import ImportListModal from './ImportListModal';
 import ActionModal from './ActionModal';
-import { ACTION_TYPES } from '../data/constants';
+import { ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 
 const STATUS_LABELS = {
   fresh: 'Fresh',
@@ -305,11 +305,34 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, isMaster
       onClick={onClick}
       className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-black/30 group"
     >
-      {/* Status + market */}
-      <div className="flex items-center justify-between mb-2">
-        <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${STATUS_COLORS[contact.status] ?? STATUS_COLORS.fresh}`}>
-          {STATUS_LABELS[contact.status] ?? 'Fresh'}
-        </span>
+      {/* Status + lead temp + market */}
+      <div className="flex items-center justify-between mb-2 gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${STATUS_COLORS[contact.status] ?? STATUS_COLORS.fresh}`}>
+            {STATUS_LABELS[contact.status] ?? 'Fresh'}
+          </span>
+          {(() => {
+            const temp = LEAD_TEMPS.find(t => t.value === contact.leadTemp);
+            const order = ['', 'hot', 'warm', 'cold'];
+            function cycleTemp(e) {
+              e.stopPropagation();
+              const idx = order.indexOf(contact.leadTemp ?? '');
+              const next = order[(idx + 1) % order.length];
+              onSetAction(contact.id, { leadTemp: next });
+            }
+            return temp ? (
+              <button onClick={cycleTemp} title="Click to change lead temperature"
+                className={`text-xs font-black px-2 py-0.5 rounded-md border transition-all ${temp.bg} ${temp.border} ${temp.text}`}>
+                {temp.icon} {temp.label}
+              </button>
+            ) : (
+              <button onClick={cycleTemp} title="Set lead temperature"
+                className="text-xs font-semibold px-2 py-0.5 rounded-md border border-dashed border-slate-700 text-slate-600 hover:text-slate-400 hover:border-slate-500 transition-all">
+                + Temp
+              </button>
+            );
+          })()}
+        </div>
         {contact.market && (
           <span className="text-xs text-amber-400/70 font-semibold">{contact.market}</span>
         )}
