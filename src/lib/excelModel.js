@@ -1,91 +1,98 @@
-import * as XLSX from 'xlsx';
+import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
 
-// Expense line-item order as it appears in the Financial Model sheet (rows 18–29)
+// ─────────────────────────────────────────────────────────────────────────────
+// Fills the team's SIGNATURE underwriting workbook (public/model-template.xlsm)
+// with a deal's figures.
+//
+// We do NOT round-trip the file through SheetJS — that silently strips the
+// workbook's drawings (logo), embedded images, and most cell styling, which is
+// why earlier exports "looked nothing like" the real model. Instead we open the
+// .xlsm as a zip and surgically replace ONLY the input-cell values in the
+// worksheet XML, leaving drawings, media, styles, formulas, and the VBA project
+// byte-for-byte intact.
+//
+// Sheet → part map (verified against the real file):
+//   sheet1.xml = Rent Roll
+//   sheet2.xml = Financial Model
+//   sheet3.xml = 5-Year Model      (formulas only — driven by the two above)
+//   sheet4.xml = Amortization      (left untouched: financing is set by hand)
+//
+// Input cells we write:
+//   Rent Roll:        C7 units · D7 SF/unit · F7 base $/unit/mo · H7 market $/unit/mo
+//   Financial Model:  F11/G11 other income · B13 vacancy · F/G 18–29 expenses ·
+//                     E35/F35/G35 conservative/target/aggressive price
+// Everything else (NOI, EGI, cap rate, 5-yr ramp, DSCR, amortization) is a
+// formula in the workbook and recalculates on open (fullCalcOnLoad is baked in).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SHEET = {
+  rentRoll: 'xl/worksheets/sheet1.xml',
+  financialModel: 'xl/worksheets/sheet2.xml',
+};
+
+// Expense line-item order as it appears in the Financial Model (rows 18–29)
 const EXPENSE_ROWS = [
   'realEstateTaxes', 'insurance', 'creditCardFees', 'computerWebsite',
   'thirdPartyCollection', 'otherSupplies', 'marketing', 'repairsMaintenance',
   'telephone', 'utilities', 'payroll', 'reserves',
 ];
 
-function setNum(ws, addr, v) {
-  ws[addr] = { t: 'n', v: Number.isFinite(+v) ? +v : 0 };
+// Replace one existing cell's value, preserving its style (s=") and dropping any
+// stale type/formula. All target cells already exist in the template.
+function setCell(xml, ref, value) {
+  const v = Number.isFinite(+value) ? +value : 0;
+  const re = new RegExp(`<c r="${ref}"((?:\\s+[a-zA-Z]+="[^"]*")*)\\s*(?:/>|>[\\s\\S]*?</c>)`);
+  if (!re.test(xml)) throw new Error(`Template cell ${ref} not found — model file may be the wrong version`);
+  return xml.replace(re, (_m, attrs) => {
+    const keep = attrs.replace(/\s+t="[^"]*"/g, ''); // strip type → numeric
+    return `<c r="${ref}"${keep}><v>${v}</v></c>`;
+  });
 }
 
-// Drop cached formula values so Excel recomputes everything on open
-function clearCachedFormulas(ws) {
-  if (!ws || !ws['!ref']) return;
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const addr = XLSX.utils.encode_cell({ r, c });
-      const cell = ws[addr];
-      if (cell && cell.f) delete cell.v;
-    }
-  }
-}
-
-// model = the underwrite() result: { property, income, expenses.breakdown, scenarios[], debt }
 export async function downloadFilledModel(model, filenameBase = 'Underwriting') {
   const res = await fetch('/model-template.xlsm');
   if (!res.ok) throw new Error('Could not load the model template');
-  const buf = await res.arrayBuffer();
-  const wb = XLSX.read(buf, { bookVBA: true, cellStyles: true });
+  const files = unzipSync(new Uint8Array(await res.arrayBuffer()));
 
-  const fm = wb.Sheets['Financial Model'];
-  const rr = wb.Sheets['Rent Roll'];
-
-  // ── Rent Roll: collapse to a single summary row (row 7), clear rows 8–12 ──
+  // ── Rent Roll (single summary row 7 → totals/annuals cascade via formulas) ──
   const units = model.property?.units > 0 ? model.property.units : 1;
   const sqft = model.property?.sqft || 0;
   const rentalAnnual = model.income?.rentalIncome || 0;
   const monthlyPerUnit = rentalAnnual / 12 / units;
   const sfPerUnit = sqft / units;
 
-  if (rr) {
-    rr['A7'] = { t: 's', v: 'All Units' };
-    setNum(rr, 'C7', units);
-    setNum(rr, 'D7', sfPerUnit);
-    setNum(rr, 'F7', monthlyPerUnit);
-    setNum(rr, 'H7', monthlyPerUnit); // market = in-place unless specified
-    for (let row = 8; row <= 12; row++) {
-      setNum(rr, `C${row}`, 0); setNum(rr, `D${row}`, 0);
-      setNum(rr, `F${row}`, 0); setNum(rr, `H${row}`, 0);
-    }
-  }
+  let rr = strFromU8(files[SHEET.rentRoll]);
+  rr = setCell(rr, 'C7', units);            // Number of units
+  rr = setCell(rr, 'D7', sfPerUnit);        // Gross SF per unit
+  rr = setCell(rr, 'F7', monthlyPerUnit);   // Base rent $/unit/mo
+  rr = setCell(rr, 'H7', monthlyPerUnit);   // Market rent $/unit/mo (= in-place unless specified)
+  files[SHEET.rentRoll] = strToU8(rr);
 
   // ── Financial Model inputs ──
-  if (fm) {
-    const otherIncome = model.income?.otherIncome || 0;
-    setNum(fm, 'F11', otherIncome);
-    setNum(fm, 'G11', otherIncome);
-    setNum(fm, 'B13', model.income?.vacancyRate || 0);
+  let fm = strFromU8(files[SHEET.financialModel]);
+  const otherIncome = model.income?.otherIncome || 0;
+  fm = setCell(fm, 'F11', otherIncome);
+  fm = setCell(fm, 'G11', otherIncome);
+  fm = setCell(fm, 'B13', model.income?.vacancyRate || 0);
 
-    const bd = model.expenses?.breakdown || {};
-    EXPENSE_ROWS.forEach((key, i) => {
-      const row = 18 + i;
-      const val = bd[key] || 0;
-      setNum(fm, `F${row}`, val);
-      setNum(fm, `G${row}`, val);
-    });
+  const bd = model.expenses?.breakdown || {};
+  EXPENSE_ROWS.forEach((key, i) => {
+    const row = 18 + i;
+    const val = bd[key] || 0;
+    fm = setCell(fm, `F${row}`, val);
+    fm = setCell(fm, `G${row}`, val);
+  });
 
-    const [cons, tgt, agg] = model.scenarios || [];
-    setNum(fm, 'E35', cons?.price || 0);
-    setNum(fm, 'F35', tgt?.price || 0);
-    setNum(fm, 'G35', agg?.price || 0);
+  const [cons, tgt, agg] = model.scenarios || [];
+  fm = setCell(fm, 'E35', cons?.price || 0);
+  fm = setCell(fm, 'F35', tgt?.price || 0);
+  fm = setCell(fm, 'G35', agg?.price || 0);
+  files[SHEET.financialModel] = strToU8(fm);
 
-    const debt = model.debt || {};
-    setNum(fm, 'F44', debt.ltv ?? 0.6);
-    setNum(fm, 'G45', debt.interestRate ?? 0.075);
-    setNum(fm, 'G46', debt.termYears ?? 5);
-    setNum(fm, 'G47', debt.amortYears ?? 30);
-  }
+  // Amortization (sheet4) is intentionally left as-is so the team's debt
+  // assumptions and the VBA-driven options remain editable in Excel.
 
-  // Force a full recalc when opened in Excel
-  ['Rent Roll', 'Financial Model', '5-Year Model', 'Amortization'].forEach(n => clearCachedFormulas(wb.Sheets[n]));
-  wb.Workbook = wb.Workbook || {};
-  wb.Workbook.CalcPr = { ...(wb.Workbook.CalcPr || {}), fullCalcOnLoad: true };
-
-  const out = XLSX.write(wb, { bookType: 'xlsm', bookVBA: true, type: 'array' });
+  const out = zipSync(files, { level: 6 });
   const blob = new Blob([out], { type: 'application/vnd.ms-excel.sheet.macroEnabled.12' });
 
   const safe = (filenameBase || 'Underwriting').replace(/[^\w.\- ]+/g, '').slice(0, 60).trim() || 'Underwriting';
