@@ -4,20 +4,30 @@
 // - Live TractIQ market data via the Anthropic MCP connector (lease comps,
 //   pricing trends, occupancy, market summary) — used only when asked.
 
-import { underwrite, projectFiveYear } from '../src/data/financialModel.js';
+import { underwrite, projectFiveYear } from './_financialModel.js';
 import { createClient } from '@supabase/supabase-js';
+
+// Allow more time for the MCP + agentic loop (Vercel Hobby default is 10s).
+export const maxDuration = 60;
 
 const MODEL = 'claude-opus-4-8';
 const TRACTIQ_MCP_URL = 'https://app.tractiq.com/mcp';
 const TRACTIQ_TOKEN_ENDPOINT = 'https://app.tractiq.com/oauth/token';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://rpoiphoqwgvbiyygfjrm.supabase.co';
 
-// Server-side Supabase client using the SERVICE-ROLE key (never exposed to the
-// browser). The app_secrets table has RLS that denies the public/anon key, so
-// the TractIQ refresh token is not readable from the client bundle.
-const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://rpoiphoqwgvbiyygfjrm.supabase.co',
-  process.env.SUPABASE_SERVICE_KEY || '',
-);
+// Lazily build the server-side Supabase client (SERVICE-ROLE key, never exposed
+// to the browser). Guarded so a missing/empty key can't crash the function on
+// cold start — without it we just skip refresh-token persistence.
+let _supabase;
+function getSupabase() {
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!key) return null;
+  if (!_supabase) {
+    try { _supabase = createClient(SUPABASE_URL, key); }
+    catch (e) { console.error('Supabase init failed:', e.message); return null; }
+  }
+  return _supabase;
+}
 
 // ── TractIQ OAuth: mint a fresh access token from the stored refresh token ──
 // Refresh token lives in Supabase app_secrets (self-healing on rotation), with
@@ -34,12 +44,15 @@ async function getTractiqAccessToken() {
   }
 
   // Get the current refresh token (Supabase first, env fallback for first run)
+  const sb = getSupabase();
   let refreshToken = null;
-  try {
-    const { data } = await supabase
-      .from('app_secrets').select('value').eq('key', 'tractiq_refresh_token').single();
-    refreshToken = data?.value ?? null;
-  } catch { /* table may not exist yet */ }
+  if (sb) {
+    try {
+      const { data } = await sb
+        .from('app_secrets').select('value').eq('key', 'tractiq_refresh_token').single();
+      refreshToken = data?.value ?? null;
+    } catch { /* table may not exist yet */ }
+  }
   if (!refreshToken) refreshToken = process.env.TRACTIQ_REFRESH_TOKEN || null;
   if (!refreshToken) return null;
 
@@ -65,9 +78,9 @@ async function getTractiqAccessToken() {
   };
 
   // If TractIQ rotated the refresh token, persist the new one
-  if (tok.refresh_token && tok.refresh_token !== refreshToken) {
+  if (sb && tok.refresh_token && tok.refresh_token !== refreshToken) {
     try {
-      await supabase.from('app_secrets').upsert({
+      await sb.from('app_secrets').upsert({
         key: 'tractiq_refresh_token', value: tok.refresh_token, updated_at: new Date().toISOString(),
       });
     } catch (e) { console.error('Could not persist rotated refresh token:', e.message); }
