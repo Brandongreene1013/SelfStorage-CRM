@@ -120,23 +120,27 @@ Debt defaults: 60% LTV, 7.5% interest, 30-year amortization, 5-year term unless 
 
 A "T-12" is a trailing-twelve-month statement: usually 12 monthly columns plus a Total column (occasionally a 13th annual column). Read it like this:
 
+**Typical format — QuickBooks "COGS / Gross Profit / Expenses" layout (this is the format you'll usually see).** These statements split costs into a "Cost of Goods Sold" section, then a "Gross Profit" line, then an "Expenses" section, ending in "Net Operating Income" / "Net Income." For self-storage there is NO real COGS — so **treat BOTH the Cost of Goods Sold section AND the Expenses section as operating expenses.** Do not trust the statement's own "Gross Profit," "Net Operating Income," or "Net Income" labels — **recompute NOI yourself** = Total Income − (all true operating expenses), excluding the below-NOI items listed further down. (Example: a statement can show insurance, property taxes, and utilities nested under Cost of Goods Sold, and software/marketing/bank-fees under Expenses — all of those are operating expenses.)
+
+- **Beware "Total for …" subtotal lines.** QuickBooks inserts rollup rows like "Total for 5200 Property Utilities" that sum a PARENT account plus its child accounts — so the "Total for" figure can be far larger than the line item itself (e.g. a "Total for 5200 Property Utilities" of \$41,948 when utilities alone is \$4,964, because it also swept in insurance + taxes). NEVER add a "Total for …" line on top of its components. Use the leaf line items for mapping, and use section/Total-column figures ONLY as a reconciliation check (Income − COGS = Gross Profit; Gross Profit − Expenses = their NOI).
 - **Annualize correctly.** Use the Total column if present; otherwise sum the 12 months. If fewer than 12 months are shown (e.g. a 7-month YTD), annualize = (sum of months shown ÷ months shown) × 12, and SAY you annualized. Ignore any "% of revenue" or "PSF" columns sitting next to the dollars — don't mistake those for dollar amounts.
 - **Income.** The main line is storage/rental income — use **actual collected/scheduled** rent, NOT "Gross Potential Rent" or "Market Rent" (those are theoretical → that's upside, capture it separately). Roll ancillary lines into **otherIncomeAnnual**: tenant insurance/protection plans, admin/setup fees, late fees, lock & merchandise sales, truck rental, retail, commissions.
-- **Vacancy & credit loss.** Economic vacancy = physical vacancy + concessions + bad debt/write-offs. If these appear as contra-revenue lines, sum them and express as a % of rental income for vacancyRate.
+- **Vacancy & credit loss — DON'T DOUBLE-COUNT.** A T-12 reports money *actually collected*, which already has physical vacancy, concessions, and delinquency baked in. So when your income line is actual collected rent, set **vacancyRate to 0 (or near it)** for the in-place underwrite — do NOT apply another 10% haircut on top, or you'll vacancy-hit the same dollars twice. Only carry a vacancy % when you're underwriting off Gross Potential / Market rent (a theoretical figure), or when vacancy/bad-debt show up as explicit contra-revenue lines you can size as a % of gross rent. Say which basis you used.
 - **Map expenses to the 12 standard lines:**
   - Real Estate Taxes ← property/RE taxes
   - Insurance ← property/liability/hazard
-  - Credit Card Fees ← merchant/processing fees
-  - Computer & Website ← management software (SiteLink, storEDGE, Cubby, Easy Storage), website, IT, internet/domain
+  - Credit Card Fees ← merchant/processing fees, "Bank Charges & Fees," payment-gateway/Stripe/Square fees
+  - Computer & Website ← management software (SiteLink, storEDGE, Cubby, Easy Storage), "Software & Subscriptions," website, IT, internet/domain
   - 3rd Party Collection ← collections, lien/auction/notice costs
-  - Other Supplies ← office supplies, postage, locks/merchandise COGS
+  - Other Supplies ← office supplies, postage, locks/merchandise COGS, "Professional Services"/legal/accounting & misc G&A (flag if Professional Services is large — it may be one-time)
   - Marketing & Advertising ← advertising, SEO/PPC, Google/Yelp, signage, promos
   - Repairs & Maintenance ← R&M, unit turnover/cleaning, landscaping/snow, pest, gate/door/security repair
   - Telephone ← phone, call center, answering service
   - Utilities ← electric, water/sewer, gas, trash
   - Payroll & Benefits ← salaries, wages, payroll taxes, benefits, workers comp, on-site staff
   - Reserves ← replacement/capex reserves (often absent — if missing, add a stabilized reserve ~\$0.10–0.25/SF and say so)
-- **EXCLUDE from operating expenses (these live below the NOI line):** debt service / interest / mortgage, depreciation & amortization, income taxes, capital expenditures & improvements (one-time), owner draws/distributions, entity/partnership-level costs. Never let these inflate expenses.
+- **EXCLUDE from operating expenses (these live below the NOI line):** debt service / interest / mortgage (e.g. a line literally named "Interest Paid - Rental Mortgages" or "Mortgage Interest" — exclude it entirely and recompute NOI without it), depreciation & amortization, income taxes, capital expenditures & improvements (one-time), owner draws/distributions, entity/partnership-level costs. Never let these inflate expenses.
+- **Watch for an inflated NOI on owner-run deals.** Mom-and-pop statements frequently show **\$0 payroll and \$0 reserves** because the owner self-manages and never books a replacement reserve. That makes the reported NOI look better than a buyer will actually experience. When payroll is zero, add a market mgmt fee (~5–6% of EGI); when reserves are zero, add ~\$0.10–0.25/SF. State the adjustment and show both the as-reported and the normalized NOI so the cap rate is honest.
 - **Management fee.** If a management fee is present, keep it. If the owner self-manages with no fee, note a market mgmt fee (~5–6% of EGI) as an adjustment so the NOI isn't artificially high.
 - **Normalize.** Strip one-time / non-recurring items (legal settlements, one-time repairs, startup costs); flag owner add-backs. After mapping, compute expense ratio = total expenses ÷ EGI. Stabilized self-storage typically runs ~30–40%. If your ratio lands <25% or >55%, say so and double-check for a missing or miscategorized line (no taxes? no payroll? no reserves?).
 
@@ -148,7 +152,13 @@ A rent roll lists every unit. Columns vary but usually include unit #, size/dime
 - **In-place rental income = sum of CURRENT monthly rent across OCCUPIED units × 12.** Do not count a vacant unit's market rent as income — that's loss-to-lease upside.
 - **Loss-to-lease:** if there's a market/asking column, compare in-place vs market to size the rent-growth upside; feed market rent into the market-rent scenario.
 - **Unit mix:** summarize by size and type. Climate vs drive-up vs parking/RV carry very different \$/SF — flag if a big share is parking/RV (drags the blended \$/SF). Compute \$/SF/mo = monthly rent ÷ unit SF as a sanity check against market comps.
-- **Watch for:** reserved/pending units (not yet paying), employee/comp/model units ($0 rent), and delinquent balances. Reconcile physical occupancy against the P&L's actual collections when you have both — call out the gap (concessions/delinquency).
+- **Rent rolls are messy — sanity-check every column before trusting it:**
+  - **\$0 rent units** are usually comp/employee/model/office units or vacants, not real income. Exclude them from in-place rent (and note them). A unit "paid through" a date a year ago is effectively vacant/delinquent — don't count its nominal rent.
+  - **A "rent" value that's actually a balance.** Some exports drop a past-due *balance* into the rent column (e.g. a \$1,800 figure on a 10x10 that should rent for ~\$120). If a unit's "rent" is wildly out of line with its size and the rest of the roll, it's almost certainly an outstanding balance or a YTD total — don't annualize it. Cross-check \$/SF/mo per unit; toss outliers.
+  - **Duplicate tenants / multiple units** under one name, **prepaid** months, and **"Days Past Due" / delinquency** columns: dedupe units, treat prepaid as timing only, and use Days-Past-Due to gauge real collections risk.
+  - **A partial or filtered roll.** If the roll's annualized scheduled rent is a fraction (or a multiple) of the T-12's collected rent, the roll is probably partial, filtered, or from a different date — say so and trust the T-12 for income.
+- **Cross-document reconciliation (when you have both a roll and a P&L):** annualize the roll's scheduled rent and compare to the T-12's actual collected rental income. They should be in the same ballpark; a material gap means concessions/delinquency, a partial roll, or a stale date. Call out the discrepancy explicitly and tell Brandon which source you underwrote off and why — don't silently pick one.
+- **Reserved/pending units** aren't paying yet; reconcile physical occupancy against the P&L's actual collections and flag the gap.
 
 # Extraction rules (when reading any uploaded document)
 
