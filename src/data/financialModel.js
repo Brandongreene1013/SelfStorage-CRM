@@ -31,6 +31,20 @@ export const EXPENSE_CATEGORIES = [
   { key: 'reserves',          label: 'Reserves' },
 ];
 
+// Typical self-storage operating-expense split (sums to 1.0). Used to estimate
+// a line-item breakdown when only a total or a target expense ratio is known.
+export const EXPENSE_PROPORTIONS = {
+  realEstateTaxes: 0.20, insurance: 0.06, creditCardFees: 0.03, computerWebsite: 0.05,
+  thirdPartyCollection: 0.02, otherSupplies: 0.03, marketing: 0.08, repairsMaintenance: 0.10,
+  telephone: 0.01, utilities: 0.07, payroll: 0.30, reserves: 0.05,
+};
+
+export function estimateExpenseBreakdown(total) {
+  const out = {};
+  for (const cat of EXPENSE_CATEGORIES) out[cat.key] = Math.round(total * (EXPENSE_PROPORTIONS[cat.key] || 0));
+  return out;
+}
+
 // ── Amortizing loan payment (annual) — Excel PMT equivalent ──
 // rate = annual interest rate (e.g. 0.075), amortYears = amortization period (e.g. 30)
 export function annualDebtService(loanAmount, annualRate, amortYears) {
@@ -73,17 +87,31 @@ export function underwrite(input = {}) {
   const vacancyLoss = rentalIncome * vacancyRate;
   const egi = pgi - vacancyLoss;
 
-  // Expenses
+  // Expenses — itemized, lump-sum, or back-solved to a target expense ratio.
+  // The breakdown is ALWAYS populated (estimated if not itemized) so it can be
+  // written into the team's Excel model line-for-line.
   let totalExpenses = 0;
   let expenseBreakdown = {};
-  if (input.expenses && typeof input.expenses === 'object') {
+  const hasItemized = input.expenses && typeof input.expenses === 'object'
+    && EXPENSE_CATEGORIES.some(c => input.expenses[c.key] != null && input.expenses[c.key] !== '');
+  let expensesEstimated = false;
+
+  if (hasItemized) {
     for (const cat of EXPENSE_CATEGORIES) {
       const v = num(input.expenses[cat.key]);
       expenseBreakdown[cat.key] = v;
       totalExpenses += v;
     }
-  } else {
+  } else if (input.totalExpensesAnnual != null && num(input.totalExpensesAnnual) > 0) {
     totalExpenses = num(input.totalExpensesAnnual);
+    expenseBreakdown = estimateExpenseBreakdown(totalExpenses);
+    expensesEstimated = true;
+  } else if (input.expenseRatioTarget != null && num(input.expenseRatioTarget) > 0) {
+    totalExpenses = num(input.expenseRatioTarget) * egi;
+    expenseBreakdown = estimateExpenseBreakdown(totalExpenses);
+    expensesEstimated = true;
+  } else {
+    expenseBreakdown = estimateExpenseBreakdown(0);
   }
 
   const expenseRatio = egi > 0 ? totalExpenses / egi : 0;
@@ -119,6 +147,7 @@ export function underwrite(input = {}) {
   const dscr = debtService > 0 ? noi / debtService : 0;
 
   return {
+    property: { units: num(input.units), sqft: num(input.sqft) },
     income: {
       rentalIncome, otherIncome, pgi,
       vacancyRate, vacancyLoss, egi,
@@ -127,6 +156,7 @@ export function underwrite(input = {}) {
       total: totalExpenses,
       ratio: expenseRatio,
       breakdown: expenseBreakdown,
+      estimated: expensesEstimated,
       perUnit: input.units ? totalExpenses / num(input.units) : null,
     },
     noi,

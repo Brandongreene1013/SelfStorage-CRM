@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import { downloadFilledModel } from '../lib/excelModel';
 
 // Lightweight markdown-ish renderer: **bold**, line breaks, bullet dashes.
 function RichText({ text }) {
@@ -22,8 +23,48 @@ function RichText({ text }) {
   );
 }
 
+// Download button + quick summary shown under an underwrite reply
+function ModelDownload({ model }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const noi = model?.noi;
+  const target = model?.scenarios?.find(s => s.name === 'target');
+  const estimated = model?.expenses?.estimated;
+
+  async function handleDownload() {
+    setBusy(true); setErr(null);
+    try {
+      await downloadFilledModel(model, model.facilityName || 'Underwriting');
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-700">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400 mb-2">
+        {noi != null && <span><span className="text-slate-500">NOI</span> <strong className="text-emerald-400">${Math.round(noi).toLocaleString()}</strong></span>}
+        {target && <span><span className="text-slate-500">Target cap</span> <strong className="text-amber-400">{(target.capRate * 100).toFixed(2)}%</strong></span>}
+        {target?.price > 0 && <span><span className="text-slate-500">@</span> <strong className="text-white">${Math.round(target.price).toLocaleString()}</strong></span>}
+        {estimated && <span className="text-slate-500 italic">expenses estimated</span>}
+      </div>
+      <button
+        onClick={handleDownload}
+        disabled={busy}
+        className="inline-flex items-center gap-2 bg-emerald-600/20 border border-emerald-600/40 text-emerald-400 hover:bg-emerald-600/30 font-bold px-4 py-2 rounded-xl text-xs transition-all disabled:opacity-50"
+      >
+        {busy ? 'Building…' : '⬇ Download Excel Model'}
+      </button>
+      {err && <p className="text-xs text-red-400 mt-1">{err}</p>}
+    </div>
+  );
+}
+
 const SUGGESTIONS = [
-  'Gross revenue $540k/yr, expenses ~58% of EGI, 401 units, 42,000 sqft, asking $4.5M — underwrite it.',
+  'Gross revenue $540k/yr, expenses ~58% of EGI, 401 units, 42,000 sqft, asking $4.5M — underwrite it and give me the Excel model.',
   'If NOI is $310k and a buyer wants a 6.5% cap, what should they pay?',
   'Walk me through how vacancy assumptions change the value on a lease-up deal.',
 ];
@@ -105,7 +146,7 @@ export default function Analyst() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Request failed');
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply, model: data.model }]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -165,6 +206,9 @@ export default function Analyst() {
                 : 'bg-slate-800 border border-slate-700 text-slate-200'
             }`}>
               {m.role === 'user' ? m.content : <RichText text={m.content} />}
+              {m.role === 'assistant' && m.model && (
+                <ModelDownload model={m.model} />
+              )}
             </div>
           </div>
         ))}

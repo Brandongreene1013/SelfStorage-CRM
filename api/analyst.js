@@ -113,7 +113,12 @@ Debt defaults: 60% LTV, 7.5% interest, 30-year amortization, 5-year term unless 
 
 1. **Back-of-napkin mode**: rough numbers in → clean underwrite out. Make reasonable assumptions, state them, proceed. Ask at most one clarifying question only if truly blocked.
 2. **Document digestion**: when Brandon uploads a rent roll, P&L, or occupancy report, extract the numbers and map them into the model. Show what you extracted alongside the underwrite.
-3. **Always use the underwrite tool for math.** Never compute NOI, cap rate, DSCR, or cash-on-cash by hand. Call the tool, then interpret like a broker — what's strong, what's risky, the upside, what to verify.
+3. **Always use the underwrite tool for math.** Never compute NOI, cap rate, DSCR, or cash-on-cash by hand. Call the tool, then interpret like a broker — what's strong, what's risky, the upside, what to verify. Pass facilityName when you know it.
+4. **Estimating expenses**: If Brandon gives itemized expenses, pass them. If he gives a lump-sum total, pass totalExpensesAnnual. If he gives NEITHER (or just a target expense ratio like "run it at a 40% expense ratio"), pass expenseRatioTarget as a decimal — the engine back-solves total expenses = ratio × EGI and itemizes them across the standard lines. If he gives nothing about expenses, assume a sensible stabilized self-storage ratio (~35–40%), pass it as expenseRatioTarget, and SAY that you assumed it.
+
+# Excel model export (important)
+
+Every time you run the underwrite tool, the app AUTOMATICALLY generates a downloadable copy of the team's actual Excel model (.xlsm) populated with these exact numbers — rent roll, expenses, valuation, debt, the works — and shows a **"⬇ Download Excel Model"** button right under your message. So you CAN deliver the model in Excel. Never say you can't produce an .xlsx/.xlsm. When relevant, end with a short line like: "I've populated the team model — hit Download Excel Model below to open it in Excel." Do not paste a giant markdown table of the full model when the download covers it; give the punchline numbers in chat and let the file carry the detail.
 
 # TractIQ market data ${tractiqOn ? '(LIVE — available now)' : '(not connected)'}
 
@@ -131,12 +136,14 @@ const UNDERWRITE_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
+      facilityName: { type: 'string', description: 'Facility / deal name, used to name the exported Excel file' },
       rentalIncomeAnnual: { type: 'number', description: 'Annual in-place rental income in dollars' },
       otherIncomeAnnual: { type: 'number', description: 'Annual other/ancillary income (default 0)' },
       vacancyRate: { type: 'number', description: 'Vacancy & collection loss as decimal, e.g. 0.10 (default 0.10)' },
       units: { type: 'number', description: 'Total unit count' },
       sqft: { type: 'number', description: 'Gross rentable square footage' },
-      totalExpensesAnnual: { type: 'number', description: 'Total annual operating expenses (lump sum)' },
+      totalExpensesAnnual: { type: 'number', description: 'Total annual operating expenses (lump sum). The engine itemizes it across the standard lines automatically.' },
+      expenseRatioTarget: { type: 'number', description: 'Target expense ratio as a decimal, e.g. 0.40 for 40%. When you do not have itemized expenses or a total, pass this and the engine back-solves total expenses = ratio × EGI and itemizes them across the standard lines.' },
       expenses: {
         type: 'object', description: 'Itemized annual expenses if available',
         properties: {
@@ -200,6 +207,7 @@ export default async function handler(req, res) {
 
   try {
     const convo = [...messages];
+    let lastModel = null; // most recent underwrite result, returned for Excel export
 
     for (let i = 0; i < 8; i++) {
       const body = {
@@ -227,6 +235,8 @@ export default async function handler(req, res) {
           if (block.type === 'tool_use' && block.name === 'underwrite') {
             const result = underwrite(block.input);
             if (block.input.includeFiveYear) result.fiveYear = projectFiveYear(block.input);
+            result.facilityName = block.input.facilityName || null;
+            lastModel = result; // capture for Excel export
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
           }
         }
@@ -240,10 +250,10 @@ export default async function handler(req, res) {
 
       // Final answer
       const text = response.content?.filter(b => b.type === 'text').map(b => b.text).join('\n') ?? '';
-      return res.status(200).json({ reply: text, tractiq: tractiqOn });
+      return res.status(200).json({ reply: text, tractiq: tractiqOn, model: lastModel });
     }
 
-    return res.status(200).json({ reply: 'That analysis took too many steps — try breaking it into smaller pieces.', tractiq: tractiqOn });
+    return res.status(200).json({ reply: 'That analysis took too many steps — try breaking it into smaller pieces.', tractiq: tractiqOn, model: lastModel });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
