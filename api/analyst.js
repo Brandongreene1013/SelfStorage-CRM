@@ -34,27 +34,27 @@ function getSupabase() {
 // the TRACTIQ_REFRESH_TOKEN env var as the initial seed.
 let cachedAccess = { token: null, expiresAt: 0 };
 
-async function getTractiqAccessToken() {
-  const clientId = process.env.TRACTIQ_CLIENT_ID;
-  if (!clientId) return null; // TractIQ not configured yet
+async function readSecret(sb, key, envFallback) {
+  if (sb) {
+    try {
+      const { data } = await sb.from('app_secrets').select('value').eq('key', key).single();
+      if (data?.value) return data.value;
+    } catch { /* table may not exist yet */ }
+  }
+  return process.env[envFallback] || null;
+}
 
+async function getTractiqAccessToken() {
   // Reuse a still-valid cached token (60s safety margin)
   if (cachedAccess.token && Date.now() < cachedAccess.expiresAt - 60_000) {
     return cachedAccess.token;
   }
 
-  // Get the current refresh token (Supabase first, env fallback for first run)
   const sb = getSupabase();
-  let refreshToken = null;
-  if (sb) {
-    try {
-      const { data } = await sb
-        .from('app_secrets').select('value').eq('key', 'tractiq_refresh_token').single();
-      refreshToken = data?.value ?? null;
-    } catch { /* table may not exist yet */ }
-  }
-  if (!refreshToken) refreshToken = process.env.TRACTIQ_REFRESH_TOKEN || null;
-  if (!refreshToken) return null;
+  // client_id and refresh token both live in Supabase (env vars as fallback seed)
+  const clientId = await readSecret(sb, 'tractiq_client_id', 'TRACTIQ_CLIENT_ID');
+  const refreshToken = await readSecret(sb, 'tractiq_refresh_token', 'TRACTIQ_REFRESH_TOKEN');
+  if (!clientId || !refreshToken) return null; // TractIQ not configured yet
 
   // Exchange refresh token for a fresh access token
   const res = await fetch(TRACTIQ_TOKEN_ENDPOINT, {
