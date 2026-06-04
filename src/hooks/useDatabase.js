@@ -86,6 +86,8 @@ export function parseImportData(text) {
       fieldMap.units = i;
     } else if (!fieldMap.sqft && /sq.*ft|square|size/i.test(lh)) {
       fieldMap.sqft = i;
+    } else if (!fieldMap.notes && /note|comment|remark|detail/i.test(lh)) {
+      fieldMap.notes = i;
     }
   });
 
@@ -149,7 +151,7 @@ export function parseImportData(text) {
       status: 'fresh',
       callHistory: [],
       callbackDate: null,
-      notes: '',
+      notes: fieldMap.notes != null ? (cols[fieldMap.notes] ?? '') : '',
     });
   }
   return { contacts, headers: rawHeaders, fieldMap };
@@ -264,6 +266,35 @@ export function useDatabase() {
     setLists(prev => [...prev, newList]);
     setContacts(prev => [...prev, ...inserted.map(dbToContact)]);
     return { list: newList, count: inserted.length };
+  }, []);
+
+  // Bulk-import parsed contacts INTO an existing list (e.g. Master Database).
+  const importIntoList = useCallback(async (listId, rawText) => {
+    if (!listId) return { count: 0 };
+    const { contacts: parsed } = parseImportData(rawText);
+    if (parsed.length === 0) return { count: 0 };
+
+    const rows = parsed.map(c => ({
+      list_id: listId,
+      owner_name: c.ownerName,
+      facility_name: c.facilityName,
+      phone: c.phone,
+      email: c.email,
+      address: c.address,
+      state: c.state,
+      notes: c.notes ?? '',
+      status: 'fresh',
+      call_history: [],
+    }));
+
+    const BATCH = 500;
+    const inserted = [];
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const { data } = await supabase.from('contacts').insert(rows.slice(i, i + BATCH)).select();
+      if (data) inserted.push(...data);
+    }
+    setContacts(prev => [...prev, ...inserted.map(dbToContact)]);
+    return { count: inserted.length };
   }, []);
 
   const createList = useCallback(async (name, source) => {
@@ -414,6 +445,7 @@ export function useDatabase() {
     contacts,
     masterListId,
     importList,
+    importIntoList,
     createList,
     addContact,
     updateContactStatus,

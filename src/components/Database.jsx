@@ -642,7 +642,7 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 export default function Database({ onCallLogged }) {
   const {
     lists, contacts, masterListId,
-    importList, createList, addContact,
+    importList, importIntoList, createList, addContact,
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB,
@@ -650,6 +650,7 @@ export default function Database({ onCallLogged }) {
 
   const [subView, setSubView]       = useState('contacts');
   const [showImport, setShowImport]     = useState(false);
+  const [showMasterImport, setShowMasterImport] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
   const [showNewList, setShowNewList]   = useState(false);
   const [newListName, setNewListName]   = useState('');
@@ -886,10 +887,18 @@ export default function Database({ onCallLogged }) {
                 {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
               <span className="text-xs text-slate-600">{filtered.length} contacts</span>
+              {activeListId === masterListId && (
+                <button
+                  onClick={() => setShowMasterImport(true)}
+                  className="ml-auto bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 text-emerald-400 font-bold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
+                >
+                  ⬆ Bulk Upload
+                </button>
+              )}
               {activeListId !== 'all' && (
                 <button
                   onClick={() => setShowAddContact(true)}
-                  className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
+                  className={`${activeListId === masterListId ? '' : 'ml-auto'} bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5`}
                 >
                   + Add Person
                 </button>
@@ -958,6 +967,14 @@ export default function Database({ onCallLogged }) {
 
       {showImport && (
         <ImportListModal onImport={handleImport} onClose={() => setShowImport(false)} />
+      )}
+
+      {showMasterImport && (
+        <ImportListModal
+          fixedListName="Master Database"
+          onImport={(_name, _source, rawText) => importIntoList(masterListId, rawText)}
+          onClose={() => setShowMasterImport(false)}
+        />
       )}
 
       {/* ── New Blank List modal ── */}

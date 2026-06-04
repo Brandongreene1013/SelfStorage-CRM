@@ -26,7 +26,8 @@ function excelToTSV(file) {
   });
 }
 
-export default function ImportListModal({ onImport, onClose }) {
+export default function ImportListModal({ onImport, onClose, fixedListName }) {
+  const intoFixed = !!fixedListName;
   const [name, setName] = useState('');
   const [source, setSource] = useState('Internal DB');
   const [rawText, setRawText] = useState('');
@@ -97,8 +98,8 @@ export default function ImportListModal({ onImport, onClose }) {
   const handleDragLeave = () => setIsDragging(false);
 
   function handleImport() {
-    if (!name.trim()) { setError('Give this list a name'); return; }
     if (!preview) { setError('Load a file first'); return; }
+    if (!intoFixed && !name.trim()) { setError('Give this list a name'); return; }
     onImport(name.trim(), source, rawText);
     onClose();
   }
@@ -109,35 +110,43 @@ export default function ImportListModal({ onImport, onClose }) {
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-800">
           <div>
-            <h2 className="text-lg font-black text-white">Import Cold Call List</h2>
+            <h2 className="text-lg font-black text-white">
+              {intoFixed ? `Bulk Upload to ${fixedListName}` : 'Import Cold Call List'}
+            </h2>
             <p className="text-xs text-slate-500 mt-0.5">Supports .xlsx · .xls · .csv</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none p-2">✕</button>
         </div>
 
         <div className="flex-1 overflow-auto p-5 space-y-4">
-          {/* Name + Source */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">List Name *</label>
-              <input
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="e.g. Florida Market - CoStar March 2026"
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-              />
+          {/* Name + Source (hidden when importing into a fixed list like Master Database) */}
+          {intoFixed ? (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2.5 text-sm text-emerald-300">
+              ⭐ Adding these contacts straight into <strong>{fixedListName}</strong>.
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">Source</label>
-              <select
-                value={source}
-                onChange={e => setSource(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
-              >
-                {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">List Name *</label>
+                <input
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="e.g. Florida Market - CoStar March 2026"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Source</label>
+                <select
+                  value={source}
+                  onChange={e => setSource(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                >
+                  {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Drop zone */}
           <div
@@ -259,9 +268,9 @@ export default function ImportListModal({ onImport, onClose }) {
           </button>
           <button
             onClick={handleImport}
-            disabled={!preview || !name.trim()}
+            disabled={!preview || (!intoFixed && !name.trim())}
             className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
-              preview && name.trim()
+              preview && (intoFixed || name.trim())
                 ? 'bg-amber-500 hover:bg-amber-400 text-slate-900 shadow'
                 : 'bg-slate-700 text-slate-500 cursor-not-allowed'
             }`}
