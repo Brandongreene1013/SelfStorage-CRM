@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useCRM } from './hooks/useCRM';
+import { useDatabase } from './hooks/useDatabase';
 import { useMeetings } from './hooks/useMeetings';
 import { useDailyProgress } from './hooks/useDailyProgress';
 import ClientModal from './components/ClientModal';
@@ -19,8 +20,49 @@ const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
   const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction } = useCRM();
+  const db = useDatabase(); // shared Database state (lifted so contacts can move to/from Clients)
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { increment: incrementProgress } = useDailyProgress();
+
+  // ── Move a Database contact → Clients/Pipeline (drag onto the Clients target) ──
+  const handleContactToClients = useCallback((contact) => {
+    if (!contact) return;
+    addClient({
+      name: contact.ownerName || contact.facilityName || 'Unknown',
+      type: 'Seller',
+      propertyType: 'Self-Storage',
+      facilityName: contact.facilityName ?? '',
+      address: contact.address ?? '',
+      phone: contact.phone ?? '',
+      email: contact.email ?? '',
+      notes: contact.notes ?? '',
+      stageId: 1,
+      leadTemp: contact.leadTemp ?? '',
+      nextActionType: contact.nextActionType ?? '',
+      nextActionDate: contact.nextActionDate ?? '',
+      nextActionNote: contact.nextActionNote ?? '',
+    });
+    db.deleteContact(contact.id);
+  }, [addClient, db]);
+
+  // ── Move a Client → Master Database (button on the client card) ──
+  const handleClientToDatabase = useCallback(async (client) => {
+    if (!client) return;
+    await db.addToMasterDB({
+      ownerName: client.name ?? '',
+      facilityName: client.facilityName ?? '',
+      phone: client.phone ?? '',
+      email: client.email ?? '',
+      address: client.address ?? '',
+      notes: client.notes ?? '',
+      status: 'conversation',
+      leadTemp: client.leadTemp ?? '',
+      nextActionType: client.nextActionType ?? '',
+      nextActionDate: client.nextActionDate ?? '',
+      nextActionNote: client.nextActionNote ?? '',
+    });
+    deleteClient(client.id);
+  }, [db, deleteClient]);
 
   // When a call is logged from Database, auto-increment dashboard counters
   const handleCallLogged = useCallback((outcome) => {
@@ -237,6 +279,7 @@ export default function App() {
                     onDelete={handleDelete}
                     onStageChange={moveClientToStage}
                     onSetAction={setClientAction}
+                    onMoveToDatabase={handleClientToDatabase}
                   />
                 ))}
               </div>
@@ -245,7 +288,7 @@ export default function App() {
         )}
 
         {view === 'Database' && (
-          <Database onCallLogged={handleCallLogged} />
+          <Database db={db} onCallLogged={handleCallLogged} onContactToClients={handleContactToClients} />
         )}
 
         {view === 'Analyst' && <Analyst />}

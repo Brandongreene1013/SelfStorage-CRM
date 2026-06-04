@@ -3,7 +3,7 @@ import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES, LEAD_TEMPS } from '../da
 import { useFileStorage } from '../hooks/useFileStorage';
 import ActionModal from './ActionModal';
 
-export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, compact = false }) {
+export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, compact = false }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
   const { openFile } = useFileStorage();
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
@@ -67,6 +67,17 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         </div>
         {/* Actions */}
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {onMoveToDatabase && (
+            <button
+              onClick={() => {
+                if (confirm(`Move "${client.name}" out of Clients and into the Master Database?`)) onMoveToDatabase(client);
+              }}
+              className="p-1.5 rounded-lg hover:bg-emerald-900/50 text-slate-400 hover:text-emerald-400 transition-all text-xs"
+              title="Move to Master Database"
+            >
+              ⤳
+            </button>
+          )}
           <button
             onClick={() => onEdit(client)}
             className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white transition-all text-xs"

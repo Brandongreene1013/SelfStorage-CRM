@@ -516,6 +516,13 @@ export function useDatabase() {
     }
   }, []);
 
+  // Move a contact into a different list (drag-and-drop between Database lists)
+  const moveContactToList = useCallback(async (contactId, listId) => {
+    const { error } = await supabase
+      .from('contacts').update({ list_id: listId, updated_at: new Date().toISOString() }).eq('id', contactId);
+    if (!error) setContacts(prev => prev.map(c => c.id === contactId ? { ...c, listId } : c));
+  }, []);
+
   const updateContactStatus = useCallback(async (contactId, status, callNote) => {
     const now = new Date().toISOString().slice(0, 10);
     const contact = contacts.find(c => c.id === contactId);
@@ -564,6 +571,7 @@ export function useDatabase() {
         next_action_type: contact.nextActionType ?? '',
         next_action_date: contact.nextActionDate ?? '',
         next_action_note: contact.nextActionNote ?? '',
+        lead_temp: contact.leadTemp ?? '',
       }])
       .select()
       .single();
@@ -582,6 +590,7 @@ export function useDatabase() {
     importList,
     importIntoList,
     removeDuplicates,
+    moveContactToList,
     createList,
     addContact,
     updateContactStatus,

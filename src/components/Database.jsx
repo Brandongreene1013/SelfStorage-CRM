@@ -1,8 +1,14 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useDatabase, US_STATES } from '../hooks/useDatabase';
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core';
 import ImportListModal from './ImportListModal';
 import ActionModal from './ActionModal';
 import { ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
+
+// Generic droppable wrapper for sidebar targets (lists + the Clients target)
+function DropTarget({ id, className = '', activeClassName = '', children }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return <div ref={setNodeRef} className={`${className} ${isOver ? activeClassName : ''}`}>{children}</div>;
+}
 
 const STATUS_LABELS = {
   fresh: 'Fresh',
@@ -279,6 +285,8 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, isMaster
   const [added, setAdded] = useState(false);
   const [showAction, setShowAction] = useState(false);
 
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: contact.id, data: { contact } });
+
   const today = new Date().toISOString().slice(0, 10);
   const actionType = ACTION_TYPES.find(a => a.value === contact.nextActionType);
   const isOverdue = contact.nextActionDate && contact.nextActionDate < today;
@@ -302,8 +310,11 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, isMaster
 
   return (
     <div
+      ref={setNodeRef}
       onClick={onClick}
-      className="bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-black/30 group"
+      {...listeners}
+      {...attributes}
+      className={`bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-black/30 group ${isDragging ? 'opacity-40' : ''}`}
     >
       {/* Status + lead temp + market */}
       <div className="flex items-center justify-between mb-2 gap-1.5">
@@ -567,6 +578,7 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
   const [draft, setDraft]             = useState(l.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const inputRef = useRef(null);
+  const { setNodeRef, isOver } = useDroppable({ id: `list:${l.id}` });
 
   useEffect(() => { if (renaming) inputRef.current?.focus(); }, [renaming]);
 
@@ -578,8 +590,10 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 
   return (
     <div
+      ref={setNodeRef}
       className={`border-b border-slate-800/50 border-l-2 transition-all ${
-        isActive ? 'bg-amber-500/10 border-l-amber-500' : 'border-l-transparent hover:bg-slate-800'
+        isOver ? 'bg-amber-500/20 border-l-amber-400 ring-1 ring-amber-500/40'
+        : isActive ? 'bg-amber-500/10 border-l-amber-500' : 'border-l-transparent hover:bg-slate-800'
       }`}
     >
       <div className="flex items-center gap-1 px-3 pt-2.5">
@@ -639,14 +653,31 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 }
 
 // ─── Main Database Component ──────────────────────────────────────────────────
-export default function Database({ onCallLogged }) {
+export default function Database({ onCallLogged, db, onContactToClients }) {
   const {
     lists, contacts, masterListId,
-    importList, importIntoList, removeDuplicates, createList, addContact,
+    importList, importIntoList, removeDuplicates, moveContactToList, createList, addContact,
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB,
-  } = useDatabase();
+  } = db;
+
+  const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  function handleDragEnd({ active, over }) {
+    setActiveDrag(null);
+    if (!over) return;
+    const contact = contacts.find(c => c.id === active.id);
+    if (!contact) return;
+    const target = String(over.id);
+    if (target === 'clients') {
+      onContactToClients?.(contact);
+    } else if (target.startsWith('list:')) {
+      const listId = target.slice(5);
+      if (contact.listId !== listId) moveContactToList(contact.id, listId);
+    }
+  }
 
   const [subView, setSubView]       = useState('contacts');
   const [showImport, setShowImport]     = useState(false);
@@ -720,6 +751,12 @@ export default function Database({ onCallLogged }) {
   const totalAppointments  = contacts.filter(c => c.status === 'appointment').length;
 
   return (
+    <DndContext
+      sensors={dndSensors}
+      onDragStart={({ active }) => setActiveDrag(contacts.find(c => c.id === active.id) ?? null)}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveDrag(null)}
+    >
     <div className="flex gap-5 min-h-0">
 
       {/* ── LEFT: List Organizer Sidebar ── */}
@@ -747,19 +784,21 @@ export default function Database({ onCallLogged }) {
 
           {/* Master Database — pinned at top */}
           {masterListId && (
-            <button
-              onClick={() => { setActiveListId(masterListId); setSubView('contacts'); }}
-              className={`w-full text-left px-3 py-2.5 flex items-center justify-between transition-all text-sm border-b border-slate-800/50 ${
-                activeListId === masterListId && subView === 'contacts'
-                  ? 'bg-emerald-500/10 text-emerald-400 border-l-2 border-emerald-500'
-                  : 'text-emerald-400/70 hover:text-emerald-400 hover:bg-slate-800 border-l-2 border-transparent'
-              }`}
-            >
-              <span className="font-bold flex items-center gap-1.5">⭐ Master Database</span>
-              <span className="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 px-1.5 py-0.5 rounded-md">
-                {contacts.filter(c => c.listId === masterListId).length}
-              </span>
-            </button>
+            <DropTarget id={`list:${masterListId}`} activeClassName="ring-1 ring-amber-500/50 bg-amber-500/10">
+              <button
+                onClick={() => { setActiveListId(masterListId); setSubView('contacts'); }}
+                className={`w-full text-left px-3 py-2.5 flex items-center justify-between transition-all text-sm border-b border-slate-800/50 ${
+                  activeListId === masterListId && subView === 'contacts'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-l-2 border-emerald-500'
+                    : 'text-emerald-400/70 hover:text-emerald-400 hover:bg-slate-800 border-l-2 border-transparent'
+                }`}
+              >
+                <span className="font-bold flex items-center gap-1.5">⭐ Master Database</span>
+                <span className="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 px-1.5 py-0.5 rounded-md">
+                  {contacts.filter(c => c.listId === masterListId).length}
+                </span>
+              </button>
+            </DropTarget>
           )}
 
           {/* All contacts */}
@@ -817,6 +856,15 @@ export default function Database({ onCallLogged }) {
             </button>
           ))}
         </div>
+
+        {/* Drag-to-Clients drop target */}
+        <DropTarget
+          id="clients"
+          className="border border-dashed border-slate-700 rounded-xl px-3 py-3 text-center transition-all"
+          activeClassName="border-blue-500/60 bg-blue-500/10"
+        >
+          <p className="text-xs font-semibold text-slate-500">→ Drop here to move to <span className="text-blue-400">Clients / Pipeline</span></p>
+        </DropTarget>
 
         {/* Delete list button — not for Master Database */}
         {activeListId !== 'all' && activeListId !== masterListId && (
@@ -1049,6 +1097,17 @@ export default function Database({ onCallLogged }) {
         />
       )}
     </div>
+
+    <DragOverlay>
+      {activeDrag && (
+        <div className="bg-slate-800 border border-amber-500 rounded-xl px-3 py-2 shadow-2xl rotate-2 w-56">
+          <p className="text-sm font-bold text-white truncate">{activeDrag.ownerName || activeDrag.facilityName || 'Contact'}</p>
+          {activeDrag.facilityName && <p className="text-xs text-amber-400 truncate">{activeDrag.facilityName}</p>}
+          <p className="text-xs text-slate-500 mt-0.5">Drop on a list or “→ Clients”</p>
+        </div>
+      )}
+    </DragOverlay>
+    </DndContext>
   );
 }
 
