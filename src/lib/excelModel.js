@@ -28,6 +28,7 @@ import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate';
 const SHEET = {
   rentRoll: 'xl/worksheets/sheet1.xml',
   financialModel: 'xl/worksheets/sheet2.xml',
+  fiveYear: 'xl/worksheets/sheet3.xml',
 };
 
 // Expense line-item order as it appears in the Financial Model (rows 18–29)
@@ -88,6 +89,21 @@ export async function downloadFilledModel(model, filenameBase = 'Underwriting') 
   fm = setCell(fm, 'F35', tgt?.price || 0);
   fm = setCell(fm, 'G35', agg?.price || 0);
   files[SHEET.financialModel] = strToU8(fm);
+
+  // ── 5-Year Model vacancy ramp (Year 1→5 = cells F13:J13) ──
+  // Only written when the AI supplies a ramp (from an occupancy report or an
+  // absorption story). Otherwise the template's default lease-up ramp stays.
+  if (Array.isArray(model.vacancyRamp) && model.vacancyRamp.length) {
+    let s3 = strFromU8(files[SHEET.fiveYear]);
+    const cols = ['F', 'G', 'H', 'I', 'J'];
+    let last = model.vacancyRamp[0];
+    cols.forEach((col, i) => {
+      const v = model.vacancyRamp[i] != null ? model.vacancyRamp[i] : last; // pad with last value
+      last = v;
+      s3 = setCell(s3, `${col}13`, v);
+    });
+    files[SHEET.fiveYear] = strToU8(s3);
+  }
 
   // Amortization (sheet4) is intentionally left as-is so the team's debt
   // assumptions and the VBA-driven options remain editable in Excel.

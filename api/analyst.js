@@ -166,6 +166,16 @@ A rent roll lists every unit. Columns vary but usually include unit #, size/dime
 - State every assumption and annualization out loud. If a figure is missing or ambiguous, flag it and either proceed with a clearly-labeled assumption or ask ONE question only if truly blocked. Never silently invent numbers.
 - Then call the **underwrite** tool with the extracted figures — pass itemized **expenses** whenever you have them (don't fall back to a ratio if the document gives you real line items).
 
+# 5-Year vacancy ramp (stabilization)
+
+The exported model has a 5-year projection with a vacancy factor per year (Year 1→5). The template defaults to a lease-up ramp (35%→15%). When you have an OCCUPANCY REPORT or any read on current physical occupancy, build a realistic stabilization ramp and pass it as vacancyRamp (5 decimals, Year 1→5):
+- **Year 1 ≈ the property's current actual vacancy** from the report (e.g. 82% occupied → start ~0.18).
+- **Glide DOWN to a stabilized floor** appropriate to the market: ~10% typical, ~7.5% in strong supply-constrained markets, ~5% only for the best infill. Use TractIQ/comps if you've pulled them.
+- **Shape the curve to the absorption story:** faster early drops for a clear lease-up; a gentler even glide for a near-stabilized asset.
+- For a STABILIZED in-place deal with no lease-up, hold vacancy roughly FLAT at the in-place level (e.g. [0.10,0.10,0.10,0.10,0.10]).
+- Only OMIT vacancyRamp if you have no occupancy information at all.
+- Always state the ramp and your reasoning in the recap (e.g. "Vacancy ramp: 18% → 14% → 11% → 10% → 10%, stabilizing at a 10% market floor").
+
 # Excel model export (important)
 
 Every time you run the underwrite tool, the app AUTOMATICALLY generates a downloadable copy of the team's actual Excel model (.xlsm) populated with these exact numbers — rent roll, expenses, valuation, debt, the works — and shows a **"⬇ Download Excel Model"** button right under your message. So you CAN deliver the model in Excel. Never say you can't produce an .xlsx/.xlsm. When relevant, end with a short line like: "I've populated the team model — hit Download Excel Model below to open it in Excel." Do not paste a giant markdown table of the full model when the download covers it; give the punchline numbers in chat and let the file carry the detail.
@@ -211,6 +221,7 @@ const UNDERWRITE_TOOL = {
       interestRate: { type: 'number', description: 'Annual rate as decimal (default 0.075)' },
       amortYears: { type: 'number', description: 'Amortization years (default 30)' },
       termYears: { type: 'number', description: 'Loan term years (default 5)' },
+      vacancyRamp: { type: 'array', items: { type: 'number' }, description: '5-year vacancy factors as decimals [year1..year5], e.g. [0.18,0.14,0.11,0.10,0.10]. Sets the 5-Year Model vacancy cells. Provide ONLY when you have an occupancy report or an absorption/lease-up story; omit it for a stabilized in-place deal with no occupancy info (the model keeps its default ramp).' },
       includeFiveYear: { type: 'boolean', description: 'Also return a 5-year NOI projection' },
     },
   },
@@ -284,8 +295,11 @@ export default async function handler(req, res) {
         for (const block of response.content) {
           if (block.type === 'tool_use' && block.name === 'underwrite') {
             const result = underwrite(block.input);
-            if (block.input.includeFiveYear) result.fiveYear = projectFiveYear(block.input);
+            const rampOpts = Array.isArray(block.input.vacancyRamp) && block.input.vacancyRamp.length
+              ? { vacancyRamp: block.input.vacancyRamp } : {};
+            if (block.input.includeFiveYear) result.fiveYear = projectFiveYear(block.input, rampOpts);
             result.facilityName = block.input.facilityName || null;
+            if (rampOpts.vacancyRamp) result.vacancyRamp = rampOpts.vacancyRamp; // for Excel export
             lastModel = result; // capture for Excel export
             toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) });
           }
