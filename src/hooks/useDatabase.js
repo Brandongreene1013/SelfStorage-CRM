@@ -255,6 +255,33 @@ function dbToList(row) {
 
 const MASTER_DB_NAME = 'Master Database';
 
+// Keys that identify the "same" contact: normalized phone, email, or owner+facility.
+// Two contacts are duplicates if they share ANY key.
+function dupKeys(c) {
+  const keys = [];
+  const phone = (c.phone || '').replace(/\D/g, '');
+  const email = (c.email || '').trim().toLowerCase();
+  const owner = (c.ownerName || '').trim().toLowerCase();
+  const fac = (c.facilityName || '').trim().toLowerCase();
+  if (phone.length >= 7) keys.push('p:' + phone.slice(-10)); // last 10 digits
+  if (email) keys.push('e:' + email);
+  if (owner && fac) keys.push('of:' + owner + '|' + fac);
+  return keys;
+}
+
+// Higher score = more "worked" = the record we keep when collapsing duplicates.
+function dupScore(c) {
+  let s = 0;
+  if (c.status && c.status !== 'fresh') s += 3;
+  s += (c.callHistory?.length || 0);
+  if (c.notes && c.notes.trim()) s += 2;
+  if (c.nextActionType) s += 2;
+  if (c.phone) s += 1;
+  if (c.email) s += 1;
+  if (c.address) s += 1;
+  return s;
+}
+
 export function useDatabase() {
   const [lists, setLists] = useState([]);
   const [contacts, setContacts] = useState([]);
@@ -360,6 +387,50 @@ export function useDatabase() {
     setContacts(prev => [...prev, ...inserted.map(dbToContact)]);
     return { count: inserted.length };
   }, []);
+
+  // Find duplicate contacts within a list and delete all but the most-worked one
+  // in each cluster. Returns { removed }.
+  const removeDuplicates = useCallback(async (listId) => {
+    const inList = contacts.filter(c => c.listId === listId);
+    if (inList.length < 2) return { removed: 0 };
+
+    // Cluster contacts that share any dup key (with group merging)
+    const keyToGroup = new Map();
+    const groups = [];
+    for (const c of inList) {
+      const keys = dupKeys(c);
+      const found = [];
+      for (const k of keys) { const g = keyToGroup.get(k); if (g && !found.includes(g)) found.push(g); }
+      let group;
+      if (found.length === 0) { group = { members: [] }; groups.push(group); }
+      else {
+        group = found[0];
+        for (let i = 1; i < found.length; i++) { // merge other groups into the first
+          const o = found[i];
+          group.members.push(...o.members);
+          o.members = [];
+          for (const [k, v] of keyToGroup) if (v === o) keyToGroup.set(k, group);
+        }
+      }
+      group.members.push(c);
+      for (const k of keys) keyToGroup.set(k, group);
+    }
+
+    // In each cluster of 2+, keep the highest-scoring record, delete the rest
+    const toDelete = [];
+    for (const g of groups) {
+      if (g.members.length < 2) continue;
+      const sorted = [...g.members].sort((a, b) => dupScore(b) - dupScore(a));
+      for (const m of sorted.slice(1)) toDelete.push(m.id);
+    }
+    if (toDelete.length === 0) return { removed: 0 };
+
+    const { error } = await supabase.from('contacts').delete().in('id', toDelete);
+    if (error) return { removed: 0, error: error.message };
+    const del = new Set(toDelete);
+    setContacts(prev => prev.filter(c => !del.has(c.id)));
+    return { removed: toDelete.length };
+  }, [contacts]);
 
   const createList = useCallback(async (name, source) => {
     const { data: row, error } = await supabase
@@ -510,6 +581,7 @@ export function useDatabase() {
     masterListId,
     importList,
     importIntoList,
+    removeDuplicates,
     createList,
     addContact,
     updateContactStatus,

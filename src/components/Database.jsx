@@ -642,7 +642,7 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 export default function Database({ onCallLogged }) {
   const {
     lists, contacts, masterListId,
-    importList, importIntoList, createList, addContact,
+    importList, importIntoList, removeDuplicates, createList, addContact,
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB,
@@ -888,12 +888,26 @@ export default function Database({ onCallLogged }) {
               </select>
               <span className="text-xs text-slate-600">{filtered.length} contacts</span>
               {activeListId === masterListId && (
-                <button
-                  onClick={() => setShowMasterImport(true)}
-                  className="ml-auto bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 text-emerald-400 font-bold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
-                >
-                  ⬆ Bulk Upload
-                </button>
+                <>
+                  <button
+                    onClick={async () => {
+                      if (!confirm('Scan Master Database for duplicate contacts and remove them?')) return;
+                      const { removed, error } = await removeDuplicates(masterListId);
+                      if (error) alert('Could not remove duplicates: ' + error);
+                      else alert(removed ? `Removed ${removed} duplicate contact${removed > 1 ? 's' : ''}.` : 'No duplicates found — your Master Database is clean.');
+                    }}
+                    className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
+                    title="Find contacts that share a phone, email, or owner+facility and keep only the most-worked record"
+                  >
+                    🧹 Remove Duplicates
+                  </button>
+                  <button
+                    onClick={() => setShowMasterImport(true)}
+                    className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 text-emerald-400 font-bold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
+                  >
+                    ⬆ Bulk Upload
+                  </button>
+                </>
               )}
               {activeListId !== 'all' && (
                 <button
