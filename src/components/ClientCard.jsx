@@ -67,17 +67,6 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         </div>
         {/* Actions */}
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {onMoveToDatabase && (
-            <button
-              onClick={() => {
-                if (confirm(`Move "${client.name}" out of Clients and into the Master Database?`)) onMoveToDatabase(client);
-              }}
-              className="p-1.5 rounded-lg hover:bg-emerald-900/50 text-slate-400 hover:text-emerald-400 transition-all text-xs"
-              title="Move to Master Database"
-            >
-              ⤳
-            </button>
-          )}
           <button
             onClick={() => onEdit(client)}
             className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white transition-all text-xs"
@@ -230,6 +219,18 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
             ))}
           </select>
         </div>
+      )}
+
+      {/* Move to Master Database (always visible) */}
+      {onMoveToDatabase && (
+        <button
+          onClick={() => {
+            if (confirm(`Move "${client.name}" out of Clients and into the Master Database?`)) onMoveToDatabase(client);
+          }}
+          className="mt-2 w-full text-xs font-semibold text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 rounded-lg px-3 py-1.5 transition-all"
+        >
+          ⤳ Move to Master Database
+        </button>
       )}
     </div>
 
