@@ -45,16 +45,56 @@ export function extractStateAndMarket(address) {
   return { state: '', market: '' };
 }
 
-export function parseImportData(text) {
-  const lines = text.trim().split('\n').filter(l => l.trim());
-  if (lines.length < 2) return [];
+// RFC-4180-ish tokenizer: handles quoted fields with embedded delimiters and
+// newlines (Excel multi-line cells), plus "" escaped quotes. Returns rows of fields.
+function tokenizeDelimited(text, delimiter) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += ch;
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delimiter) {
+      row.push(field); field = '';
+    } else if (ch === '\r') {
+      // ignore; handled by \n
+    } else if (ch === '\n') {
+      row.push(field); rows.push(row); row = []; field = '';
+    } else field += ch;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
 
-  const firstLine = lines[0];
-  const tabCount = (firstLine.match(/\t/g) ?? []).length;
-  const commaCount = (firstLine.match(/,/g) ?? []).length;
+// Map a free-text "Next Action" to one of the platform's action types.
+function inferActionType(text) {
+  const t = (text || '').toLowerCase();
+  if (/\bemail\b|e-?mail/.test(t)) return 'email';
+  if (/meet|appointment|\bappt\b|visit|tour|lunch|coffee/.test(t)) return 'meeting';
+  if (/\bbov\b|opinion of value|valuation|proposal/.test(t)) return 'bov';
+  if (/research|report|tractiq|comps?\b|underwrit|pull (a|the)/.test(t)) return 'research';
+  return 'call'; // call blocks default to a follow-up call
+}
+
+export function parseImportData(text) {
+  if (!text || !text.trim()) return { contacts: [], headers: [], fieldMap: {} };
+
+  // Detect delimiter from the header line (headers are unquoted)
+  const headerLine = text.slice(0, text.indexOf('\n') === -1 ? text.length : text.indexOf('\n'));
+  const tabCount = (headerLine.match(/\t/g) ?? []).length;
+  const commaCount = (headerLine.match(/,/g) ?? []).length;
   const delimiter = tabCount >= commaCount ? '\t' : ',';
 
-  const rawHeaders = lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
+  const rows = tokenizeDelimited(text, delimiter);
+  if (rows.length < 2) return { contacts: [], headers: [], fieldMap: {} };
+
+  const clean = s => (s ?? '').replace(/\s+/g, ' ').trim(); // collapse embedded newlines
+  const rawHeaders = rows[0].map(clean);
 
   const fieldMap = {};
   let firstNameIdx = null;
@@ -64,16 +104,18 @@ export function parseImportData(text) {
     const lh = h.toLowerCase().trim();
     if (!fieldMap.facilityName && /facili|property[\s_]name|storage[\s_]name|business[\s_]name|self.?storage/i.test(lh)) {
       fieldMap.facilityName = i;
-    } else if (!fieldMap.ownerName && /owner|contact[\s_]name|full[\s_]name|^name$|primary[\s_]contact/i.test(lh)) {
+    } else if (!fieldMap.ownerName && /owner[\s_]*name|contact[\s_]name|full[\s_]name|^name$|primary[\s_]contact|^owner$/i.test(lh)) {
       fieldMap.ownerName = i;
     } else if (firstNameIdx == null && /^first[\s_]?name$|^first$/i.test(lh)) {
       firstNameIdx = i;
     } else if (lastNameIdx == null && /^last[\s_]?name$|^last$/i.test(lh)) {
       lastNameIdx = i;
-    } else if (!fieldMap.phone && /phone|tel|mobile|cell/i.test(lh)) {
+    } else if (!fieldMap.phone && /phone|tel|mobile|cell|#|\bnumber\b/i.test(lh)) {
       fieldMap.phone = i;
     } else if (!fieldMap.email && /email|e.?mail/i.test(lh)) {
       fieldMap.email = i;
+    } else if (!fieldMap.nextAction && /next[\s_]*action|follow.?up/i.test(lh)) {
+      fieldMap.nextAction = i;
     } else if (!fieldMap.address && /address|street|location/i.test(lh)) {
       fieldMap.address = i;
     } else if (!fieldMap.city && /city|town/i.test(lh)) {
@@ -84,8 +126,12 @@ export function parseImportData(text) {
       fieldMap.zip = i;
     } else if (!fieldMap.units && /unit|door|count/i.test(lh)) {
       fieldMap.units = i;
-    } else if (!fieldMap.sqft && /sq.*ft|square|size/i.test(lh)) {
+    } else if (!fieldMap.sqft && /sq.?ft|sq.?footage|footage|square|size/i.test(lh)) {
       fieldMap.sqft = i;
+    } else if (!fieldMap.conversation && /conversation|spoke|talked/i.test(lh)) {
+      fieldMap.conversation = i;
+    } else if (!fieldMap.message && /message|voicemail|\bvm\b|left.?msg/i.test(lh)) {
+      fieldMap.message = i;
     } else if (!fieldMap.notes && /note|comment|remark|detail/i.test(lh)) {
       fieldMap.notes = i;
     }
@@ -105,8 +151,8 @@ export function parseImportData(text) {
   }
 
   const contacts = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ''));
+  for (let r = 1; r < rows.length; r++) {
+    const cols = rows[r].map(clean);
     if (cols.every(c => !c)) continue;
 
     let address = cols[fieldMap.address] ?? '';
@@ -140,6 +186,18 @@ export function parseImportData(text) {
       ownerName = [first, last].filter(Boolean).join(' ');
     }
 
+    // Notes: base notes column + fold in Conversation?/Message? call content
+    let notes = fieldMap.notes != null ? (cols[fieldMap.notes] ?? '') : '';
+    const convo = fieldMap.conversation != null ? (cols[fieldMap.conversation] ?? '') : '';
+    const msg = fieldMap.message != null ? (cols[fieldMap.message] ?? '') : '';
+    const extras = [];
+    if (convo) extras.push(`Conversation: ${convo}`);
+    if (msg) extras.push(`Message: ${msg}`);
+    notes = [notes, ...extras].filter(Boolean).join(' | ');
+
+    // Next Action → integrates into the platform's action system
+    const nextActionText = fieldMap.nextAction != null ? (cols[fieldMap.nextAction] ?? '') : '';
+
     contacts.push({
       facilityName: cols[fieldMap.facilityName] ?? '',
       ownerName,
@@ -151,7 +209,10 @@ export function parseImportData(text) {
       status: 'fresh',
       callHistory: [],
       callbackDate: null,
-      notes: fieldMap.notes != null ? (cols[fieldMap.notes] ?? '') : '',
+      notes,
+      nextActionType: nextActionText ? inferActionType(nextActionText) : '',
+      nextActionDate: '',
+      nextActionNote: nextActionText,
     });
   }
   return { contacts, headers: rawHeaders, fieldMap };
@@ -285,6 +346,9 @@ export function useDatabase() {
       notes: c.notes ?? '',
       status: 'fresh',
       call_history: [],
+      next_action_type: c.nextActionType ?? '',
+      next_action_date: c.nextActionDate ?? '',
+      next_action_note: c.nextActionNote ?? '',
     }));
 
     const BATCH = 500;
