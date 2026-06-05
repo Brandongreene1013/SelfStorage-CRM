@@ -19,7 +19,7 @@ const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Analyst', 'Calen
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
-  const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction } = useCRM();
+  const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction } = useCRM();
   const db = useDatabase(); // shared Database state (lifted so contacts can move to/from Clients)
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { increment: incrementProgress } = useDailyProgress();
@@ -248,6 +248,7 @@ export default function App() {
               onEdit={handleEdit}
               onStageChange={moveClientToStage}
               onSetAction={setActionClient}
+              onLogAction={logClientAction}
               filter={filter}
             />
           </div>
@@ -280,6 +281,7 @@ export default function App() {
                     onStageChange={moveClientToStage}
                     onSetAction={setClientAction}
                     onMoveToDatabase={handleClientToDatabase}
+                    onLogAction={logClientAction}
                   />
                 ))}
               </div>
@@ -288,7 +290,19 @@ export default function App() {
         )}
 
         {view === 'Database' && (
-          <Database db={db} onCallLogged={handleCallLogged} onContactToClients={handleContactToClients} />
+          <Database
+            db={db}
+            onCallLogged={handleCallLogged}
+            onContactToClients={handleContactToClients}
+            clients={clients}
+            clientHandlers={{
+              onEdit: handleEdit,
+              onDelete: handleDelete,
+              onStageChange: moveClientToStage,
+              onSetAction: setClientAction,
+              onLogAction: logClientAction,
+            }}
+          />
         )}
 
         {view === 'Analyst' && <Analyst />}

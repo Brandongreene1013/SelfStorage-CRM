@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { useFileStorage } from '../hooks/useFileStorage';
 import ActionModal from './ActionModal';
+import { LogActionModal, LastActionLine } from './ActionLog';
 
-export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, compact = false }) {
+export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, compact = false }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
   const { openFile } = useFileStorage();
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
   const docs = client.documents ?? [];
   const [showActionModal, setShowActionModal] = useState(false);
+  const [showLogModal, setShowLogModal] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
   const isOverdue = client.nextActionDate && client.nextActionDate < today;
@@ -206,6 +208,19 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         )}
       </div>
 
+      {/* Activity log: Last Action + Log button */}
+      {onLogAction && (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <LastActionLine actionLog={client.actionLog} />
+          <button
+            onClick={() => setShowLogModal(true)}
+            className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
+          >
+            + Log
+          </button>
+        </div>
+      )}
+
       {/* Stage selector (mini) */}
       {!compact && (
         <div className="mt-2">
@@ -243,6 +258,15 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         actionNote={client.nextActionNote}
         onSave={(fields) => onSetAction(client.id, fields)}
         onClose={() => setShowActionModal(false)}
+      />
+    )}
+    {showLogModal && (
+      <LogActionModal
+        name={client.name}
+        subtitle={client.facilityName}
+        actionLog={client.actionLog}
+        onSave={(entry) => onLogAction(client.id, entry)}
+        onClose={() => setShowLogModal(false)}
       />
     )}
     </>

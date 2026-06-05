@@ -240,6 +240,7 @@ function dbToContact(row) {
     nextActionDate: row.next_action_date ?? '',
     nextActionNote: row.next_action_note ?? '',
     leadTemp: row.lead_temp ?? '',
+    actionLog: row.action_log ?? [],
   };
 }
 
@@ -508,12 +509,23 @@ export function useDatabase() {
     if (fields.nextActionDate  !== undefined) dbFields.next_action_date = fields.nextActionDate;
     if (fields.nextActionNote  !== undefined) dbFields.next_action_note = fields.nextActionNote;
     if (fields.leadTemp        !== undefined) dbFields.lead_temp        = fields.leadTemp;
+    if (fields.actionLog       !== undefined) dbFields.action_log       = fields.actionLog;
     dbFields.updated_at = new Date().toISOString();
 
     const { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
     if (!error) {
       setContacts(prev => prev.map(c => c.id === contactId ? { ...c, ...fields } : c));
     }
+  }, []);
+
+  // Append a logged action to a contact's activity log
+  const logContactAction = useCallback((contactId, entry) => {
+    setContacts(prev => {
+      const c = prev.find(x => x.id === contactId);
+      const nextLog = [...(c?.actionLog ?? []), entry];
+      supabase.from('contacts').update({ action_log: nextLog, updated_at: new Date().toISOString() }).eq('id', contactId).then(() => {});
+      return prev.map(x => x.id === contactId ? { ...x, actionLog: nextLog } : x);
+    });
   }, []);
 
   // Move a contact into a different list (drag-and-drop between Database lists)
@@ -601,5 +613,6 @@ export function useDatabase() {
     renameList,
     deleteContact,
     addToMasterDB,
+    logContactAction,
   };
 }

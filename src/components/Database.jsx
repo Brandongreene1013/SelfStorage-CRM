@@ -2,6 +2,8 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core';
 import ImportListModal from './ImportListModal';
 import ActionModal from './ActionModal';
+import { LogActionModal, LastActionLine } from './ActionLog';
+import ClientCard from './ClientCard';
 import { ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
@@ -281,9 +283,10 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, isMasterDB }) {
+function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, isMasterDB }) {
   const [added, setAdded] = useState(false);
   const [showAction, setShowAction] = useState(false);
+  const [showLog, setShowLog] = useState(false);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: contact.id, data: { contact } });
 
@@ -446,6 +449,19 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, isMaster
         )}
       </div>
 
+      {/* Activity log: Last Action + Log button */}
+      {onLogAction && (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <LastActionLine actionLog={contact.actionLog} />
+          <button
+            onClick={e => { e.stopPropagation(); setShowLog(true); }}
+            className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
+          >
+            + Log
+          </button>
+        </div>
+      )}
+
       {showAction && (
         <ActionModal
           name={contact.ownerName || contact.facilityName || 'Contact'}
@@ -455,6 +471,15 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, isMaster
           actionNote={contact.nextActionNote}
           onSave={(fields) => onSetAction(contact.id, fields)}
           onClose={() => setShowAction(false)}
+        />
+      )}
+      {showLog && (
+        <LogActionModal
+          name={contact.ownerName || contact.facilityName || 'Contact'}
+          subtitle={contact.facilityName}
+          actionLog={contact.actionLog}
+          onSave={(entry) => onLogAction(contact.id, entry)}
+          onClose={() => setShowLog(false)}
         />
       )}
 
@@ -653,13 +678,13 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 }
 
 // ─── Main Database Component ──────────────────────────────────────────────────
-export default function Database({ onCallLogged, db, onContactToClients }) {
+export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {} }) {
   const {
     lists, contacts, masterListId,
     importList, importIntoList, removeDuplicates, moveContactToList, createList, addContact,
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
-    addToMasterDB,
+    addToMasterDB, logContactAction,
   } = db;
 
   const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
@@ -721,6 +746,20 @@ export default function Database({ onCallLogged, db, onContactToClients }) {
     filtered.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
     [filtered]
   );
+
+  // In the Master Database view, clients are merged in (unified view, no duplicates)
+  const masterView = activeListId === masterListId;
+  const clientsInView = (masterView && statusFilter === 'all')
+    ? clients.filter(cl => {
+        if (!search) return true;
+        const q = search.toLowerCase();
+        return (cl.name ?? '').toLowerCase().includes(q)
+          || (cl.facilityName ?? '').toLowerCase().includes(q)
+          || (cl.address ?? '').toLowerCase().includes(q)
+          || (cl.phone ?? '').includes(q)
+          || (cl.email ?? '').toLowerCase().includes(q);
+      })
+    : [];
 
   function handleCallOutcome(contact, status) {
     updateContactStatus(contact.id, status, callNote);
@@ -795,7 +834,7 @@ export default function Database({ onCallLogged, db, onContactToClients }) {
               >
                 <span className="font-bold flex items-center gap-1.5">⭐ Master Database</span>
                 <span className="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 px-1.5 py-0.5 rounded-md">
-                  {contacts.filter(c => c.listId === masterListId).length}
+                  {contacts.filter(c => c.listId === masterListId).length + clients.length}
                 </span>
               </button>
             </DropTarget>
@@ -934,7 +973,7 @@ export default function Database({ onCallLogged, db, onContactToClients }) {
                 <option value="all">All Statuses</option>
                 {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
-              <span className="text-xs text-slate-600">{filtered.length} contacts</span>
+              <span className="text-xs text-slate-600">{filtered.length + clientsInView.length} contacts</span>
               {activeListId === masterListId && (
                 <>
                   <button
@@ -968,7 +1007,7 @@ export default function Database({ onCallLogged, db, onContactToClients }) {
             </div>
 
             {/* Card grid */}
-            {filtered.length === 0 ? (
+            {filtered.length === 0 && clientsInView.length === 0 ? (
               <div className="text-center py-20 text-slate-600">
                 <div className="text-5xl mb-3">📋</div>
                 <p className="text-sm">No contacts. Import a list to get started.</p>
@@ -977,7 +1016,7 @@ export default function Database({ onCallLogged, db, onContactToClients }) {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
                 {filtered.map(c => (
                   <PropertyCard
                     key={c.id}
@@ -985,7 +1024,20 @@ export default function Database({ onCallLogged, db, onContactToClients }) {
                     onClick={() => setOpenContact(c)}
                     onAddToMasterDB={addToMasterDB}
                     onSetAction={(id, fields) => updateContact(id, fields)}
-                    isMasterDB={activeListId === masterListId}
+                    onLogAction={logContactAction}
+                    isMasterDB={masterView}
+                  />
+                ))}
+                {/* Clients merged into the Master Database view (unified, no duplicates) */}
+                {clientsInView.map(cl => (
+                  <ClientCard
+                    key={`client-${cl.id}`}
+                    client={cl}
+                    onEdit={clientHandlers.onEdit}
+                    onDelete={clientHandlers.onDelete}
+                    onStageChange={clientHandlers.onStageChange}
+                    onSetAction={clientHandlers.onSetAction}
+                    onLogAction={clientHandlers.onLogAction}
                   />
                 ))}
               </div>

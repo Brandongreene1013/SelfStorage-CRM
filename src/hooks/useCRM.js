@@ -39,6 +39,7 @@ export function useCRM() {
       nextActionDate: row.next_action_date ?? '',
       nextActionNote: row.next_action_note ?? '',
       leadTemp: row.lead_temp ?? '',
+      actionLog: row.action_log ?? [],
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -65,6 +66,7 @@ export function useCRM() {
     if (data.nextActionDate !== undefined) db.next_action_date = data.nextActionDate;
     if (data.nextActionNote !== undefined) db.next_action_note = data.nextActionNote;
     if (data.leadTemp !== undefined) db.lead_temp = data.leadTemp;
+    if (data.actionLog !== undefined) db.action_log = data.actionLog;
     return db;
   }
 
@@ -122,5 +124,15 @@ export function useCRM() {
     }
   }, []);
 
-  return { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction };
+  // Append a logged action to a client's activity log
+  const logClientAction = useCallback(async (id, entry) => {
+    setClients(prev => {
+      const client = prev.find(c => c.id === id);
+      const nextLog = [...(client?.actionLog ?? []), entry];
+      supabase.from('clients').update({ action_log: nextLog, updated_at: new Date().toISOString() }).eq('id', id).then(() => {});
+      return prev.map(c => c.id === id ? { ...c, actionLog: nextLog } : c);
+    });
+  }, []);
+
+  return { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction };
 }

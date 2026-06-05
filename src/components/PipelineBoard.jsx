@@ -10,9 +10,11 @@ import {
 import { useDroppable } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
 import { PIPELINE_STAGES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
+import { LogActionModal, LastActionLine } from './ActionLog';
 
 /* ── Draggable client chip ── */
-function DraggableChip({ client, stage, onEdit, onSetAction }) {
+function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction }) {
+  const [showLog, setShowLog] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: client.id,
     data: { client },
@@ -106,12 +108,36 @@ function DraggableChip({ client, stage, onEdit, onSetAction }) {
           + Set Action
         </button>
       )}
+
+      {/* Activity log: Last Action + Log button */}
+      {onLogAction && (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <LastActionLine actionLog={client.actionLog} />
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); setShowLog(true); }}
+            className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-0.5 transition-all"
+          >
+            + Log
+          </button>
+        </div>
+      )}
+
+      {showLog && (
+        <LogActionModal
+          name={client.name}
+          subtitle={client.facilityName}
+          actionLog={client.actionLog}
+          onSave={(entry) => onLogAction(client.id, entry)}
+          onClose={() => setShowLog(false)}
+        />
+      )}
     </div>
   );
 }
 
 /* ── Droppable column ── */
-function StageColumn({ stage, clients, onEdit, onSetAction, isOver: isOverProp }) {
+function StageColumn({ stage, clients, onEdit, onSetAction, onLogAction, isOver: isOverProp }) {
   const { setNodeRef, isOver } = useDroppable({ id: String(stage.id) });
   const active = isOver || isOverProp;
 
@@ -149,7 +175,7 @@ function StageColumn({ stage, clients, onEdit, onSetAction, isOver: isOverProp }
           </div>
         )}
         {clients.map(c => (
-          <DraggableChip key={c.id} client={c} stage={stage} onEdit={onEdit} onSetAction={onSetAction} />
+          <DraggableChip key={c.id} client={c} stage={stage} onEdit={onEdit} onSetAction={onSetAction} onLogAction={onLogAction} />
         ))}
       </div>
     </div>
@@ -172,7 +198,7 @@ function OverlayChip({ client }) {
 }
 
 /* ── Main Pipeline Board ── */
-export default function PipelineBoard({ clients, onEdit, onStageChange, onSetAction, filter }) {
+export default function PipelineBoard({ clients, onEdit, onStageChange, onSetAction, onLogAction, filter }) {
   const [activeClient, setActiveClient] = useState(null);
 
   const sensors = useSensors(
@@ -212,6 +238,7 @@ export default function PipelineBoard({ clients, onEdit, onStageChange, onSetAct
             clients={filteredClients.filter(c => c.stageId === stage.id)}
             onEdit={onEdit}
             onSetAction={onSetAction}
+            onLogAction={onLogAction}
           />
         ))}
       </div>
