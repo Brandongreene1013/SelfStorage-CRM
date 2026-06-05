@@ -11,11 +11,12 @@ import Dashboard from './components/Dashboard';
 import Calendar from './components/Calendar';
 import Database from './components/Database';
 import Analyst from './components/Analyst';
+import AdvisoryBoard from './components/AdvisoryBoard';
 import ActionModal from './components/ActionModal';
 import { PIPELINE_STAGES } from './data/constants';
 import './index.css';
 
-const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Analyst', 'Calendar'];
+const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Analyst', 'Advisory Board', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
@@ -162,7 +163,7 @@ export default function App() {
           ))}
         </nav>
 
-        {view !== 'Calendar' && view !== 'Database' && view !== 'Analyst' && (
+        {view !== 'Calendar' && view !== 'Database' && view !== 'Analyst' && view !== 'Advisory Board' && (
           <button
             onClick={() => setShowAddModal(true)}
             className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-1.5 shadow"
@@ -170,7 +171,7 @@ export default function App() {
             <span className="text-lg leading-none font-black">+</span> Add Client
           </button>
         )}
-        {(view === 'Calendar' || view === 'Database' || view === 'Analyst') && (
+        {(view === 'Calendar' || view === 'Database' || view === 'Analyst' || view === 'Advisory Board') && (
           <div className="w-[110px]" />
         )}
       </header>
@@ -306,6 +307,8 @@ export default function App() {
         )}
 
         {view === 'Analyst' && <Analyst />}
+
+        {view === 'Advisory Board' && <AdvisoryBoard />}
 
         {view === 'Calendar' && (
           <Calendar
