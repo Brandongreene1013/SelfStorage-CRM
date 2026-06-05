@@ -27,7 +27,7 @@ export function LogActionModal({ name, subtitle, actionLog = [], onSave, onClose
   const [note, setNote] = useState('');
 
   function handleSave() {
-    onSave({ type, date, note: note.trim() });
+    onSave({ type, date, note: note.trim(), at: new Date().toISOString() });
     onClose();
   }
 

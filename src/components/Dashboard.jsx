@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
+import RecentActivity from './RecentActivity';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 
 // ─── KPI Strip ────────────────────────────────────────────────────────────────
@@ -453,7 +454,7 @@ function TodoWidget() {
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function Dashboard({ clients, meetings = [], onNavigateCalendar, onAddToPipeline }) {
+export default function Dashboard({ clients, contacts = [], meetings = [], onNavigateCalendar, onAddToPipeline }) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
   const inContract  = clients.filter(c => c.stageId === 8).length;
@@ -527,7 +528,7 @@ export default function Dashboard({ clients, meetings = [], onNavigateCalendar, 
           <FunnelChart clients={clients} filter="All" />
         </div>
 
-        {/* Right: To-Do + Meetings + Active Relationships */}
+        {/* Right: To-Do + Meetings + Recent Activity + Active Relationships */}
         <div className="space-y-4">
           <TodoWidget />
           <UpcomingMeetingsWidget
@@ -535,6 +536,7 @@ export default function Dashboard({ clients, meetings = [], onNavigateCalendar, 
             clients={clients}
             onNavigate={onNavigateCalendar}
           />
+          <RecentActivity clients={clients} contacts={contacts} />
           <ActiveRelationships clients={clients} />
         </div>
 

@@ -230,6 +230,7 @@ export default function App() {
         {view === 'Dashboard' && (
           <Dashboard
             clients={clients}
+            contacts={db.contacts}
             meetings={meetings}
             onNavigateCalendar={() => setView('Calendar')}
             onAddToPipeline={(data) => { addClient(data); setView('Pipeline'); }}
