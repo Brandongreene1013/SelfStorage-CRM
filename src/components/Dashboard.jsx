@@ -89,7 +89,7 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
 }
 
 // ─── Today's Progress ─────────────────────────────────────────────────────────
-function TodaysProgress({ today, increment, decrement, todayLabel }) {
+function TodaysProgress({ today, increment, decrement, setValue, todayLabel }) {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
       <div className="flex items-center justify-between mb-4">
@@ -109,9 +109,15 @@ function TodaysProgress({ today, increment, decrement, todayLabel }) {
             className={`${f.bg} border ${f.border} rounded-lg px-4 py-2.5 flex items-center justify-between`}>
             <span className={`text-xs font-semibold ${f.accent}`}>{f.label}</span>
             <div className="flex items-center gap-3">
-              <span className={`text-xl font-black ${f.accent} w-8 text-center tabular-nums`}>
-                {today[f.key] ?? 0}
-              </span>
+              <input
+                type="number"
+                min="0"
+                value={today[f.key] ?? 0}
+                onChange={e => setValue(f.key, e.target.value)}
+                onFocus={e => e.target.select()}
+                className={`text-xl font-black ${f.accent} w-14 text-center tabular-nums bg-slate-800/60 border border-slate-700 rounded-md py-0.5 focus:outline-none focus:border-current [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                title="Type a number, or use +/−"
+              />
               <div className="flex gap-1">
                 <button onClick={() => increment(f.key)}
                   className="w-6 h-6 rounded bg-slate-700/80 hover:bg-green-600/30 border border-slate-600 hover:border-green-600/50 text-slate-300 text-xs font-black transition-all flex items-center justify-center">
@@ -460,7 +466,7 @@ export default function Dashboard({ clients, meetings = [], onNavigateCalendar, 
     count: clients.filter(c => c.stageId === s.id).length,
   }));
 
-  const { today, increment, decrement, getWeek, getMonth, getYear, getSpecificMonth } = useDailyProgress();
+  const { today, increment, decrement, setValue, getWeek, getMonth, getYear, getSpecificMonth } = useDailyProgress();
   const [analyticsRange, setAnalyticsRange] = useState('Week');
   const [selectedMonth, setSelectedMonth] = useState(
     () => new Date().toISOString().slice(0, 7)
@@ -506,6 +512,7 @@ export default function Dashboard({ clients, meetings = [], onNavigateCalendar, 
             today={today}
             increment={increment}
             decrement={decrement}
+            setValue={setValue}
             todayLabel={todayLabel}
           />
 

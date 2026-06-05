@@ -94,6 +94,12 @@ export function useDailyProgress() {
     setToday(prev => ({ ...prev, [field]: Math.max(0, (prev[field] ?? 0) - 1) }));
   }, []);
 
+  // Set a counter directly to a typed value
+  const setValue = useCallback((field, value) => {
+    const n = Math.max(0, Math.floor(Number(value) || 0));
+    setToday(prev => ({ ...prev, [field]: n }));
+  }, []);
+
   function sumRange(days) {
     const result = { ...DEFAULT_COUNTERS };
     for (let i = 0; i < days; i++) {
@@ -132,6 +138,7 @@ export function useDailyProgress() {
     log,
     increment,
     decrement,
+    setValue,
     getWeek:        () => sumRange(7),
     getMonth:       () => sumRange(30),
     getYear:        () => sumRange(365),
