@@ -2,7 +2,7 @@ import { useState } from 'react';
 import MeetingModal from './MeetingModal';
 import { useOutlookCalendar } from '../hooks/useOutlookCalendar';
 
-export default function Calendar({ meetings, clients, onAdd, onUpdate, onDelete }) {
+export default function Calendar({ meetings, calendarEvents = [], clients, onAdd, onUpdate, onDelete }) {
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
 
@@ -19,8 +19,16 @@ export default function Calendar({ meetings, clients, onAdd, onUpdate, onDelete 
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const monthLabel = currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' });
 
-  // Merge local + outlook events for display
-  const allMeetings = [...meetings, ...outlookEvents];
+  // Merge CRM meetings + Cowork-synced Outlook events + live MSAL events.
+  // Dedup so the same meeting from multiple sources shows once.
+  const _merged = [...meetings, ...calendarEvents, ...outlookEvents];
+  const _seen = new Set();
+  const allMeetings = _merged.filter(m => {
+    const k = `${m.date}|${m.startTime || ''}|${(m.title || '').toLowerCase().trim()}`;
+    if (_seen.has(k)) return false;
+    _seen.add(k);
+    return true;
+  });
 
   const meetingsByDate = {};
   allMeetings.forEach(m => {

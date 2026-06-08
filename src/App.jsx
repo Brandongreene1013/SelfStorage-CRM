@@ -364,6 +364,7 @@ export default function App() {
         {view === 'Calendar' && (
           <Calendar
             meetings={meetings}
+            calendarEvents={calendarEvents}
             clients={clients}
             onAdd={addMeeting}
             onUpdate={updateMeeting}
