@@ -518,6 +518,15 @@ export function useDatabase() {
     }
   }, []);
 
+  // Replace a contact's activity log wholesale (review actions), with optional email backfill
+  const mutateContactLog = useCallback(async (contactId, { log, email }) => {
+    const db = { action_log: log, updated_at: new Date().toISOString() };
+    if (email !== undefined && email !== null) db.email = email;
+    const { error } = await supabase.from('contacts').update(db).eq('id', contactId);
+    if (!error) setContacts(prev => prev.map(c => c.id === contactId
+      ? { ...c, actionLog: log, ...(email !== undefined && email !== null ? { email } : {}) } : c));
+  }, []);
+
   // Append a logged action to a contact's activity log
   const logContactAction = useCallback((contactId, entry) => {
     setContacts(prev => {
@@ -614,5 +623,6 @@ export function useDatabase() {
     deleteContact,
     addToMasterDB,
     logContactAction,
+    mutateContactLog,
   };
 }

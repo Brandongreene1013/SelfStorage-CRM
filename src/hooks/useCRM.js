@@ -124,6 +124,15 @@ export function useCRM() {
     }
   }, []);
 
+  // Replace a client's activity log wholesale (review actions), with optional email backfill
+  const mutateClientLog = useCallback(async (id, { log, email }) => {
+    const db = { action_log: log, updated_at: new Date().toISOString() };
+    if (email !== undefined && email !== null) db.email = email;
+    const { error } = await supabase.from('clients').update(db).eq('id', id);
+    if (!error) setClients(prev => prev.map(c => c.id === id
+      ? { ...c, actionLog: log, ...(email !== undefined && email !== null ? { email } : {}) } : c));
+  }, []);
+
   // Append a logged action to a client's activity log
   const logClientAction = useCallback(async (id, entry) => {
     setClients(prev => {
@@ -134,5 +143,5 @@ export function useCRM() {
     });
   }, []);
 
-  return { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction };
+  return { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, mutateClientLog };
 }

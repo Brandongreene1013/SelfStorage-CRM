@@ -21,7 +21,7 @@ const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Analyst', 'Advis
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
-  const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction } = useCRM();
+  const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, mutateClientLog } = useCRM();
   const db = useDatabase(); // shared Database state (lifted so contacts can move to/from Clients)
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { calendarEvents } = useCalendarEvents();
@@ -29,6 +29,44 @@ export default function App() {
 
   // CRM meetings + synced Outlook calendar events, for the dashboard widget
   const allMeetings = [...meetings, ...calendarEvents];
+
+  // ── Email "needs review" matches: build the flagged list + confirm/reassign/dismiss ──
+  const reviewRecords = [
+    ...clients.map(c => ({ table: 'clients', id: c.id, name: c.name, facility: c.facilityName, email: c.email, actionLog: c.actionLog ?? [] })),
+    ...db.contacts.map(c => ({ table: 'contacts', id: c.id, name: c.ownerName, facility: c.facilityName, email: c.email, actionLog: c.actionLog ?? [] })),
+  ];
+  const reviewItems = reviewRecords.flatMap(r =>
+    (r.actionLog || []).filter(e => e.needsReview).map(entry => ({ host: r, entry })));
+
+  const mutateLog = (table, id, payload) =>
+    table === 'clients' ? mutateClientLog(id, payload) : db.mutateContactLog(id, payload);
+
+  const handleReviewConfirm = useCallback(({ host, entry }) => {
+    const rec = reviewRecords.find(r => r.table === host.table && r.id === host.id);
+    if (!rec) return;
+    const log = (rec.actionLog || []).map(e => e.messageId === entry.messageId ? { ...e, needsReview: false } : e);
+    const email = (!rec.email || !rec.email.trim()) && entry.email ? entry.email : undefined;
+    mutateLog(host.table, host.id, { log, email });
+  }, [reviewRecords]);
+
+  const handleReviewDismiss = useCallback(({ host, entry }) => {
+    const rec = reviewRecords.find(r => r.table === host.table && r.id === host.id);
+    if (!rec) return;
+    const log = (rec.actionLog || []).filter(e => e.messageId !== entry.messageId);
+    mutateLog(host.table, host.id, { log });
+  }, [reviewRecords]);
+
+  const handleReviewReassign = useCallback(({ host, entry }, target) => {
+    const src = reviewRecords.find(r => r.table === host.table && r.id === host.id);
+    const dst = reviewRecords.find(r => r.table === target.table && r.id === target.id);
+    if (!src || !dst) return;
+    // remove from source
+    mutateLog(host.table, host.id, { log: (src.actionLog || []).filter(e => e.messageId !== entry.messageId) });
+    // add to target (cleared flag) + backfill address if target has none
+    const cleaned = { ...entry, needsReview: false };
+    const email = (!dst.email || !dst.email.trim()) && entry.email ? entry.email : undefined;
+    mutateLog(target.table, target.id, { log: [...(dst.actionLog || []), cleaned], email });
+  }, [reviewRecords]);
 
   // ── Move a Database contact → Clients/Pipeline (drag onto the Clients target) ──
   const handleContactToClients = useCallback((contact) => {
@@ -239,6 +277,13 @@ export default function App() {
             meetings={allMeetings}
             onNavigateCalendar={() => setView('Calendar')}
             onAddToPipeline={(data) => { addClient(data); setView('Pipeline'); }}
+            review={{
+              items: reviewItems,
+              records: reviewRecords,
+              onConfirm: handleReviewConfirm,
+              onReassign: handleReviewReassign,
+              onDismiss: handleReviewDismiss,
+            }}
           />
         )}
 

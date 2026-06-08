@@ -142,7 +142,7 @@ export default async function handler(req, res) {
   }
 
   const at = sentAt || new Date().toISOString();
-  const entry = { type: 'email', note: summary, at, date: at.slice(0, 10), messageId: messageId || null, source: 'email', matchMethod, confidence, needsReview };
+  const entry = { type: 'email', note: summary, at, date: at.slice(0, 10), messageId: messageId || null, email: recipient, source: 'email', matchMethod, confidence, needsReview };
 
   const update = { action_log: [...log, entry], updated_at: new Date().toISOString() };
   // Backfill address if this record has no email on file and we're confident
