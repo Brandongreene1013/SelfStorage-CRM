@@ -50,6 +50,7 @@ export default function RecentActivity({ clients = [], contacts = [], limit = 15
                     <span className="text-xs text-slate-500 flex-shrink-0">{fmt(ts(e))}</span>
                   </div>
                   <p className="text-xs text-slate-400 truncate">
+                    {e.needsReview && <span className="text-amber-400 font-bold mr-1" title="Low-confidence email match — verify this is the right contact">⚠ review</span>}
                     {e.note || t?.label}
                     {e.sub ? <span className="text-slate-600"> · {e.sub}</span> : null}
                   </p>
