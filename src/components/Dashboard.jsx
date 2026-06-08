@@ -266,7 +266,10 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
                   {m.startTime && <p className={`text-xs mt-0.5 ${isToday ? 'text-amber-400/70' : 'text-slate-500'}`}>{m.startTime}</p>}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{m.title}</p>
+                  <p className="text-xs font-semibold text-white truncate">
+                    {m.title}
+                    {m.source === 'outlook' && <span className="ml-1.5 text-[10px] text-blue-400/80 font-bold">· Outlook</span>}
+                  </p>
                   {client && <p className="text-xs text-amber-400/70 truncate mt-0.5">{client.name}</p>}
                   {m.location && <p className="text-xs text-slate-500 truncate">📍 {m.location}</p>}
                 </div>

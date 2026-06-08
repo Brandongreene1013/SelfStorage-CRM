@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useCRM } from './hooks/useCRM';
 import { useDatabase } from './hooks/useDatabase';
 import { useMeetings } from './hooks/useMeetings';
+import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useDailyProgress } from './hooks/useDailyProgress';
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
@@ -23,7 +24,11 @@ export default function App() {
   const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction } = useCRM();
   const db = useDatabase(); // shared Database state (lifted so contacts can move to/from Clients)
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
+  const { calendarEvents } = useCalendarEvents();
   const { increment: incrementProgress } = useDailyProgress();
+
+  // CRM meetings + synced Outlook calendar events, for the dashboard widget
+  const allMeetings = [...meetings, ...calendarEvents];
 
   // ── Move a Database contact → Clients/Pipeline (drag onto the Clients target) ──
   const handleContactToClients = useCallback((contact) => {
@@ -231,7 +236,7 @@ export default function App() {
           <Dashboard
             clients={clients}
             contacts={db.contacts}
-            meetings={meetings}
+            meetings={allMeetings}
             onNavigateCalendar={() => setView('Calendar')}
             onAddToPipeline={(data) => { addClient(data); setView('Pipeline'); }}
           />
