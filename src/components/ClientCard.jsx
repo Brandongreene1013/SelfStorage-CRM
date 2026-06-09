@@ -236,6 +236,18 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         </div>
       )}
 
+      {/* Move out of the pipeline → keep as a Master Database contact */}
+      {onMoveToDatabase && (
+        <button
+          onClick={() => {
+            if (confirm(`Move "${client.name}" out of the Clients pipeline and into the Master Database as a contact?`)) onMoveToDatabase(client);
+          }}
+          className="mt-2 w-full text-xs font-semibold text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 rounded-lg px-3 py-1.5 transition-all"
+          title="Removes them from the active pipeline but keeps them in the Master Database"
+        >
+          ⤳ Move to Master Database
+        </button>
+      )}
     </div>
 
     {showActionModal && (
