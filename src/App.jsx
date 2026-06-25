@@ -12,13 +12,11 @@ import Dashboard from './components/Dashboard';
 import Calendar from './components/Calendar';
 import Database from './components/Database';
 import Analyst from './components/Analyst';
-import AdvisoryBoard from './components/AdvisoryBoard';
-import ProjectVault from './components/ProjectVault';
 import ActionModal from './components/ActionModal';
 import { PIPELINE_STAGES } from './data/constants';
 import './index.css';
 
-const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Analyst', 'Vault', 'Advisory Board', 'Calendar'];
+const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Analyst', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
@@ -207,7 +205,7 @@ export default function App() {
           ))}
         </nav>
 
-        {!['Calendar', 'Database', 'Analyst', 'Advisory Board', 'Vault'].includes(view) && (
+        {!['Calendar', 'Database', 'Analyst'].includes(view) && (
           <button
             onClick={() => setShowAddModal(true)}
             className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-1.5 shadow"
@@ -215,7 +213,7 @@ export default function App() {
             <span className="text-lg leading-none font-black">+</span> Add Client
           </button>
         )}
-        {['Calendar', 'Database', 'Analyst', 'Advisory Board', 'Vault'].includes(view) && (
+        {['Calendar', 'Database', 'Analyst'].includes(view) && (
           <div className="w-[110px]" />
         )}
       </header>
@@ -359,17 +357,6 @@ export default function App() {
         )}
 
         {view === 'Analyst' && <Analyst />}
-
-        {view === 'Advisory Board' && <AdvisoryBoard />}
-
-        {view === 'Vault' && (
-          <ProjectVault
-            people={[
-              ...clients.map(c => ({ table: 'clients', id: c.id, name: c.name, facility: c.facilityName })),
-              ...db.contacts.map(c => ({ table: 'contacts', id: c.id, name: c.ownerName, facility: c.facilityName })),
-            ]}
-          />
-        )}
 
         {view === 'Calendar' && (
           <Calendar

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git reset *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(python -c ' *)",
+      "Bash(npx vite *)",
+      "Bash(mkdir -p \"C:/Users/bgreene/StorageProspector/src/components\" \"C:/Users/bgreene/StorageProspector/src/lib\" \"C:/Users/bgreene/StorageProspector/api\" \"C:/Users/bgreene/StorageProspector/public\")"
+    ]
+  }
+}
