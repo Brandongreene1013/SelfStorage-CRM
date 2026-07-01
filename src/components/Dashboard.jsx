@@ -5,35 +5,17 @@ import FunnelChart from './FunnelChart';
 import RecentActivity from './RecentActivity';
 import NeedsReview from './NeedsReview';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
-
-// ─── KPI Strip ────────────────────────────────────────────────────────────────
-function KPIStrip({ stats }) {
-  return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-      <div className="grid grid-cols-3 lg:grid-cols-6 divide-y lg:divide-y-0 divide-x divide-slate-800">
-        {stats.map((s, i) => (
-          <div key={i} className="px-5 py-3.5">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{s.label}</p>
-            <p className={`text-2xl font-black leading-none ${s.accent ?? 'text-white'}`}>{s.value}</p>
-            {s.sub && <p className="text-xs text-slate-600 mt-1">{s.sub}</p>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+import { SectionCard, MetricCardGrid, LoadingSkeleton } from './ui';
 
 // ─── Pipeline Continuum Snapshot ──────────────────────────────────────────────
 function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
   const max = Math.max(...stageCounts.map(s => s.count), 1);
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-      <div className="flex items-start justify-between mb-5">
-        <div>
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Brokerage Pipeline</h2>
-          <p className="text-xs text-slate-600 mt-0.5">Deal distribution across the full lifecycle</p>
-        </div>
+    <SectionCard
+      title="Brokerage Pipeline"
+      subtitle="Deal distribution across the full lifecycle"
+      actions={
         <div className="flex items-center gap-4 text-right">
           {totalUnits > 0 && (
             <div>
@@ -48,8 +30,8 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
             </div>
           )}
         </div>
-      </div>
-
+      }
+    >
       {/* Stage bar */}
       <div className="flex items-end gap-1.5">
         {stageCounts.map((s) => (
@@ -86,24 +68,23 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
           </div>
         ))}
       </div>
-    </div>
+    </SectionCard>
   );
 }
 
 // ─── Today's Progress ─────────────────────────────────────────────────────────
 function TodaysProgress({ today, increment, decrement, setValue, todayLabel }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Today's Progress</h2>
-          <p className="text-xs text-slate-600 mt-0.5">{todayLabel} · Resets at midnight</p>
-        </div>
+    <SectionCard
+      title="Today's Progress"
+      subtitle={`${todayLabel} · Resets at midnight`}
+      actions={
         <div className="flex items-center gap-1.5 bg-slate-800 rounded-lg px-2.5 py-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
           <span className="text-xs font-semibold text-green-400">Live</span>
         </div>
-      </div>
+      }
+    >
 
       <div className="space-y-2">
         {PROGRESS_FIELDS.map(f => (
@@ -134,7 +115,7 @@ function TodaysProgress({ today, increment, decrement, setValue, todayLabel }) {
           </div>
         ))}
       </div>
-    </div>
+    </SectionCard>
   );
 }
 
@@ -156,13 +137,11 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
     : monthOptions.find(o => o.value === selectedMonth)?.label ?? '';
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div>
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Productivity Analytics</h2>
-          <p className="text-xs text-slate-600 mt-0.5">Compounded totals · {subLabel}</p>
-        </div>
-        <div className="flex items-center gap-2">
+    <SectionCard
+      title="Productivity Analytics"
+      subtitle={`Compounded totals · ${subLabel}`}
+      actions={
+        <>
           {/* Month picker — only shown when a specific month is selected */}
           {analyticsRange === 'SpecificMonth' && (
             <select
@@ -194,9 +173,9 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
               ▾
             </button>
           </div>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       <div className="grid grid-cols-5 gap-2">
         {PROGRESS_FIELDS.map(f => (
           <div key={f.key} className={`${f.bg} border ${f.border} rounded-xl p-3 text-center`}>
@@ -205,7 +184,7 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
           </div>
         ))}
       </div>
-    </div>
+    </SectionCard>
   );
 }
 
@@ -219,24 +198,18 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
   const todayCount = meetings.filter(m => m.date === todayStr).length;
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Upcoming Meetings</h2>
-          <p className="text-xs text-slate-600 mt-0.5">
-            {new Date().toLocaleDateString('default', { month: 'long', day: 'numeric' })}
-          </p>
-        </div>
+    <SectionCard
+      title="Upcoming Meetings"
+      subtitle={new Date().toLocaleDateString('default', { month: 'long', day: 'numeric' })}
+      actions={
         <div className="text-right">
           <p className={`text-2xl font-black leading-none ${todayCount > 0 ? 'text-amber-400' : 'text-slate-700'}`}>
             {todayCount}
           </p>
           <p className="text-xs text-slate-600">today</p>
         </div>
-      </div>
-
-      <div className="h-px bg-slate-800" />
-
+      }
+    >
       {upcoming.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-6 text-slate-600 gap-2">
           <span className="text-2xl">📅</span>
@@ -283,7 +256,7 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
           </button>
         </div>
       )}
-    </div>
+    </SectionCard>
   );
 }
 
@@ -296,19 +269,15 @@ function ActiveRelationships({ clients }) {
     .slice(0, 6);
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Active Relationships</h2>
-          <p className="text-xs text-slate-600 mt-0.5">Cold Call → Exclusive Listing</p>
-        </div>
+    <SectionCard
+      title="Active Relationships"
+      subtitle="Cold Call → Exclusive Listing"
+      actions={
         <span className="text-xs bg-slate-800 text-slate-500 px-2 py-0.5 rounded-md font-semibold">
           {clients.filter(c => [2,3,4,5].includes(c.stageId)).length}
         </span>
-      </div>
-
-      <div className="h-px bg-slate-800" />
-
+      }
+    >
       {active.length === 0 ? (
         <p className="text-xs text-slate-600 italic text-center py-4">No active relationships</p>
       ) : (
@@ -335,7 +304,7 @@ function ActiveRelationships({ clients }) {
           )}
         </div>
       )}
-    </div>
+    </SectionCard>
   );
 }
 
@@ -343,11 +312,13 @@ function ActiveRelationships({ clients }) {
 function TodoWidget() {
   const [tasks, setTasks] = useState([]);
   const [draft, setDraft] = useState('');
+  const [loading, setLoading] = useState(true);
   const inputRef = useRef(null);
 
   useEffect(() => {
     supabase.from('tasks').select('*').order('created_at', { ascending: false }).then(({ data }) => {
       if (data) setTasks(data);
+      setLoading(false);
     });
   }, []);
 
@@ -382,20 +353,17 @@ function TodoWidget() {
   const done    = tasks.filter(t => t.done).length;
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">To-Do</h2>
-          <p className="text-xs text-slate-600 mt-0.5">{pending} remaining</p>
-        </div>
-        {done > 0 && (
-          <button onClick={clearDone}
-            className="text-xs text-slate-600 hover:text-red-400 transition-colors font-semibold">
-            Clear done ({done})
-          </button>
-        )}
-      </div>
-
+    <SectionCard
+      title="To-Do"
+      subtitle={`${pending} remaining`}
+      actions={done > 0 && (
+        <button onClick={clearDone}
+          className="text-xs text-slate-600 hover:text-red-400 transition-colors font-semibold">
+          Clear done ({done})
+        </button>
+      )}
+      bodyClassName="space-y-3"
+    >
       {/* Input */}
       <div className="flex gap-2">
         <input
@@ -418,7 +386,9 @@ function TodoWidget() {
       </div>
 
       {/* Task list */}
-      {tasks.length === 0 ? (
+      {loading ? (
+        <LoadingSkeleton rows={3} />
+      ) : tasks.length === 0 ? (
         <p className="text-xs text-slate-700 italic text-center py-3">No tasks yet</p>
       ) : (
         <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
@@ -453,7 +423,7 @@ function TodoWidget() {
           ))}
         </div>
       )}
-    </div>
+    </SectionCard>
   );
 }
 
@@ -499,7 +469,7 @@ export default function Dashboard({ clients, contacts = [], meetings = [], onNav
     <div className="space-y-4">
 
       {/* ── KPI Strip ── */}
-      <KPIStrip stats={kpiStats} />
+      <MetricCardGrid metrics={kpiStats} />
 
       {/* ── Pipeline Continuum ── */}
       <PipelineContinuum

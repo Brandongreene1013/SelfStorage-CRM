@@ -14,6 +14,7 @@ import Database from './components/Database';
 import Analyst from './components/Analyst';
 import ActionModal from './components/ActionModal';
 import { PIPELINE_STAGES } from './data/constants';
+import { SearchToolbar, FilterPills, EmptyState, PageHeader, Button } from './components/ui';
 import './index.css';
 
 const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Analyst', 'Calendar'];
@@ -189,12 +190,12 @@ export default function App() {
         </div>
 
         {/* Nav tabs */}
-        <nav className="flex gap-1 bg-slate-800 rounded-xl p-1">
+        <nav className="flex gap-1 bg-slate-800 rounded-xl p-1 overflow-x-auto max-w-full scrollbar-thin">
           {VIEWS.map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+              className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex-shrink-0 ${
                 view === v
                   ? 'bg-amber-500 text-slate-900 shadow'
                   : 'text-slate-400 hover:text-white'
@@ -206,12 +207,9 @@ export default function App() {
         </nav>
 
         {!['Calendar', 'Database', 'Analyst'].includes(view) && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-xl text-sm transition-all flex items-center gap-1.5 shadow"
-          >
+          <Button onClick={() => setShowAddModal(true)}>
             <span className="text-lg leading-none font-black">+</span> Add Client
-          </button>
+          </Button>
         )}
         {['Calendar', 'Database', 'Analyst'].includes(view) && (
           <div className="w-[110px]" />
@@ -220,51 +218,37 @@ export default function App() {
 
       {/* Filter bar — only for Pipeline / Clients */}
       {(view === 'Pipeline' || view === 'Clients') && (
-        <div className="bg-slate-900/60 border-b border-slate-800 px-6 py-3 flex flex-wrap items-center gap-3">
-          <div className="flex gap-1 bg-slate-800 rounded-lg p-1">
-            {FILTERS.map(f => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all ${
-                  filter === f
-                    ? f === 'Buyer'
-                      ? 'bg-blue-600 text-white'
-                      : f === 'Seller'
-                        ? 'bg-amber-600 text-white'
-                        : 'bg-slate-600 text-white'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search name, facility, address..."
-            className="flex-1 min-w-[180px] max-w-xs bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+        <SearchToolbar
+          search={search}
+          onSearchChange={setSearch}
+          placeholder="Search name, facility, address..."
+          trailing={
+            <>
+              {view === 'Clients' && (
+                <select
+                  value={stageFilter}
+                  onChange={e => setStageFilter(Number(e.target.value))}
+                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:border-amber-500"
+                >
+                  <option value={0}>All Stages</option>
+                  {PIPELINE_STAGES.map(s => (
+                    <option key={s.id} value={s.id}>{s.id}. {s.label}</option>
+                  ))}
+                </select>
+              )}
+              <span className="ml-auto text-xs text-slate-500 hidden sm:block">
+                {visibleClients.length} / {clients.length} clients
+              </span>
+            </>
+          }
+        >
+          <FilterPills
+            options={FILTERS}
+            value={filter}
+            onChange={setFilter}
+            colorFor={f => f === 'Buyer' ? 'bg-blue-600 text-white' : f === 'Seller' ? 'bg-amber-600 text-white' : 'bg-slate-600 text-white'}
           />
-
-          {view === 'Clients' && (
-            <select
-              value={stageFilter}
-              onChange={e => setStageFilter(Number(e.target.value))}
-              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:border-amber-500"
-            >
-              <option value={0}>All Stages</option>
-              {PIPELINE_STAGES.map(s => (
-                <option key={s.id} value={s.id}>{s.id}. {s.label}</option>
-              ))}
-            </select>
-          )}
-
-          <span className="ml-auto text-xs text-slate-500 hidden sm:block">
-            {visibleClients.length} / {clients.length} clients
-          </span>
-        </div>
+        </SearchToolbar>
       )}
 
       {/* Main */}
@@ -288,12 +272,7 @@ export default function App() {
 
         {view === 'Pipeline' && (
           <div>
-            <div className="mb-4 flex items-center gap-3">
-              <h2 className="text-lg font-black text-white">Pipeline Board</h2>
-              <span className="text-xs text-slate-500 bg-slate-800 px-2.5 py-1 rounded-full">
-                Drag cards to move between stages
-              </span>
-            </div>
+            <PageHeader title="Pipeline Board" badge="Drag cards to move between stages" />
             <PipelineBoard
               clients={visibleClients}
               onEdit={handleEdit}
@@ -308,20 +287,19 @@ export default function App() {
 
         {view === 'Clients' && (
           <div>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-black text-white">All Clients</h2>
-            </div>
+            <PageHeader title="All Clients" />
             {visibleClients.length === 0 ? (
-              <div className="text-center py-20 text-slate-600">
-                <div className="text-5xl mb-3">🔍</div>
-                <p className="text-sm">No clients match your filters.</p>
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="mt-4 text-amber-500 hover:text-amber-400 text-sm font-semibold"
-                >
-                  + Add your first client
-                </button>
-              </div>
+              <EmptyState
+                message="No clients match your filters."
+                action={
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="mt-4 text-amber-500 hover:text-amber-400 text-sm font-semibold"
+                  >
+                    + Add your first client
+                  </button>
+                }
+              />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {visibleClients.map(c => (

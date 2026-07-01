@@ -12,6 +12,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { PIPELINE_STAGES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import MoveMenu from './MoveMenu';
+import { StatusBadge } from './ui';
 
 /* ── Draggable client chip ── */
 function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction, onMoveToDatabase }) {
@@ -43,13 +44,9 @@ function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction, onMove
       <div className="flex items-start justify-between gap-1">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1 mb-1 flex-wrap">
-            <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
-              client.type === 'Buyer'
-                ? 'bg-blue-900/60 text-blue-300'
-                : 'bg-amber-900/60 text-amber-300'
-            }`}>
+            <StatusBadge variant={client.type === 'Buyer' ? 'buyer' : 'seller'} pill={false} className="font-bold px-1.5">
               {client.type}
-            </span>
+            </StatusBadge>
             {(() => {
               const temp = LEAD_TEMPS.find(t => t.value === client.leadTemp);
               return temp ? (

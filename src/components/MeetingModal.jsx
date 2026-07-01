@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import ModalLayout from './ui/ModalLayout';
 
 const EMPTY = {
   title: '',
@@ -43,8 +44,7 @@ export default function MeetingModal({ meeting, defaultDate, clients, onSave, on
   const labelCls = 'block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wide';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col">
+    <ModalLayout onClose={onClose} className="max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 flex-shrink-0">
           <h2 className="text-lg font-bold text-white">{isEdit ? 'Edit Meeting' : 'Schedule Meeting'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors text-xl leading-none">✕</button>
@@ -129,7 +129,6 @@ export default function MeetingModal({ meeting, defaultDate, clients, onSave, on
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalLayout>
   );
 }

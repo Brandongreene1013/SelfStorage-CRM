@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { parseImportData } from '../hooks/useDatabase';
+import ModalLayout from './ui/ModalLayout';
 
 const SOURCES = ['Internal DB', 'CoStar', 'Tractiq', 'Other'];
 
@@ -105,8 +106,7 @@ export default function ImportListModal({ onImport, onClose, fixedListName }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 overflow-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
+    <ModalLayout onClose={onClose} size="xl" className="max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-800">
           <div>
@@ -278,7 +278,6 @@ export default function ImportListModal({ onImport, onClose, fixedListName }) {
             Import {preview ? `${preview.contacts.length} Contacts` : 'List'}
           </button>
         </div>
-      </div>
-    </div>
+    </ModalLayout>
   );
 }

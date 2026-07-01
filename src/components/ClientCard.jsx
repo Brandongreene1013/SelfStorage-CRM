@@ -3,6 +3,7 @@ import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES, LEAD_TEMPS } from '../da
 import { useFileStorage } from '../hooks/useFileStorage';
 import ActionModal from './ActionModal';
 import { LogActionModal, LastActionLine } from './ActionLog';
+import { StatusBadge } from './ui';
 
 export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, compact = false }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
@@ -24,17 +25,13 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
-              client.type === 'Buyer'
-                ? 'bg-blue-900/50 border-blue-700 text-blue-300'
-                : 'bg-amber-900/50 border-amber-700 text-amber-300'
-            }`}>
+            <StatusBadge variant={client.type === 'Buyer' ? 'buyer' : 'seller'} className="font-bold">
               {client.type}
-            </span>
+            </StatusBadge>
             {propType && (
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-emerald-900/40 border-emerald-700 text-emerald-300">
+              <StatusBadge variant="emerald">
                 {propType.icon} {propType.label}
-              </span>
+              </StatusBadge>
             )}
             {!compact && (
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${stage.text} border-current bg-slate-900/50`}>

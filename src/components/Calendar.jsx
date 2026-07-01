@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import MeetingModal from './MeetingModal';
 import { useOutlookCalendar } from '../hooks/useOutlookCalendar';
+import { EmptyState } from './ui';
 
 export default function Calendar({ meetings, calendarEvents = [], clients, onAdd, onUpdate, onDelete }) {
   const today = new Date();
@@ -226,14 +227,16 @@ export default function Calendar({ meetings, calendarEvents = [], clients, onAdd
           </div>
 
           {selectedMeetings.length === 0 ? (
-            <div className="text-center py-20 text-slate-600">
-              <div className="text-5xl mb-3">📅</div>
-              <p className="text-sm">No meetings on this day</p>
-              <button onClick={() => { setEditingMeeting(null); setShowModal(true); }}
-                className="mt-3 text-amber-500 hover:text-amber-400 text-sm font-semibold transition-colors">
-                + Schedule one
-              </button>
-            </div>
+            <EmptyState
+              icon="📅"
+              message="No meetings on this day"
+              action={
+                <button onClick={() => { setEditingMeeting(null); setShowModal(true); }}
+                  className="mt-3 text-amber-500 hover:text-amber-400 text-sm font-semibold transition-colors">
+                  + Schedule one
+                </button>
+              }
+            />
           ) : (
             <div className="space-y-3">
               {selectedMeetings.map(m => (

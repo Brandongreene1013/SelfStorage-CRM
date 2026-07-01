@@ -6,6 +6,7 @@ import { LogActionModal, LastActionLine } from './ActionLog';
 import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
 import { ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
+import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -31,6 +32,12 @@ const STATUS_COLORS = {
   appointment:    'bg-amber-600/20 text-amber-400 border border-amber-600/40',
   not_interested: 'bg-red-600/20 text-red-400 border border-red-600/40',
   callback:       'bg-purple-600/20 text-purple-400 border border-purple-600/40',
+};
+
+// Same palette, mapped to StatusBadge's variant names
+const STATUS_VARIANT = {
+  fresh: 'slate', no_answer: 'yellow', voicemail: 'blue', conversation: 'green',
+  appointment: 'amber', not_interested: 'red', callback: 'purple',
 };
 
 const CALL_OUTCOMES = [
@@ -123,18 +130,14 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
   }
 
   return (
-    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 overflow-auto" onClick={onClose}>
-      <div
-        className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
+    <ModalLayout onClose={onClose} size="lg" className="max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-slate-800">
           <div className="flex-1 min-w-0 pr-3">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${STATUS_COLORS[contact.status] ?? STATUS_COLORS.fresh}`}>
+              <StatusBadge variant={STATUS_VARIANT[contact.status] ?? 'slate'} pill={false} className="font-bold">
                 {STATUS_LABELS[contact.status] ?? 'Fresh'}
-              </span>
+              </StatusBadge>
               {contact.market && (
                 <span className="text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
                   {contact.market}
@@ -278,8 +281,7 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
             Save & Close
           </button>
         </div>
-      </div>
-    </div>
+    </ModalLayout>
   );
 }
 
@@ -323,9 +325,9 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
       {/* Status + lead temp + market */}
       <div className="flex items-center justify-between mb-2 gap-1.5">
         <div className="flex items-center gap-1.5">
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${STATUS_COLORS[contact.status] ?? STATUS_COLORS.fresh}`}>
+          <StatusBadge variant={STATUS_VARIANT[contact.status] ?? 'slate'} pill={false} className="font-bold">
             {STATUS_LABELS[contact.status] ?? 'Fresh'}
-          </span>
+          </StatusBadge>
           {(() => {
             const temp = LEAD_TEMPS.find(t => t.value === contact.leadTemp);
             const order = ['', 'hot', 'warm', 'cold'];
@@ -541,9 +543,7 @@ function AddContactModal({ listName, onSave, onClose }) {
   const canSave = form.ownerName.trim() || form.facilityName.trim();
 
   return (
-    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl"
-        onClick={e => e.stopPropagation()}>
+    <ModalLayout onClose={onClose}>
         <div className="flex items-center justify-between p-5 border-b border-slate-800">
           <div>
             <h2 className="text-base font-black text-white">Add Contact</h2>
@@ -602,8 +602,7 @@ function AddContactModal({ listName, onSave, onClose }) {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </ModalLayout>
   );
 }
 
@@ -936,11 +935,11 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       {/* ── RIGHT: Main Content ── */}
       <div className="flex-1 min-w-0 space-y-4">
         {activeListId === null && (
-          <div className="text-center py-32 text-slate-600">
-            <div className="text-5xl mb-4">📂</div>
-            <p className="text-base font-semibold text-slate-500 mb-1">No list selected</p>
-            <p className="text-sm text-slate-600">Select a list from the left, or create a new one.</p>
-          </div>
+          <EmptyState
+            icon="📂"
+            title="No list selected"
+            message="Select a list from the left, or create a new one."
+          />
         )}
         {activeListId !== null && (<>
 
@@ -1018,13 +1017,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
             {/* Card grid */}
             {filtered.length === 0 && clientsInView.length === 0 ? (
-              <div className="text-center py-20 text-slate-600">
-                <div className="text-5xl mb-3">📋</div>
-                <p className="text-sm">No contacts. Import a list to get started.</p>
-                <button onClick={() => setShowImport(true)} className="mt-3 text-amber-500 hover:text-amber-400 text-sm font-semibold">
-                  + Import List
-                </button>
-              </div>
+              <EmptyState
+                icon="📋"
+                message="No contacts. Import a list to get started."
+                action={
+                  <button onClick={() => setShowImport(true)} className="mt-3 text-amber-500 hover:text-amber-400 text-sm font-semibold">
+                    + Import List
+                  </button>
+                }
+              />
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
                 {filtered.map(c => (
@@ -1106,10 +1107,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
       {/* ── New Blank List modal ── */}
       {showNewList && (
-        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowNewList(false)}>
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl p-6 space-y-4"
-            onClick={e => e.stopPropagation()}>
+        <ModalLayout onClose={() => setShowNewList(false)} size="sm" className="p-6 space-y-4">
             <h2 className="text-base font-black text-white">Create Blank List</h2>
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">List Name *</label>
@@ -1149,8 +1147,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 Create List
               </button>
             </div>
-          </div>
-        </div>
+        </ModalLayout>
       )}
 
       {/* ── Add Contact modal ── */}

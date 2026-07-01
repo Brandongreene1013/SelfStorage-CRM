@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { PIPELINE_STAGES, CLIENT_TYPES, PROPERTY_TYPES } from '../data/constants';
 import { useFileStorage } from '../hooks/useFileStorage';
+import ModalLayout from './ui/ModalLayout';
 
 const EMPTY = {
   name: '',
@@ -103,8 +104,7 @@ export default function ClientModal({ client, onSave, onClose }) {
   const labelCls = 'block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wide';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
+    <ModalLayout onClose={onClose} className="max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 flex-shrink-0">
           <h2 className="text-lg font-bold text-white">
@@ -377,7 +377,6 @@ export default function ClientModal({ client, onSave, onClose }) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </ModalLayout>
   );
 }

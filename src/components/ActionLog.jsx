@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ACTION_TYPES } from '../data/constants';
+import ModalLayout from './ui/ModalLayout';
 
 const TYPE_MAP = Object.fromEntries(ACTION_TYPES.map(a => [a.value, a]));
 
@@ -34,8 +35,7 @@ export function LogActionModal({ name, subtitle, actionLog = [], onSave, onClose
   const recent = [...actionLog].reverse().slice(0, 6);
 
   return (
-    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+    <ModalLayout onClose={onClose}>
         <div className="flex items-center justify-between p-5 border-b border-slate-800">
           <div>
             <h2 className="text-base font-black text-white">Log Action</h2>
@@ -95,7 +95,6 @@ export function LogActionModal({ name, subtitle, actionLog = [], onSave, onClose
             Log It
           </button>
         </div>
-      </div>
-    </div>
+    </ModalLayout>
   );
 }

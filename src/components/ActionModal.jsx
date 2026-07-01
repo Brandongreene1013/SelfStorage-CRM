@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ACTION_TYPES } from '../data/constants';
+import ModalLayout from './ui/ModalLayout';
 
 export default function ActionModal({ name, subtitle, actionType, actionDate, actionNote, onSave, onClose }) {
   const [type, setType] = useState(actionType ?? '');
@@ -17,8 +18,7 @@ export default function ActionModal({ name, subtitle, actionType, actionDate, ac
   }
 
   return (
-    <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+    <ModalLayout onClose={onClose}>
         <div className="flex items-center justify-between p-5 border-b border-slate-800">
           <div>
             <h2 className="text-base font-black text-white">Set Next Action</h2>
@@ -94,7 +94,6 @@ export default function ActionModal({ name, subtitle, actionType, actionDate, ac
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </ModalLayout>
   );
 }
