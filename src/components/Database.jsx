@@ -7,6 +7,7 @@ import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
 import { ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
+import { RelatedTasks, TaskModal } from './tasks';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -110,19 +111,27 @@ function EditableField({ label, value, placeholder, onChange, mono, href, type =
 }
 
 // ─── Contact Detail Modal ─────────────────────────────────────────────────────
-function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, onUpdate, onDelete }) {
+function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, onUpdate, onDelete, taskApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
+  // Sprint 2: after logging certain outcomes, offer/require a follow-up task.
+  // 'callback' strongly prompts (auto-opens, due date emphasized); 'conversation'
+  // and 'appointment' just offer a dismissible suggestion bar.
+  const [taskPrompt, setTaskPrompt] = useState(null); // 'callback' | 'suggest' | null
 
   // Build Google search query for this facility
   const searchQuery = [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ');
   const missingInfo = !contact.phone || !contact.email || !contact.address;
+  const contactName = contact.ownerName || contact.facilityName || 'Contact';
 
   function saveNotes() { onNotesChange(contact.id, notes); }
 
   function handleOutcome(status) {
     onStatusChange(contact.id, status, notes);
     onNotesChange(contact.id, notes);
+    if (status === 'callback') setTaskPrompt('callback');
+    else if (status === 'conversation' || status === 'appointment') setTaskPrompt('suggest');
+    else setTaskPrompt(null);
   }
 
   function field(key) {
@@ -251,6 +260,28 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
               className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
           </div>
 
+          {/* ── Follow-up task suggestion (after Conversation / Appt Set) ── */}
+          {taskPrompt === 'suggest' && (
+            <div className="flex items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5">
+              <p className="text-xs text-amber-400 font-semibold">Add a follow-up task for this outcome?</p>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={() => setTaskPrompt('open')} className="text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-900 px-3 py-1.5 rounded-lg transition-all">
+                  + Add Task
+                </button>
+                <button onClick={() => setTaskPrompt(null)} className="text-xs text-slate-500 hover:text-white transition-colors">Dismiss</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Tasks tied to this contact (Sprint 2) ── */}
+          <RelatedTasks
+            taskApi={taskApi}
+            relatedType="contact"
+            relatedId={contact.id}
+            relatedName={contactName}
+            source="database"
+          />
+
           {/* ── Call history ── */}
           {contact.callHistory?.length > 0 && (
             <div>
@@ -281,6 +312,18 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
             Save & Close
           </button>
         </div>
+
+        {/* 'Call Back' strongly prompts for a task with due date emphasized;
+            the suggestion bar's "+ Add Task" also opens this, unemphasized. */}
+        {(taskPrompt === 'callback' || taskPrompt === 'open') && (
+          <TaskModal
+            context={{ relatedType: 'contact', relatedId: contact.id, relatedName: contactName, source: 'database' }}
+            defaults={{ title: taskPrompt === 'callback' ? 'Call back' : '', taskType: 'call' }}
+            emphasizeDueDate={taskPrompt === 'callback'}
+            onSave={(fields) => taskApi?.createTask(fields)}
+            onClose={() => setTaskPrompt(null)}
+          />
+        )}
     </ModalLayout>
   );
 }
@@ -687,7 +730,7 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 }
 
 // ─── Main Database Component ──────────────────────────────────────────────────
-export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {} }) {
+export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi }) {
   const {
     lists, contacts, masterListId,
     importList, importIntoList, removeDuplicates, moveContactToList, createList, addContact,
@@ -1052,6 +1095,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     onStageChange={clientHandlers.onStageChange}
                     onSetAction={clientHandlers.onSetAction}
                     onLogAction={clientHandlers.onLogAction}
+                    taskApi={taskApi}
                   />
                 ))}
               </div>
@@ -1090,6 +1134,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           onNotesChange={updateContactNotes}
           onUpdate={updateContact}
           onDelete={(id) => { deleteContact(id); setOpenContact(null); }}
+          taskApi={taskApi}
         />
       )}
 

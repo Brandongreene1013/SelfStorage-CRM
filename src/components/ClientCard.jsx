@@ -4,8 +4,9 @@ import { useFileStorage } from '../hooks/useFileStorage';
 import ActionModal from './ActionModal';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import { StatusBadge } from './ui';
+import { RelatedTasks } from './tasks';
 
-export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, compact = false }) {
+export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, compact = false, taskApi }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
   const { openFile } = useFileStorage();
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
@@ -217,6 +218,15 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
           </button>
         </div>
       )}
+
+      {/* Universal tasks tied to this client (Sprint 2) */}
+      <RelatedTasks
+        taskApi={taskApi}
+        relatedType="client"
+        relatedId={client.id}
+        relatedName={client.name}
+        source="client"
+      />
 
       {/* Stage selector (mini) */}
       {!compact && (

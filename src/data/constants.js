@@ -34,3 +34,39 @@ export const ACTION_TYPES = [
   { value: 'meeting',  label: 'Schedule Meeting', icon: '📅' },
   { value: 'bov',      label: 'BOV Presentation', icon: '📊' },
 ];
+
+// Universal Task engine (Sprint 2) — richer type/priority vocab than the
+// legacy single-slot ACTION_TYPES above, since one entity can now have
+// several open tasks at once.
+export const TASK_TYPES = [
+  { value: 'call',                label: 'Call',                icon: '📞' },
+  { value: 'email',               label: 'Email',                icon: '📧' },
+  { value: 'meeting',             label: 'Meeting',              icon: '📅' },
+  { value: 'send_report',         label: 'Send Report',          icon: '📈' },
+  { value: 'request_financials',  label: 'Request Financials',   icon: '📄' },
+  { value: 'bov',                 label: 'BOV',                  icon: '📊' },
+  { value: 'follow_up',           label: 'Follow Up',            icon: '🔁' },
+  { value: 'contract',            label: 'Contract',             icon: '📝' },
+  { value: 'general',             label: 'General',              icon: '✅' },
+];
+
+export const TASK_PRIORITIES = [
+  { value: 'low',    label: 'Low',    text: 'text-slate-400',  bg: 'bg-slate-700/50' },
+  { value: 'normal', label: 'Normal', text: 'text-blue-400',   bg: 'bg-blue-500/10' },
+  { value: 'high',   label: 'High',   text: 'text-amber-400',  bg: 'bg-amber-500/10' },
+  { value: 'urgent', label: 'Urgent', text: 'text-red-400',    bg: 'bg-red-500/10' },
+];
+
+// Quick-pick presets shown in the Add Task modal, matching Brandon's most
+// common broker follow-ups (Sprint 2 brief).
+export const TASK_QUICK_PICKS = [
+  { title: 'Call back tomorrow',            taskType: 'call',               offsetDays: 1 },
+  { title: 'Send TractIQ report',           taskType: 'send_report',        offsetDays: 1 },
+  { title: 'Ask for T-12',                  taskType: 'request_financials', offsetDays: 3 },
+  { title: 'Ask for rent roll',             taskType: 'request_financials', offsetDays: 3 },
+  { title: 'Schedule valuation call',       taskType: 'meeting',            offsetDays: 2 },
+  { title: 'Follow up after BOV',           taskType: 'follow_up',          offsetDays: 5 },
+  { title: 'Send exclusivity agreement',    taskType: 'contract',           offsetDays: 1 },
+  { title: 'Check in next quarter',         taskType: 'follow_up',          offsetDays: 90 },
+  { title: 'Revisit in 6 months',           taskType: 'follow_up',          offsetDays: 182 },
+];

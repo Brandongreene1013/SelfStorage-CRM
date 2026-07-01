@@ -4,6 +4,7 @@ import { useDatabase } from './hooks/useDatabase';
 import { useMeetings } from './hooks/useMeetings';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useDailyProgress } from './hooks/useDailyProgress';
+import { useTasks } from './hooks/useTasks';
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import PipelineBoard from './components/PipelineBoard';
@@ -26,6 +27,7 @@ export default function App() {
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { calendarEvents } = useCalendarEvents();
   const { increment: incrementProgress } = useDailyProgress();
+  const taskApi = useTasks(); // universal task/next-action engine (Sprint 2)
 
   // CRM meetings + synced Outlook calendar events, for the dashboard widget
   const allMeetings = [...meetings, ...calendarEvents];
@@ -260,6 +262,7 @@ export default function App() {
             meetings={allMeetings}
             onNavigateCalendar={() => setView('Calendar')}
             onAddToPipeline={(data) => { addClient(data); setView('Pipeline'); }}
+            taskApi={taskApi}
             review={{
               items: reviewItems,
               records: reviewRecords,
@@ -281,6 +284,7 @@ export default function App() {
               onLogAction={logClientAction}
               onMoveToDatabase={handleClientToDatabase}
               filter={filter}
+              taskApi={taskApi}
             />
           </div>
         )}
@@ -312,6 +316,7 @@ export default function App() {
                     onSetAction={setClientAction}
                     onMoveToDatabase={handleClientToDatabase}
                     onLogAction={logClientAction}
+                    taskApi={taskApi}
                   />
                 ))}
               </div>
@@ -332,6 +337,7 @@ export default function App() {
               onSetAction: setClientAction,
               onLogAction: logClientAction,
             }}
+            taskApi={taskApi}
           />
         )}
 

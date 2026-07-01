@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState, useMemo } from 'react';
 import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
 import RecentActivity from './RecentActivity';
 import NeedsReview from './NeedsReview';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
-import { SectionCard, MetricCardGrid, LoadingSkeleton } from './ui';
+import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState } from './ui';
+import { TaskRow, TaskModal } from './tasks';
 
 // ─── Pipeline Continuum Snapshot ──────────────────────────────────────────────
 function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
@@ -308,127 +308,118 @@ function ActiveRelationships({ clients }) {
   );
 }
 
-// ─── To-Do Tasks ─────────────────────────────────────────────────────────────
-function TodoWidget() {
-  const [tasks, setTasks] = useState([]);
-  const [draft, setDraft] = useState('');
-  const [loading, setLoading] = useState(true);
-  const inputRef = useRef(null);
+// ─── Universal Tasks (Sprint 2) ───────────────────────────────────────────────
+function DashboardTasks({ taskApi }) {
+  const [quickTitle, setQuickTitle] = useState('');
+  const [showFullModal, setShowFullModal] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
-  useEffect(() => {
-    supabase.from('tasks').select('*').order('created_at', { ascending: false }).then(({ data }) => {
-      if (data) setTasks(data);
-      setLoading(false);
-    });
-  }, []);
+  if (!taskApi) return null;
+  const { loading, migrationNeeded, groups, createTask, completeTask, deleteTask } = taskApi;
+  const { overdue, dueToday, upcoming, noDueDate, completedToday } = groups;
+  const totalOpen = overdue.length + dueToday.length + upcoming.length + noDueDate.length;
 
-  async function addTask() {
-    const text = draft.trim();
-    if (!text) return;
-    const { data: row } = await supabase.from('tasks').insert([{ text, done: false }]).select().single();
-    if (row) setTasks(prev => [row, ...prev]);
-    setDraft('');
-    inputRef.current?.focus();
+  async function quickAdd() {
+    const title = quickTitle.trim();
+    if (!title) return;
+    setQuickTitle('');
+    await createTask({ title, taskType: 'general', dueDate: new Date().toISOString().slice(0, 10), source: 'dashboard' });
   }
 
-  async function toggle(id) {
-    const task = tasks.find(t => t.id === id);
-    if (!task) return;
-    const { data: row } = await supabase.from('tasks').update({ done: !task.done }).eq('id', id).select().single();
-    if (row) setTasks(prev => prev.map(t => t.id === id ? row : t));
+  function group(label, items, tone) {
+    if (items.length === 0) return null;
+    return (
+      <div>
+        <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${tone}`}>{label} ({items.length})</p>
+        <div className="space-y-1.5">
+          {items.map(t => (
+            <TaskRow key={t.id} task={t} onComplete={completeTask} onDelete={deleteTask} />
+          ))}
+        </div>
+      </div>
+    );
   }
-
-  async function remove(id) {
-    await supabase.from('tasks').delete().eq('id', id);
-    setTasks(prev => prev.filter(t => t.id !== id));
-  }
-
-  async function clearDone() {
-    const doneIds = tasks.filter(t => t.done).map(t => t.id);
-    await supabase.from('tasks').delete().in('id', doneIds);
-    setTasks(prev => prev.filter(t => !t.done));
-  }
-
-  const pending = tasks.filter(t => !t.done).length;
-  const done    = tasks.filter(t => t.done).length;
 
   return (
     <SectionCard
-      title="To-Do"
-      subtitle={`${pending} remaining`}
-      actions={done > 0 && (
-        <button onClick={clearDone}
-          className="text-xs text-slate-600 hover:text-red-400 transition-colors font-semibold">
-          Clear done ({done})
+      title="Tasks"
+      subtitle={`${totalOpen} open`}
+      actions={
+        <button onClick={() => setShowFullModal(true)}
+          className="text-xs text-slate-500 hover:text-amber-400 transition-colors font-semibold">
+          + Full Task
         </button>
-      )}
+      }
       bodyClassName="space-y-3"
     >
-      {/* Input */}
+      {migrationNeeded && (
+        <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2">
+          Task table needs a one-time SQL migration — run <code>sql/tasks_table_migration.sql</code> in Supabase, then refresh.
+        </p>
+      )}
+
+      {/* Quick add */}
       <div className="flex gap-2">
         <input
-          ref={inputRef}
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') addTask(); }}
-          placeholder="Add a task..."
+          value={quickTitle}
+          onChange={e => setQuickTitle(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') quickAdd(); }}
+          placeholder="Quick add a task (due today)..."
           className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition-colors"
         />
         <button
-          onClick={addTask}
-          disabled={!draft.trim()}
+          onClick={quickAdd}
+          disabled={!quickTitle.trim()}
           className={`px-3 py-2 rounded-lg text-sm font-bold transition-all ${
-            draft.trim() ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+            quickTitle.trim() ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-600 cursor-not-allowed'
           }`}
         >
           +
         </button>
       </div>
 
-      {/* Task list */}
       {loading ? (
         <LoadingSkeleton rows={3} />
-      ) : tasks.length === 0 ? (
-        <p className="text-xs text-slate-700 italic text-center py-3">No tasks yet</p>
+      ) : totalOpen === 0 ? (
+        <EmptyState icon="✅" message="Nothing open — you're caught up." />
       ) : (
-        <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-          {tasks.map(t => (
-            <div key={t.id}
-              className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border transition-all group ${
-                t.done
-                  ? 'bg-slate-800/30 border-slate-800 opacity-50'
-                  : 'bg-slate-800 border-slate-700'
-              }`}
-            >
-              <button
-                onClick={() => toggle(t.id)}
-                className={`flex-shrink-0 mt-0.5 w-4 h-4 rounded border-2 transition-all flex items-center justify-center ${
-                  t.done
-                    ? 'bg-amber-500 border-amber-500 text-slate-900'
-                    : 'border-slate-600 hover:border-amber-500'
-                }`}
-              >
-                {t.done && <span className="text-xs font-black leading-none">✓</span>}
-              </button>
-              <span className={`flex-1 text-sm leading-snug ${t.done ? 'line-through text-slate-600' : 'text-slate-200'}`}>
-                {t.text}
-              </span>
-              <button
-                onClick={() => remove(t.id)}
-                className="flex-shrink-0 opacity-0 group-hover:opacity-100 text-slate-700 hover:text-red-400 text-xs transition-all leading-none mt-0.5"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+        <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+          {group('Overdue', overdue, 'text-red-400')}
+          {group('Due Today', dueToday, 'text-amber-400')}
+          {group('Upcoming', upcoming, 'text-slate-400')}
+          {group('No Due Date', noDueDate, 'text-slate-500')}
         </div>
+      )}
+
+      {completedToday.length > 0 && (
+        <div>
+          <button onClick={() => setShowCompleted(v => !v)}
+            className="text-xs text-slate-600 hover:text-slate-400 transition-colors font-semibold">
+            {showCompleted ? '▾' : '▸'} Completed today ({completedToday.length})
+          </button>
+          {showCompleted && (
+            <div className="space-y-1 mt-1.5 opacity-60">
+              {completedToday.map(t => (
+                <div key={t.id} className="text-xs text-slate-500 line-through px-3 py-1">{t.title}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showFullModal && (
+        <TaskModal
+          context={{ relatedType: 'general', source: 'dashboard' }}
+          onSave={createTask}
+          onClose={() => setShowFullModal(false)}
+        />
       )}
     </SectionCard>
   );
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function Dashboard({ clients, contacts = [], meetings = [], onNavigateCalendar, onAddToPipeline, review }) {
+export default function Dashboard({ clients, contacts = [], meetings = [], onNavigateCalendar, onAddToPipeline, review, taskApi }) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
   const inContract  = clients.filter(c => c.stageId === 8).length;
@@ -502,9 +493,9 @@ export default function Dashboard({ clients, contacts = [], meetings = [], onNav
           <FunnelChart clients={clients} filter="All" />
         </div>
 
-        {/* Right: To-Do + Meetings + Recent Activity + Active Relationships */}
+        {/* Right: Tasks + Meetings + Recent Activity + Active Relationships */}
         <div className="space-y-4">
-          <TodoWidget />
+          <DashboardTasks taskApi={taskApi} />
           <UpcomingMeetingsWidget
             meetings={meetings}
             clients={clients}
