@@ -11,9 +11,10 @@ import { useDroppable } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
 import { PIPELINE_STAGES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { LogActionModal, LastActionLine } from './ActionLog';
+import MoveMenu from './MoveMenu';
 
 /* ── Draggable client chip ── */
-function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction }) {
+function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction, onMoveToDatabase }) {
   const [showLog, setShowLog] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: client.id,
@@ -72,13 +73,18 @@ function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction }) {
             </div>
           )}
         </div>
-        <button
-          onPointerDown={e => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onEdit(client); }}
-          className="p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-white opacity-0 group-hover:opacity-100 transition-all text-xs flex-shrink-0"
-        >
-          ✏️
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {onMoveToDatabase && (
+            <MoveMenu label="⋯" options={[{ label: '→ Master Database (out of pipeline)', onClick: () => { if (confirm(`Move "${client.name}" out of the pipeline and into the Master Database?`)) onMoveToDatabase(client); } }]} />
+          )}
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onEdit(client); }}
+            className="p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-white opacity-0 group-hover:opacity-100 transition-all text-xs"
+          >
+            ✏️
+          </button>
+        </div>
       </div>
 
       {/* Next action indicator */}
@@ -137,7 +143,7 @@ function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction }) {
 }
 
 /* ── Droppable column ── */
-function StageColumn({ stage, clients, onEdit, onSetAction, onLogAction, isOver: isOverProp }) {
+function StageColumn({ stage, clients, onEdit, onSetAction, onLogAction, onMoveToDatabase, isOver: isOverProp }) {
   const { setNodeRef, isOver } = useDroppable({ id: String(stage.id) });
   const active = isOver || isOverProp;
 
@@ -175,7 +181,7 @@ function StageColumn({ stage, clients, onEdit, onSetAction, onLogAction, isOver:
           </div>
         )}
         {clients.map(c => (
-          <DraggableChip key={c.id} client={c} stage={stage} onEdit={onEdit} onSetAction={onSetAction} onLogAction={onLogAction} />
+          <DraggableChip key={c.id} client={c} stage={stage} onEdit={onEdit} onSetAction={onSetAction} onLogAction={onLogAction} onMoveToDatabase={onMoveToDatabase} />
         ))}
       </div>
     </div>
@@ -198,7 +204,7 @@ function OverlayChip({ client }) {
 }
 
 /* ── Main Pipeline Board ── */
-export default function PipelineBoard({ clients, onEdit, onStageChange, onSetAction, onLogAction, filter }) {
+export default function PipelineBoard({ clients, onEdit, onStageChange, onSetAction, onLogAction, onMoveToDatabase, filter }) {
   const [activeClient, setActiveClient] = useState(null);
 
   const sensors = useSensors(
@@ -239,6 +245,7 @@ export default function PipelineBoard({ clients, onEdit, onStageChange, onSetAct
             onEdit={onEdit}
             onSetAction={onSetAction}
             onLogAction={onLogAction}
+            onMoveToDatabase={onMoveToDatabase}
           />
         ))}
       </div>

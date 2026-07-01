@@ -300,6 +300,7 @@ export default function App() {
               onStageChange={moveClientToStage}
               onSetAction={setActionClient}
               onLogAction={logClientAction}
+              onMoveToDatabase={handleClientToDatabase}
               filter={filter}
             />
           </div>

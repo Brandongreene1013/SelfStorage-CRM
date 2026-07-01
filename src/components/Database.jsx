@@ -4,6 +4,7 @@ import ImportListModal from './ImportListModal';
 import ActionModal from './ActionModal';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import ClientCard from './ClientCard';
+import MoveMenu from './MoveMenu';
 import { ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
@@ -283,7 +284,7 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, isMasterDB }) {
+function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, isMasterDB, lists = [], onMoveToList, onToClients }) {
   const [added, setAdded] = useState(false);
   const [showAction, setShowAction] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -347,9 +348,18 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
             );
           })()}
         </div>
-        {contact.market && (
-          <span className="text-xs text-amber-400/70 font-semibold">{contact.market}</span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {contact.market && (
+            <span className="text-xs text-amber-400/70 font-semibold">{contact.market}</span>
+          )}
+          {(() => {
+            const moveOptions = [];
+            if (onToClients) moveOptions.push({ label: '→ Pipeline (Clients)', onClick: () => onToClients(contact) });
+            lists.filter(l => l.id !== contact.listId).forEach(l =>
+              moveOptions.push({ label: `→ ${l.name}`, onClick: () => onMoveToList?.(contact.id, l.id) }));
+            return moveOptions.length ? <MoveMenu options={moveOptions} /> : null;
+          })()}
+        </div>
       </div>
 
       {/* Facility Name — PRIMARY, in your face */}
@@ -1026,6 +1036,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     onSetAction={(id, fields) => updateContact(id, fields)}
                     onLogAction={logContactAction}
                     isMasterDB={masterView}
+                    lists={lists}
+                    onMoveToList={moveContactToList}
+                    onToClients={onContactToClients}
                   />
                 ))}
                 {/* Clients merged into the Master Database view (unified, no duplicates) */}
