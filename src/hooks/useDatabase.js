@@ -240,6 +240,20 @@ function collectPhoneKeys(contact) {
   return keys;
 }
 
+function sourceLabel(source, filename) {
+  if (source?.trim()) return source.trim();
+  if (filename?.trim()) return filename.replace(/\.[^.]+$/, '').trim();
+  return 'Manual / Unknown';
+}
+
+function importMetadata(options = {}) {
+  return {
+    source: sourceLabel(options.source, options.fileName),
+    fileName: options.fileName ?? '',
+    importedAt: new Date().toISOString(),
+  };
+}
+
 export function getImportMappingWarnings(mappings = []) {
   return IMPORTANT_IMPORT_FIELDS
     .filter(({ field }) => !mappings.some(m => m.field === field || (field === 'primaryPhone' && m.field === 'additionalPhone')))
@@ -282,24 +296,43 @@ export function buildImportDuplicateIndex(existingContacts = []) {
 }
 
 function findImportDuplicates(contact, duplicateIndex) {
-  if (!duplicateIndex) return [];
+  if (!duplicateIndex) return { reasons: [], matches: [] };
   const reasons = new Set();
+  const matches = new Map();
+
+  function addMatches(reason, list = []) {
+    if (!list.length) return;
+    reasons.add(reason);
+    list.forEach(existing => {
+      if (!matches.has(existing.id)) {
+        matches.set(existing.id, {
+          id: existing.id,
+          name: existing.ownerName || existing.facilityName || 'Existing contact',
+          facilityName: existing.facilityName || '',
+          reasons: [],
+        });
+      }
+      const match = matches.get(existing.id);
+      if (!match.reasons.includes(reason)) match.reasons.push(reason);
+    });
+  }
+
   collectPhoneKeys(contact).forEach(key => {
-    if (duplicateIndex.phone.get(key)?.length) reasons.add('phone match');
+    addMatches('Phone already exists', duplicateIndex.phone.get(key) ?? []);
   });
   const emailKey = (contact.email ?? '').trim().toLowerCase();
-  if (emailKey && duplicateIndex.email.get(emailKey)?.length) reasons.add('email match');
+  if (emailKey) addMatches('Email already exists', duplicateIndex.email.get(emailKey) ?? []);
   const ownerKey = normalizeNameKey(contact.ownerName);
   const addressKey = normalizeAddressKey(contact.address);
-  if (ownerKey && addressKey && duplicateIndex.ownerAddress.get(`${ownerKey}|${addressKey}`)?.length) {
-    reasons.add('owner + address match');
+  if (ownerKey && addressKey) {
+    addMatches('Same owner + address', duplicateIndex.ownerAddress.get(`${ownerKey}|${addressKey}`) ?? []);
   }
   const facilityKey = normalizeNameKey(contact.facilityName);
   const marketKey = normalizeNameKey(contact.market || contact.state);
-  if (facilityKey && marketKey && duplicateIndex.facilityMarket.get(`${facilityKey}|${marketKey}`)?.length) {
-    reasons.add('facility + market match');
+  if (facilityKey && marketKey) {
+    addMatches('Same facility + market', duplicateIndex.facilityMarket.get(`${facilityKey}|${marketKey}`) ?? []);
   }
-  return [...reasons];
+  return { reasons: [...reasons], matches: [...matches.values()] };
 }
 
 function getImportFlags(contact, duplicateReasons = []) {
@@ -348,17 +381,21 @@ function selectImportRows(rawText, options) {
   const duplicateMode = options?.duplicateMode ?? 'import';
   const rows = duplicateMode === 'skip'
     ? parsed.rows.filter(row => !row.flags.includes('Possible duplicate'))
+    : duplicateMode === 'append'
+      ? parsed.rows.filter(row => !row.flags.includes('Possible duplicate'))
     : parsed.rows;
+  const duplicateRows = parsed.rows.filter(row => row.flags.includes('Possible duplicate'));
   return {
     rows,
     contacts: rows.map(row => row.contact),
+    duplicateRows,
     skippedDuplicates: parsed.rows.length - rows.length,
     originalSummary: parsed.summary,
     importedAdditionalPhones: rows.reduce((sum, row) => sum + (row.contact.alternatePhones?.length ?? 0), 0),
   };
 }
 
-function contactInsertRow(listId, c) {
+function contactInsertRow(listId, c, meta = {}) {
   return {
     list_id: listId,
     owner_name: c.ownerName,
@@ -374,7 +411,96 @@ function contactInsertRow(listId, c) {
     next_action_type: c.nextActionType ?? '',
     next_action_date: c.nextActionDate ?? '',
     next_action_note: c.nextActionNote ?? '',
+    source: meta.source ?? c.importSource ?? '',
+    import_filename: meta.fileName ?? '',
+    imported_at: meta.importedAt ?? null,
   };
+}
+
+function stripContactSourceColumns(row) {
+  const { source: _source, import_filename: _importFilename, imported_at: _importedAt, ...rest } = row;
+  return rest;
+}
+
+function stripListMetaColumns(row) {
+  const {
+    import_filename: _importFilename,
+    import_row_count: _importRowCount,
+    ready_to_call_count: _readyToCallCount,
+    duplicate_skipped_count: _duplicateSkippedCount,
+    merged_duplicate_count: _mergedDuplicateCount,
+    additional_phone_count: _additionalPhoneCount,
+    ...rest
+  } = row;
+  return rest;
+}
+
+function hasPhone(contact, phone) {
+  const key = phoneKey(phone);
+  if (!key) return true;
+  return collectPhoneKeys(contact).includes(key);
+}
+
+function mergeImportedContact(existing, incoming, meta) {
+  const updates = {};
+  const nextAlt = Array.isArray(existing.alternatePhones) ? [...existing.alternatePhones] : [];
+  let addedPhones = 0;
+
+  if (!existing.phone && incoming.phone) {
+    updates.phone = incoming.phone;
+  } else if (incoming.phone && !hasPhone(existing, incoming.phone)) {
+    nextAlt.push({ label: 'Unknown', phone: incoming.phone });
+    addedPhones += 1;
+  }
+
+  (incoming.alternatePhones ?? []).forEach(phone => {
+    if (!hasPhone({ ...existing, alternatePhones: nextAlt }, phone.phone)) {
+      nextAlt.push(phone);
+      addedPhones += 1;
+    }
+  });
+
+  if (nextAlt.length !== (existing.alternatePhones?.length ?? 0)) updates.alternatePhones = nextAlt;
+  if (!existing.ownerName && incoming.ownerName) updates.ownerName = incoming.ownerName;
+  if (!existing.facilityName && incoming.facilityName) updates.facilityName = incoming.facilityName;
+  if (!existing.email && incoming.email) updates.email = incoming.email;
+  if (!existing.address && incoming.address) updates.address = incoming.address;
+  if (!existing.state && incoming.state) updates.state = incoming.state;
+  if (!existing.source && meta.source) updates.source = meta.source;
+  if (!existing.importFilename && meta.fileName) updates.importFilename = meta.fileName;
+  if (!existing.importedAt && meta.importedAt) updates.importedAt = meta.importedAt;
+
+  const noteParts = [];
+  if (incoming.notes && !((existing.notes ?? '').includes(incoming.notes))) noteParts.push(incoming.notes);
+  if (meta.source) noteParts.push(`Import source: ${meta.source}${meta.fileName ? ` (${meta.fileName})` : ''}`);
+  if (noteParts.length) updates.notes = [existing.notes, noteParts.join(' | ')].filter(Boolean).join('\n');
+
+  return { updates, addedPhones };
+}
+
+function updatePayloadFromFields(fields) {
+  const dbFields = {};
+  if (fields.ownerName !== undefined) dbFields.owner_name = fields.ownerName;
+  if (fields.facilityName !== undefined) dbFields.facility_name = fields.facilityName;
+  if (fields.phone !== undefined) dbFields.phone = fields.phone;
+  if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
+  if (fields.email !== undefined) dbFields.email = fields.email;
+  if (fields.address !== undefined) dbFields.address = fields.address;
+  if (fields.state !== undefined) dbFields.state = fields.state;
+  if (fields.notes !== undefined) dbFields.notes = fields.notes;
+  if (fields.status !== undefined) dbFields.status = fields.status;
+  if (fields.callbackDate !== undefined) dbFields.callback_date = fields.callbackDate;
+  if (fields.callHistory !== undefined) dbFields.call_history = fields.callHistory;
+  if (fields.nextActionType !== undefined) dbFields.next_action_type = fields.nextActionType;
+  if (fields.nextActionDate !== undefined) dbFields.next_action_date = fields.nextActionDate;
+  if (fields.nextActionNote !== undefined) dbFields.next_action_note = fields.nextActionNote;
+  if (fields.leadTemp !== undefined) dbFields.lead_temp = fields.leadTemp;
+  if (fields.actionLog !== undefined) dbFields.action_log = fields.actionLog;
+  if (fields.source !== undefined) dbFields.source = fields.source;
+  if (fields.importFilename !== undefined) dbFields.import_filename = fields.importFilename;
+  if (fields.importedAt !== undefined) dbFields.imported_at = fields.importedAt;
+  dbFields.updated_at = new Date().toISOString();
+  return dbFields;
 }
 
 // Map a free-text "Next Action" to one of the platform's action types.
@@ -486,10 +612,10 @@ export function parseImportData(text, options = {}) {
       nextActionDate: '',
       nextActionNote: nextActionText,
     };
-    const duplicateReasons = findImportDuplicates(contact, duplicateIndex);
-    const flags = getImportFlags(contact, duplicateReasons);
+    const duplicate = findImportDuplicates(contact, duplicateIndex);
+    const flags = getImportFlags(contact, duplicate.reasons);
     contacts.push(contact);
-    previewRows.push({ rowNumber: r + 1, contact, flags, duplicateReasons, raw: cols });
+    previewRows.push({ rowNumber: r + 1, contact, flags, duplicateReasons: duplicate.reasons, duplicateMatches: duplicate.matches, raw: cols });
   }
   return {
     contacts,
@@ -527,6 +653,9 @@ function dbToContact(row) {
     nextActionNote: row.next_action_note ?? '',
     leadTemp: row.lead_temp ?? '',
     actionLog: row.action_log ?? [],
+    source: row.source ?? '',
+    importFilename: row.import_filename ?? '',
+    importedAt: row.imported_at ?? null,
   };
 }
 
@@ -536,6 +665,12 @@ function dbToList(row) {
     name: row.name,
     source: row.source ?? '',
     importedAt: row.created_at?.slice(0, 10) ?? '',
+    importFilename: row.import_filename ?? '',
+    importRowCount: row.import_row_count ?? 0,
+    readyToCallCount: row.ready_to_call_count ?? 0,
+    duplicateSkippedCount: row.duplicate_skipped_count ?? 0,
+    mergedDuplicateCount: row.merged_duplicate_count ?? 0,
+    additionalPhoneCount: row.additional_phone_count ?? 0,
     contactCount: 0, // computed from contacts array
   };
 }
@@ -611,26 +746,111 @@ export function useDatabase() {
     setLists(loadedLists);
   }
 
+  async function insertListWithFallback(row) {
+    let res = await supabase.from('lists').insert([row]).select().single();
+    if (res.error && (
+      isMissingColumnError(res.error, 'import_filename')
+      || isMissingColumnError(res.error, 'import_row_count')
+      || isMissingColumnError(res.error, 'ready_to_call_count')
+      || isMissingColumnError(res.error, 'duplicate_skipped_count')
+      || isMissingColumnError(res.error, 'merged_duplicate_count')
+      || isMissingColumnError(res.error, 'additional_phone_count')
+    )) {
+      res = await supabase.from('lists').insert([stripListMetaColumns(row)]).select().single();
+    }
+    return res;
+  }
+
+  async function insertContactsWithFallback(rows) {
+    let res = await supabase.from('contacts').insert(rows).select();
+    if (res.error && (
+      isMissingColumnError(res.error, 'source')
+      || isMissingColumnError(res.error, 'import_filename')
+      || isMissingColumnError(res.error, 'imported_at')
+    )) {
+      res = await supabase.from('contacts').insert(rows.map(stripContactSourceColumns)).select();
+    }
+    return res;
+  }
+
+  const updateContactWithFallback = useCallback(async (contactId, fields) => {
+    let dbFields = updatePayloadFromFields(fields);
+    let res = await supabase.from('contacts').update(dbFields).eq('id', contactId);
+    if (res.error && (
+      isMissingColumnError(res.error, 'source')
+      || isMissingColumnError(res.error, 'import_filename')
+      || isMissingColumnError(res.error, 'imported_at')
+    )) {
+      const { source: _sourceColumn, import_filename: _importFilenameColumn, imported_at: _importedAtColumn, ...withoutSource } = dbFields;
+      res = await supabase.from('contacts').update(withoutSource).eq('id', contactId);
+      if (!res.error) {
+        const { source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
+        fields = appFields;
+      }
+    }
+    if (!res.error) {
+      setContacts(prev => prev.map(c => c.id === contactId ? { ...c, ...fields } : c));
+    }
+    return res;
+  }, []);
+
+  const appendDuplicateRows = useCallback(async (duplicateRows, meta) => {
+    let merged = 0;
+    let appendedPhones = 0;
+    for (const row of duplicateRows) {
+      const matchId = row.duplicateMatches?.[0]?.id;
+      if (!matchId) continue;
+      const existing = contacts.find(c => c.id === matchId);
+      if (!existing) continue;
+      const { updates, addedPhones } = mergeImportedContact(existing, row.contact, meta);
+      if (Object.keys(updates).length === 0) continue;
+      const { error } = await updateContactWithFallback(existing.id, updates);
+      if (!error) {
+        merged += 1;
+        appendedPhones += addedPhones;
+      }
+    }
+    return { merged, appendedPhones };
+  }, [contacts, updateContactWithFallback]);
+
   const importList = useCallback(async (name, source, rawText, options = {}) => {
+    const meta = importMetadata({ ...options, source });
     const importRows = selectImportRows(rawText, options);
     const parsed = importRows.contacts;
-    if (parsed.length === 0) return { count: 0, skippedDuplicates: importRows.skippedDuplicates };
+    const appendResult = options.duplicateMode === 'append'
+      ? await appendDuplicateRows(importRows.duplicateRows, meta)
+      : { merged: 0, appendedPhones: 0 };
+    if (parsed.length === 0 && appendResult.merged === 0) {
+      return {
+        count: 0,
+        skipped: importRows.skippedDuplicates,
+        skippedDuplicates: importRows.skippedDuplicates,
+        mergedDuplicates: 0,
+        appendedPhones: 0,
+        sourceApplied: meta.source,
+      };
+    }
 
-    // Create list
-    const { data: listRow, error: listErr } = await supabase
-      .from('lists')
-      .insert([{ name, source }])
-      .select()
-      .single();
+    const listPayload = {
+      name,
+      source: meta.source,
+      import_filename: meta.fileName,
+      import_row_count: parsed.length,
+      ready_to_call_count: importRows.originalSummary.readyToCall,
+      duplicate_skipped_count: options.duplicateMode === 'append' ? 0 : importRows.skippedDuplicates,
+      merged_duplicate_count: appendResult.merged,
+      additional_phone_count: importRows.importedAdditionalPhones + appendResult.appendedPhones,
+    };
+    const { data: listRow, error: listErr } = await insertListWithFallback(listPayload);
     if (listErr) return { count: 0 };
 
     // Insert contacts in batches of 500
-    const rows = parsed.map(c => contactInsertRow(listRow.id, c));
+    const rows = parsed.map(c => contactInsertRow(listRow.id, c, meta));
 
     const BATCH = 500;
     const inserted = [];
     for (let i = 0; i < rows.length; i += BATCH) {
-      const { data } = await supabase.from('contacts').insert(rows.slice(i, i + BATCH)).select();
+      const { data } = await insertContactsWithFallback(rows.slice(i, i + BATCH));
       if (data) inserted.push(...data);
     }
 
@@ -641,38 +861,57 @@ export function useDatabase() {
       list: newList,
       count: inserted.length,
       skipped: importRows.rows.length - inserted.length,
-      skippedDuplicates: importRows.skippedDuplicates,
+      skippedDuplicates: options.duplicateMode === 'append' ? 0 : importRows.skippedDuplicates,
+      mergedDuplicates: appendResult.merged,
+      appendedPhones: appendResult.appendedPhones,
       missingPhoneCount: importRows.originalSummary.missingPhone,
       readyToCallCount: importRows.originalSummary.readyToCall,
-      additionalPhonesImported: importRows.importedAdditionalPhones,
+      additionalPhonesImported: importRows.importedAdditionalPhones + appendResult.appendedPhones,
+      sourceApplied: meta.source,
     };
-  }, []);
+  }, [appendDuplicateRows]);
 
   // Bulk-import parsed contacts INTO an existing list (e.g. Master Database).
   const importIntoList = useCallback(async (listId, rawText, options = {}) => {
     if (!listId) return { count: 0 };
+    const meta = importMetadata(options);
     const importRows = selectImportRows(rawText, options);
     const parsed = importRows.contacts;
-    if (parsed.length === 0) return { count: 0, skippedDuplicates: importRows.skippedDuplicates };
+    const appendResult = options.duplicateMode === 'append'
+      ? await appendDuplicateRows(importRows.duplicateRows, meta)
+      : { merged: 0, appendedPhones: 0 };
+    if (parsed.length === 0 && appendResult.merged === 0) {
+      return {
+        count: 0,
+        skipped: importRows.skippedDuplicates,
+        skippedDuplicates: importRows.skippedDuplicates,
+        mergedDuplicates: 0,
+        appendedPhones: 0,
+        sourceApplied: meta.source,
+      };
+    }
 
-    const rows = parsed.map(c => contactInsertRow(listId, c));
+    const rows = parsed.map(c => contactInsertRow(listId, c, meta));
 
     const BATCH = 500;
     const inserted = [];
     for (let i = 0; i < rows.length; i += BATCH) {
-      const { data } = await supabase.from('contacts').insert(rows.slice(i, i + BATCH)).select();
+      const { data } = await insertContactsWithFallback(rows.slice(i, i + BATCH));
       if (data) inserted.push(...data);
     }
     setContacts(prev => [...prev, ...inserted.map(dbToContact)]);
     return {
       count: inserted.length,
       skipped: importRows.rows.length - inserted.length,
-      skippedDuplicates: importRows.skippedDuplicates,
+      skippedDuplicates: options.duplicateMode === 'append' ? 0 : importRows.skippedDuplicates,
+      mergedDuplicates: appendResult.merged,
+      appendedPhones: appendResult.appendedPhones,
       missingPhoneCount: importRows.originalSummary.missingPhone,
       readyToCallCount: importRows.originalSummary.readyToCall,
-      additionalPhonesImported: importRows.importedAdditionalPhones,
+      additionalPhonesImported: importRows.importedAdditionalPhones + appendResult.appendedPhones,
+      sourceApplied: meta.source,
     };
-  }, []);
+  }, [appendDuplicateRows]);
 
   // Find duplicate contacts within a list and delete all but the most-worked one
   // in each cluster. Returns { removed }.
@@ -781,28 +1020,23 @@ export function useDatabase() {
   }, []);
 
   const updateContact = useCallback(async (contactId, fields) => {
-    const dbFields = {};
-    if (fields.ownerName    !== undefined) dbFields.owner_name    = fields.ownerName;
-    if (fields.facilityName !== undefined) dbFields.facility_name = fields.facilityName;
-    if (fields.phone        !== undefined) dbFields.phone         = fields.phone;
-    if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
-    if (fields.email        !== undefined) dbFields.email         = fields.email;
-    if (fields.address      !== undefined) dbFields.address       = fields.address;
-    if (fields.state        !== undefined) dbFields.state         = fields.state;
-    if (fields.notes        !== undefined) dbFields.notes         = fields.notes;
-    if (fields.status       !== undefined) dbFields.status        = fields.status;
-    if (fields.callbackDate    !== undefined) dbFields.callback_date    = fields.callbackDate;
-    if (fields.callHistory     !== undefined) dbFields.call_history     = fields.callHistory;
-    if (fields.nextActionType  !== undefined) dbFields.next_action_type = fields.nextActionType;
-    if (fields.nextActionDate  !== undefined) dbFields.next_action_date = fields.nextActionDate;
-    if (fields.nextActionNote  !== undefined) dbFields.next_action_note = fields.nextActionNote;
-    if (fields.leadTemp        !== undefined) dbFields.lead_temp        = fields.leadTemp;
-    if (fields.actionLog       !== undefined) dbFields.action_log       = fields.actionLog;
-    dbFields.updated_at = new Date().toISOString();
-
-    const { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
+    const dbFields = updatePayloadFromFields(fields);
+    let { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
     if (error && isMissingColumnError(error, 'alternate_phones')) {
       return { error: 'alternate_phones_migration_needed' };
+    }
+    if (error && (
+      isMissingColumnError(error, 'source')
+      || isMissingColumnError(error, 'import_filename')
+      || isMissingColumnError(error, 'imported_at')
+    )) {
+      const { source: _sourceColumn, import_filename: _importFilenameColumn, imported_at: _importedAtColumn, ...withoutSource } = dbFields;
+      const retry = await supabase.from('contacts').update(withoutSource).eq('id', contactId);
+      error = retry.error;
+      if (!error) {
+        const { source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
+        fields = appFields;
+      }
     }
     if (!error) {
       setContacts(prev => prev.map(c => c.id === contactId ? { ...c, ...fields } : c));

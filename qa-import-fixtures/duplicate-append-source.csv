@@ -1,0 +1,3 @@
+Facility Name,Owner Name,Phone,Alternate Phone,Email,Address,City,State,ZIP,Notes,Source
+North Star Storage,North Star Holdings,(555) 100-2001,(555) 100-2010,owner@northstar.example,8 Compass Ave,Albany,NY,12207,Append-only QA note from Sprint 10,County Records
+Harbor Lockup,Harbor Lockup LLC,(555) 444-9900,(555) 444-9901,owner@harbor.example,72 Pier Road,Buffalo,NY,14202,Fresh QA source-tracking row,Manual Excel

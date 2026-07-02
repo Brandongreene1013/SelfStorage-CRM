@@ -75,10 +75,14 @@ export default function ImportListModal({
   }, [source, fileName]);
 
   const importableCount = preview
-    ? duplicateMode === 'skip'
+    ? duplicateMode === 'skip' || duplicateMode === 'append'
       ? preview.rows.filter(row => !row.flags.includes('Possible duplicate')).length
       : preview.rows.length
     : 0;
+  const duplicateCount = preview?.summary.possibleDuplicates ?? 0;
+  const actionableCount = duplicateMode === 'append'
+    ? importableCount + duplicateCount
+    : importableCount;
 
   function buildPreview(text, nextMappings) {
     const parsed = parseImportData(text, { mappings: nextMappings, existingContacts });
@@ -156,6 +160,8 @@ export default function ImportListModal({
         mappings,
         duplicateMode,
         summary: preview.summary,
+        fileName,
+        source: effectiveSource,
       });
       setImportResult({ ...result, listName: intoFixed ? fixedListName : name.trim(), source: effectiveSource });
     } catch (err) {
@@ -307,6 +313,7 @@ export default function ImportListModal({
                 >
                   <option value="import">Import anyway</option>
                   <option value="skip">Skip possible duplicates</option>
+                  <option value="append">Append missing phones/notes</option>
                 </select>
               </div>
 
@@ -344,7 +351,14 @@ export default function ImportListModal({
                             ))}
                           </div>
                           {row.duplicateReasons.length > 0 && (
-                            <p className="text-[11px] text-slate-500 mt-1">{row.duplicateReasons.join(', ')}</p>
+                            <div className="mt-1 space-y-0.5">
+                              <p className="text-[11px] text-slate-500">{row.duplicateReasons.join(', ')}</p>
+                              {row.duplicateMatches?.length > 0 && (
+                                <p className="text-[11px] text-amber-300/80">
+                                  Matches {row.duplicateMatches.slice(0, 2).map(match => match.name || match.facilityName || 'Existing contact').join(', ')}
+                                </p>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -366,10 +380,12 @@ export default function ImportListModal({
               {metric('Rows imported', importResult.count ?? 0, 'green')}
               {metric('Rows skipped', importResult.skipped ?? 0, (importResult.skipped ?? 0) ? 'amber' : 'slate')}
               {metric('Duplicates skipped', importResult.skippedDuplicates ?? 0, (importResult.skippedDuplicates ?? 0) ? 'amber' : 'slate')}
+              {metric('Duplicates appended', importResult.mergedDuplicates ?? 0, (importResult.mergedDuplicates ?? 0) ? 'blue' : 'slate')}
               {metric('Missing phone', importResult.missingPhoneCount ?? 0, (importResult.missingPhoneCount ?? 0) ? 'red' : 'slate')}
               {metric('Ready to call', importResult.readyToCallCount ?? 0, 'green')}
               {metric('Extra phones imported', importResult.additionalPhonesImported ?? 0, (importResult.additionalPhonesImported ?? 0) ? 'blue' : 'slate')}
             </div>
+            <p className="mt-3 text-xs text-slate-400">Source applied: <span className="font-semibold text-emerald-300">{importResult.sourceApplied ?? importResult.source}</span></p>
             <div className="flex flex-wrap gap-2 mt-4">
               {importResult.list?.id && (
                 <>
@@ -393,14 +409,16 @@ export default function ImportListModal({
         {!importResult && (
           <button
             onClick={handleImport}
-            disabled={!preview || importing || (!intoFixed && !name.trim()) || importableCount === 0}
+            disabled={!preview || importing || (!intoFixed && !name.trim()) || actionableCount === 0}
             className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
-              preview && !importing && (intoFixed || name.trim()) && importableCount > 0
+              preview && !importing && (intoFixed || name.trim()) && actionableCount > 0
                 ? 'bg-amber-500 hover:bg-amber-400 text-slate-900 shadow'
                 : 'bg-slate-700 text-slate-500 cursor-not-allowed'
             }`}
           >
-            {importing ? 'Importing...' : `Import ${importableCount || ''} Contacts`}
+            {importing ? 'Importing...' : duplicateMode === 'append'
+              ? `Import/Append ${actionableCount || ''} Rows`
+              : `Import ${importableCount || ''} Contacts`}
           </button>
         )}
       </div>

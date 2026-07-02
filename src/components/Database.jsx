@@ -59,6 +59,20 @@ const SOURCE_COLORS = {
   'Manual Excel': 'bg-slate-600/40 text-slate-300 border-slate-600/30',
   'Other':       'bg-slate-600/40 text-slate-400 border-slate-600/30',
 };
+
+function contactSource(contact, lists = []) {
+  return contact.source || lists.find(l => l.id === contact.listId)?.source || '';
+}
+
+function SourceBadge({ source }) {
+  if (!source) return null;
+  return (
+    <span className={`text-xs border rounded px-1.5 py-0.5 whitespace-nowrap ${SOURCE_COLORS[source] ?? SOURCE_COLORS.Other}`}>
+      {source}
+    </span>
+  );
+}
+
 const PHONE_LABELS = ['Mobile', 'Office', 'Owner', 'Manager', 'Unknown'];
 
 function normalizedAlternatePhones(phones = []) {
@@ -264,7 +278,7 @@ function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onCl
     </ModalLayout>
   );
 }
-function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, onUpdate, onDelete, taskApi }) {
+function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, taskApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   // Sprint 2: after logging certain outcomes, offer/require a follow-up task.
@@ -278,6 +292,7 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
   const missingInfo = !contact.phone || !contact.email || !contact.address;
   const contactName = contact.ownerName || contact.facilityName || 'Contact';
   const openTasks = taskApi?.getRelatedTasks('contact', contact.id) ?? [];
+  const source = contactSource(contact, lists);
 
   function saveNotes() { onNotesChange(contact.id, notes); }
 
@@ -310,6 +325,7 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
                   {contact.market}
                 </span>
               )}
+              <SourceBadge source={source} />
             </div>
             {/* Facility Name — editable, primary field */}
             <EditableField
@@ -513,6 +529,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
   const nextTaskDue = dueMeta(nextTask?.dueDate);
   const actionType = ACTION_TYPES.find(a => a.value === contact.nextActionType);
   const fallbackDue = dueMeta(contact.nextActionDate);
+  const source = contactSource(contact, lists);
   const modalDefaults = nextTask
     ? {}
     : legacyActionDefaults(contact.nextActionType, contact.nextActionDate, contact.nextActionNote);
@@ -580,6 +597,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           {contact.market && (
             <span className="text-xs text-amber-400/70 font-black whitespace-nowrap">{contact.market}</span>
           )}
+          <SourceBadge source={source} />
           {(() => {
             const moveOptions = [];
             if (onToClients) moveOptions.push({ label: '→ Pipeline (Clients)', onClick: () => onToClients(contact) });
@@ -1077,6 +1095,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     contacts.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
     [contacts]
   );
+  const importHistory = useMemo(() => {
+    return [...lists]
+      .filter(l => l.id !== masterListId)
+      .sort((a, b) => String(b.importedAt || '').localeCompare(String(a.importedAt || '')))
+      .slice(0, 5);
+  }, [lists, masterListId]);
 
   const activeListLabel = activeListId === null ? 'Active List'
     : activeListId === masterListId ? 'Master Database'
@@ -1314,6 +1338,55 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             />
           ))}
         </div>
+
+        {importHistory.length > 0 && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 py-2.5 border-b border-slate-800">
+              Import History
+            </p>
+            <div className="divide-y divide-slate-800/70">
+              {importHistory.map(l => {
+                const count = l.importRowCount || contacts.filter(c => c.listId === l.id).length;
+                const ready = l.readyToCallCount || contacts.filter(c => c.listId === l.id && ['fresh', 'callback', 'no_answer', 'voicemail'].includes(c.status)).length;
+                return (
+                  <div key={`history-${l.id}`} className="px-3 py-2.5 space-y-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-200 truncate">{l.name}</p>
+                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        <SourceBadge source={l.source} />
+                        {l.importedAt && <span className="text-[11px] text-slate-600">{l.importedAt}</span>}
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {count} imported &middot; {ready} callable
+                        {l.duplicateSkippedCount ? ` | ${l.duplicateSkippedCount} skipped` : ''}
+                        {l.mergedDuplicateCount ? ` | ${l.mergedDuplicateCount} appended` : ''}
+                      </p>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => { setActiveListId(l.id); setSubView('contacts'); }}
+                        className="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold px-2 py-1.5 rounded-lg text-[11px] transition-all"
+                      >
+                        Open
+                      </button>
+                      <button
+                        onClick={() => startImportedCallSession(l.id)}
+                        disabled={ready === 0}
+                        className={`flex-1 border font-semibold px-2 py-1.5 rounded-lg text-[11px] transition-all ${
+                          ready > 0
+                            ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 hover:bg-amber-500/25'
+                            : 'bg-slate-800 border-slate-700 text-slate-600 cursor-not-allowed'
+                        }`}
+                      >
+                        Call
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Other views */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
@@ -1554,6 +1627,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       {openContact && (
         <ContactDetailModal
           contact={contacts.find(c => c.id === openContact.id) ?? openContact}
+          lists={lists}
           onClose={() => setOpenContact(null)}
           onStatusChange={handleStatusChangeFromModal}
           onNotesChange={updateContactNotes}
@@ -1825,6 +1899,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
                   {STATUS_LABELS[current.status] ?? 'Fresh'}
                 </StatusBadge>
                 {current.market && <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md font-semibold">{current.market}</span>}
+                <SourceBadge source={current.source} />
               </div>
               <h3 className="text-3xl font-black text-white leading-tight">{contactDisplayName(current)}</h3>
               <p className="text-base text-slate-400 mt-1">{current.facilityName || 'Facility unknown'}</p>
