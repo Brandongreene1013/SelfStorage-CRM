@@ -151,15 +151,20 @@ Browser local smoke at `http://127.0.0.1:5173/`:
 
 ## 18. Production Testing Completed or Pending
 
-Pending until the Sprint 4 commit is pushed and Vercel deploys.
+Completed public UI smoke after Vercel deployed commit `c31342f`.
 
-Production smoke plan:
+Production smoke completed at `https://self-storage-crm.vercel.app/`:
 
-1. Open `https://self-storage-crm.vercel.app/`.
-2. Confirm Dashboard, Database, Call Mode, Clients, Pipeline, Analyst, and Calendar render.
-3. Use a temporary QA contact/list for callback task creation.
-4. Confirm callback task appears in the task surfaces.
-5. Delete temporary QA records.
+- Dashboard loaded with no browser console errors.
+- Database opened.
+- All Contacts list selected.
+- `Start Call Mode` opened the deployed Call Mode workspace.
+- Verified progress header, contact identity, phone area, notes, all six outcome buttons, callback date, research links, related tasks, call history, activity, and promote button.
+- Browser console showed no errors during the production smoke.
+
+Still pending by design:
+
+- Destructive outcome/task QA on production should use a temporary QA contact/list, then delete the QA records. I did not log outcomes against a real owner record during this sprint smoke.
 
 ## 19. Build / Lint Results
 
