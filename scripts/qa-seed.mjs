@@ -7,9 +7,10 @@
 // at the repo root for the full testing workflow.
 //
 // Usage (from the repo root):
-//   node scripts/qa-seed.mjs seed      — create the QA list, contacts, tasks
-//   node scripts/qa-seed.mjs status    — show what QA records currently exist
-//   node scripts/qa-seed.mjs cleanup   — delete ONLY QA records (see safety rules)
+//   node scripts/qa-seed.mjs seed            — create the QA list, contacts, tasks
+//   node scripts/qa-seed.mjs seed-duplicates — create the Sprint 11 duplicate pair
+//   node scripts/qa-seed.mjs status          — show what QA records currently exist
+//   node scripts/qa-seed.mjs cleanup         — delete ONLY QA records (see safety rules)
 //
 // SAFETY RULES (enforced in code, not just convention):
 //   - Contacts are only ever deleted if their owner_name starts with "QA Test".
@@ -166,6 +167,54 @@ async function seed() {
   console.log(`\nWhen finished testing: node scripts/qa-seed.mjs cleanup\n`);
 }
 
+// Sprint 11 — seed the exact real-world duplicate pattern Brandon hit
+// (Dr. Teekam): same owner name, same property address, DIFFERENT phone
+// numbers, one worked/conversation record vs one fresh mass-list import.
+// Fake name + fake address on purpose so detection can never cross-match
+// against the real Dr. Teekam records.
+async function seedDuplicates() {
+  let [list] = await findQaLists();
+  if (!list) {
+    const { data, error } = await supabase.from('lists')
+      .insert([{ name: QA_LIST_NAME, source: 'Other' }]).select().single();
+    if (error) fail(`Could not create QA list: ${error.message}`);
+    list = data;
+    console.log(`\n  + List "${QA_LIST_NAME}"`);
+  }
+
+  const address = '2126 QA Josey Lane, Carrollton, TX 75006';
+  const contactRows = [
+    {
+      owner_name: 'QA Test Dr Duplicate', facility_name: 'QA Duplicate Storage',
+      phone: '(555) 020-0001', email: '',
+      address, state: 'TX',
+      status: 'conversation',
+      call_history: [{ date: dateStr(-7), outcome: 'conversation', notes: 'QA seed — spoke with owner, interested in a valuation.' }],
+      notes: 'QA seed — the WORKED record. Duplicate Review should recommend keeping this one.',
+    },
+    {
+      owner_name: 'QA Test Dr Duplicate', facility_name: 'QA Duplicate Storage',
+      phone: '(555) 020-0002', email: 'qadup@example.com',
+      address: '2126 QA Josey Ln Carrollton TX 75006', // same address, messier formatting
+      state: 'TX',
+      status: 'fresh', call_history: [],
+      source: 'TractIQ', imported_at: new Date().toISOString(),
+      notes: '',
+    },
+  ].map(c => ({ ...c, list_id: list.id }));
+
+  const { data: contacts, error } = await supabase.from('contacts').insert(contactRows).select();
+  if (error) fail(`Could not create QA duplicate contacts: ${error.message}`);
+  contacts.forEach(c => console.log(`  + Contact "${c.owner_name}" (${c.status}, ${c.phone})`));
+
+  console.log(`\nDone. In Database → Duplicate Review you should see:`);
+  console.log(`  - 1 group: High confidence, "Same address + owner" (+ facility/market reasons)`);
+  console.log(`  - Recommended keep = the conversation record (555) 020-0001`);
+  console.log(`  - Merge should add (555) 020-0002 as an alternate phone + fill blank email`);
+  console.log(`  - Then "Delete weaker duplicate?" removes the fresh TractIQ record`);
+  console.log(`\nWhen finished testing: node scripts/qa-seed.mjs cleanup\n`);
+}
+
 async function status() {
   const lists = await findQaLists();
   const contacts = await findQaContacts(lists.map(l => l.id));
@@ -229,9 +278,10 @@ async function cleanup() {
 
 const cmd = process.argv[2];
 if (cmd === 'seed') await seed();
+else if (cmd === 'seed-duplicates') await seedDuplicates();
 else if (cmd === 'cleanup') await cleanup();
 else if (cmd === 'status') await status();
 else {
-  console.log(`\nUsage: node scripts/qa-seed.mjs <seed|status|cleanup>\n`);
+  console.log(`\nUsage: node scripts/qa-seed.mjs <seed|seed-duplicates|status|cleanup>\n`);
   process.exit(1);
 }

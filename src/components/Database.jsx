@@ -1,6 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core';
 import ImportListModal from './ImportListModal';
+import DuplicateReview from './DuplicateReview';
+import { findDuplicateGroups } from '../lib/duplicateReview';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
@@ -1017,7 +1019,7 @@ function CallModeQueuePicker({ queues, onSelect, onExit }) {
 export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, entryRequest, onEntryConsumed }) {
   const {
     lists, contacts, masterListId,
-    importList, importIntoList, removeDuplicates, moveContactToList, createList, addContact,
+    importList, importIntoList, removeDuplicates, mergeDuplicateContact, moveContactToList, createList, addContact,
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB, logContactAction,
@@ -1095,6 +1097,10 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     contacts.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
     [contacts]
   );
+  // Sprint 11 — duplicate group count for the sidebar badge. Recomputed only
+  // when contacts change; the review panel itself recomputes with task counts.
+  const duplicateGroupCount = useMemo(() => findDuplicateGroups(contacts).length, [contacts]);
+
   const importHistory = useMemo(() => {
     return [...lists]
       .filter(l => l.id !== masterListId)
@@ -1394,8 +1400,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             Views
           </p>
           {[
-            { key: 'callQueue', label: 'Call Mode', badge: todayCallbackQueue.length + overdueCallbackQueue.length },
-            { key: 'markets',   label: '🗺 Markets',    badge: null },
+            { key: 'callQueue',  label: 'Call Mode', badge: todayCallbackQueue.length + overdueCallbackQueue.length },
+            { key: 'duplicates', label: '🧹 Duplicate Review', badge: duplicateGroupCount, badgeTone: 'amber' },
+            { key: 'markets',    label: '🗺 Markets',    badge: null },
           ].map(t => (
             <button
               key={t.key}
@@ -1408,7 +1415,11 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             >
               <span className="font-semibold">{t.label}</span>
               {t.badge != null && t.badge > 0 && (
-                <span className="text-xs bg-green-600/20 text-green-400 border border-green-600/30 px-1.5 py-0.5 rounded-md">{t.badge}</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded-md border ${
+                  t.badgeTone === 'amber'
+                    ? 'bg-amber-600/20 text-amber-400 border-amber-600/30'
+                    : 'bg-green-600/20 text-green-400 border-green-600/30'
+                }`}>{t.badge}</span>
               )}
             </button>
           ))}
@@ -1443,11 +1454,25 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
       {/* ── RIGHT: Main Content ── */}
       <div className="flex-1 min-w-0 space-y-4">
-        {activeListId === null && subView !== 'callQueue' && (
+        {activeListId === null && subView !== 'callQueue' && subView !== 'duplicates' && (
           <EmptyState
             icon="📂"
             title="No list selected"
             message="Select a list from the left, or create a new one."
+          />
+        )}
+
+        {/* ── Duplicate Review (Sprint 11) — cross-list, independent of the
+             selected list, like Call Mode. ── */}
+        {subView === 'duplicates' && (
+          <DuplicateReview
+            contacts={contacts}
+            lists={lists}
+            taskApi={taskApi}
+            onMerge={mergeDuplicateContact}
+            onDelete={deleteContact}
+            onOpenContact={(c) => setOpenContact(c)}
+            onExit={() => setSubView('contacts')}
           />
         )}
 
@@ -1482,7 +1507,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           )
         )}
 
-        {activeListId !== null && subView !== 'callQueue' && (<>
+        {activeListId !== null && subView !== 'callQueue' && subView !== 'duplicates' && (<>
 
         {/* Stats bar */}
         <div className="grid grid-cols-4 gap-3">

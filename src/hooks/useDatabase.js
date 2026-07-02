@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
+import { buildMergePlan } from '../lib/duplicateReview';
 
 const US_STATES = {
   AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',
@@ -656,6 +657,7 @@ function dbToContact(row) {
     source: row.source ?? '',
     importFilename: row.import_filename ?? '',
     importedAt: row.imported_at ?? null,
+    createdAt: row.created_at ?? null,
   };
 }
 
@@ -913,6 +915,24 @@ export function useDatabase() {
     };
   }, [appendDuplicateRows]);
 
+  // Sprint 11 — merge a weaker duplicate into the kept master record.
+  // Fill-blanks-only: new phones become alternates, populated master fields
+  // are never overwritten, and the weaker record is NOT deleted here — the
+  // Duplicate Review UI asks for explicit confirmation before deleting.
+  const mergeDuplicateContact = useCallback(async (masterId, weakerId) => {
+    const master = contacts.find(c => c.id === masterId);
+    const weaker = contacts.find(c => c.id === weakerId);
+    if (!master || !weaker) return { error: 'Contact not found — refresh and try again.' };
+    const { updates, addedPhones, filledFields } = buildMergePlan(master, weaker);
+    if (Object.keys(updates).length === 0) return { ok: true, addedPhones: 0, filledFields: [] };
+    const res = await updateContactWithFallback(masterId, updates);
+    if (res.error && isMissingColumnError(res.error, 'alternate_phones')) {
+      return { error: 'Run sql/contact_alternate_phones_migration.sql in Supabase, then retry the merge.' };
+    }
+    if (res.error) return { error: res.error.message };
+    return { ok: true, addedPhones, filledFields };
+  }, [contacts, updateContactWithFallback]);
+
   // Find duplicate contacts within a list and delete all but the most-worked one
   // in each cluster. Returns { removed }.
   const removeDuplicates = useCallback(async (listId) => {
@@ -1139,6 +1159,7 @@ export function useDatabase() {
     importList,
     importIntoList,
     removeDuplicates,
+    mergeDuplicateContact,
     moveContactToList,
     createList,
     addContact,
