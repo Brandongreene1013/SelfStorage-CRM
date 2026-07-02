@@ -170,9 +170,9 @@ Known lint categories include unrelated `process` globals in API files, pre-exis
 
 ## 20. Commit Hash
 
-Pending at handoff creation time. The implementation commit should use:
+Implementation commit:
 
-`Sprint 4: Build broker call mode workspace`
+- `2c80b4d` - `Sprint 4: Build broker call mode workspace`
 
 ## 21. Deployment Notes
 
