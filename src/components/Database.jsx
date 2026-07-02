@@ -57,6 +57,23 @@ const SOURCE_COLORS = {
 };
 
 // ─── Editable field ───────────────────────────────────────────────────────────
+const RESEARCH_LINK_CLASSES = {
+  google: 'bg-blue-600/15 border-blue-600/30 text-blue-300 hover:bg-blue-600/25',
+  maps: 'bg-green-600/15 border-green-600/30 text-green-300 hover:bg-green-600/25',
+  linkedin: 'bg-sky-600/15 border-sky-600/30 text-sky-300 hover:bg-sky-600/25',
+  whitepages: 'bg-slate-700/60 border-slate-600 text-slate-300 hover:bg-slate-700',
+};
+
+function contactDisplayName(contact) {
+  return contact?.ownerName || contact?.facilityName || 'Unknown Owner';
+}
+
+function contactSearchQuery(contact) {
+  return [contact?.facilityName, contact?.ownerName, 'self storage', contact?.market || contact?.state]
+    .filter(Boolean)
+    .join(' ');
+}
+
 function EditableField({ label, value, placeholder, onChange, mono, href, type = 'text' }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? '');
@@ -846,17 +863,18 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       })
     : [];
 
-  function handleCallOutcome(contact, status) {
+  async function handleCallOutcome(contact, status, noteOverride) {
+    const note = noteOverride ?? callNote;
     if (status === 'callback' && !callbackDate) {
       alert('Pick a callback date before logging Call Back.');
       return;
     }
-    updateContactStatus(contact.id, status, callNote);
+    await updateContactStatus(contact.id, status, note);
     if (status === 'callback' && callbackDate) updateContactCallback(contact.id, callbackDate);
     if (status === 'callback') {
       taskApi?.createTask({
         title: 'Call back',
-        description: callNote.trim(),
+        description: note.trim(),
         taskType: 'call',
         priority: 'normal',
         dueDate: callbackDate,
@@ -978,12 +996,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             Views
           </p>
           {[
-            { key: 'callQueue', label: '📞 Call Queue', badge: callQueue.length },
+            { key: 'callQueue', label: 'Call Mode', badge: callQueue.length },
             { key: 'markets',   label: '🗺 Markets',    badge: null },
           ].map(t => (
             <button
               key={t.key}
-              onClick={() => { setSubView(t.key); if (t.key === 'callQueue') setCallQueueIndex(0); }}
+              onClick={() => { setSubView(t.key); if (t.key === 'callQueue' && callQueueIndex >= callQueue.length) setCallQueueIndex(0); }}
               className={`w-full text-left px-3 py-2.5 flex items-center justify-between text-sm border-b border-slate-800/50 transition-all ${
                 subView === t.key
                   ? 'bg-amber-500/10 text-amber-400 border-l-2 border-amber-500'
@@ -1076,6 +1094,17 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
               <span className="text-xs text-slate-600">{filtered.length + clientsInView.length} contacts</span>
+              {activeListId !== null && (
+                <button
+                  onClick={() => { setSubView('callQueue'); if (callQueueIndex >= callQueue.length) setCallQueueIndex(0); }}
+                  disabled={callQueue.length === 0}
+                  className={`bg-amber-500/15 border border-amber-500/40 text-amber-400 font-black px-3 py-2 rounded-lg text-xs transition-all ${
+                    callQueue.length > 0 ? 'hover:bg-amber-500/25' : 'opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  {callQueueIndex > 0 ? 'Resume Call Mode' : 'Start Call Mode'}
+                </button>
+              )}
               {activeListId === masterListId && (
                 <>
                   <button
@@ -1160,12 +1189,14 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             queue={callQueue}
             index={callQueueIndex}
             setIndex={setCallQueueIndex}
-            callNote={callNote}
-            setCallNote={setCallNote}
             callbackDate={callbackDate}
             setCallbackDate={setCallbackDate}
             onOutcome={handleCallOutcome}
+            onSaveNotes={updateContactNotes}
+            onPromote={onContactToClients}
             lists={lists}
+            taskApi={taskApi}
+            onExit={() => setSubView('contacts')}
           />
         )}
 
@@ -1270,7 +1301,290 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 }
 
 // ─── Call Queue ────────────────────────────────────────────────────────────────
-function CallQueue({ queue, index, setIndex, callNote, setCallNote, callbackDate, setCallbackDate, onOutcome, lists }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOutcome, onSaveNotes, onPromote, lists, taskApi, onExit }) {
+  const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
+  const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
+  const [noteSavedFor, setNoteSavedFor] = useState(null);
+  const [followUpPrompt, setFollowUpPrompt] = useState(null);
+  const contactNote = current?.notes ?? '';
+  const noteText = noteDraft.contactId === current?.id ? noteDraft.text : contactNote;
+  const hasNoteChanges = noteText !== contactNote;
+  const noteSaved = noteSavedFor === current?.id;
+  const activeFollowUpPrompt = followUpPrompt?.contactId === current?.id ? followUpPrompt.status : null;
+
+  async function saveNotes() {
+    if (!current) return;
+    await onSaveNotes(current.id, noteText);
+    setNoteSavedFor(current.id);
+    setTimeout(() => setNoteSavedFor(null), 1800);
+  }
+
+  async function go(delta) {
+    if (!current) return;
+    if (hasNoteChanges) await saveNotes();
+    setIndex(Math.min(queue.length - 1, Math.max(0, index + delta)));
+  }
+
+  async function handleOutcome(status) {
+    if (!current) return;
+    if (hasNoteChanges) await saveNotes();
+    if (status === 'callback' && !callbackDate) {
+      alert('Pick a callback date before logging Call Back.');
+      return;
+    }
+    await onOutcome(current, status, noteText);
+    if (['voicemail', 'conversation', 'appointment'].includes(status)) {
+      setFollowUpPrompt({ contactId: current.id, status });
+      return;
+    }
+    setFollowUpPrompt(null);
+    setIndex(Math.min(queue.length - 1, index + 1));
+  }
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'n') go(1);
+      if (key === 'b') go(-1);
+      if (key === 'x') handleOutcome('no_answer');
+      if (key === 'v') handleOutcome('voicemail');
+      if (key === 'c') handleOutcome('callback');
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
+  if (queue.length === 0) {
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center">
+        <div className="text-4xl mb-3 text-slate-500">CALL</div>
+        <h3 className="text-lg font-bold text-white mb-1">Call Mode is empty</h3>
+        <p className="text-sm text-slate-500">No fresh, callback, no-answer, or voicemail contacts are in this list.</p>
+        <button onClick={onExit} className="mt-5 text-sm font-semibold text-amber-400 hover:text-amber-300">
+          Back to contacts
+        </button>
+      </div>
+    );
+  }
+
+  const list = lists.find(l => l.id === current.listId);
+  const progress = ((index + 1) / queue.length) * 100;
+  const openTasks = taskApi?.getRelatedTasks('contact', current.id) ?? [];
+  const nextTask = getNextOpenTask(openTasks);
+  const due = dueMeta(nextTask?.dueDate);
+  const latestCall = [...(current.callHistory ?? [])].reverse()[0];
+  const recentActivity = [...(current.actionLog ?? [])].reverse().slice(0, 4);
+  const searchQuery = contactSearchQuery(current);
+
+  async function createFollowUpTask(kind) {
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + (kind === 'appointment' ? 1 : 2));
+    await taskApi?.createTask({
+      title: kind === 'voicemail' ? 'Follow up after voicemail' : kind === 'appointment' ? 'Follow up after appointment' : 'Follow up after conversation',
+      description: noteText.trim(),
+      taskType: kind === 'appointment' ? 'meeting' : 'call',
+      priority: kind === 'appointment' ? 'high' : 'normal',
+      dueDate: dueDate.toISOString().slice(0, 10),
+      relatedType: 'contact',
+      relatedId: current.id,
+      relatedName: contactDisplayName(current),
+      source: 'database',
+    });
+    setFollowUpPrompt(null);
+    setIndex(Math.min(queue.length - 1, index + 1));
+  }
+
+  const researchLinks = [
+    { key: 'google', label: 'Google Search', href: `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}` },
+    { key: 'maps', label: 'Google Maps', href: `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}` },
+    current.ownerName && { key: 'linkedin', label: 'LinkedIn', href: `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(current.ownerName + ' self storage')}` },
+    (current.ownerName || current.phone) && { key: 'whitepages', label: 'Whitepages', href: `https://www.whitepages.com/name/${encodeURIComponent(current.ownerName || current.phone)}` },
+  ].filter(Boolean);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <div>
+            <p className="text-xs font-semibold text-slate-400">
+              {list?.name ?? 'All Lists'} · Contact {index + 1} of {queue.length}
+            </p>
+            <h2 className="text-lg font-black text-white">Call Mode</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold text-amber-400">{Math.round(progress)}% through queue</p>
+            <button onClick={onExit} className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5">
+              Exit
+            </button>
+          </div>
+        </div>
+        <div className="w-full bg-slate-800 rounded-full h-2">
+          <div className="bg-amber-500 h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-5">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <StatusBadge variant={STATUS_VARIANT[current.status] ?? 'slate'} pill={false} className="font-bold">
+                  {STATUS_LABELS[current.status] ?? 'Fresh'}
+                </StatusBadge>
+                {current.market && <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md font-semibold">{current.market}</span>}
+              </div>
+              <h3 className="text-3xl font-black text-white leading-tight">{contactDisplayName(current)}</h3>
+              <p className="text-base text-slate-400 mt-1">{current.facilityName || 'Facility unknown'}</p>
+            </div>
+            <div className="bg-green-600/10 border border-green-600/30 rounded-xl p-4 min-w-[260px]">
+              <p className="text-xs text-green-400/70 font-semibold uppercase">Phone</p>
+              {current.phone ? (
+                <a href={`tel:${current.phone}`} className="block text-2xl font-black text-green-400 font-mono hover:text-green-300">{current.phone}</a>
+              ) : (
+                <p className="text-2xl font-black text-slate-600">No phone</p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {current.email && <a href={`mailto:${current.email}`} className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-blue-300 hover:text-blue-200 truncate">Email: {current.email}</a>}
+            {current.address && (
+              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(current.address)}`} target="_blank" rel="noopener noreferrer"
+                className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-300 hover:text-white truncate">
+                Address: {current.address}
+              </a>
+            )}
+            {latestCall && (
+              <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+                <p className="text-xs text-slate-500 uppercase font-semibold">Last Call</p>
+                <p className="text-sm text-slate-300">{latestCall.date} · {STATUS_LABELS[latestCall.outcome] ?? latestCall.outcome}</p>
+              </div>
+            )}
+            {nextTask && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3">
+                <p className="text-xs text-amber-400 uppercase font-semibold">Next Action</p>
+                <p className="text-sm font-bold text-white truncate">{nextTask.title}</p>
+                {due && <p className="text-xs text-amber-300 mt-0.5">{due.label}</p>}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-slate-400 uppercase">Call Notes</label>
+              <span className={`text-xs ${noteSaved ? 'text-green-400' : hasNoteChanges ? 'text-amber-400' : 'text-slate-600'}`}>{noteSaved ? 'Saved' : hasNoteChanges ? 'Unsaved' : 'Saved'}</span>
+            </div>
+            <textarea
+              value={noteText}
+              onChange={e => setNoteDraft({ contactId: current.id, text: e.target.value })}
+              rows={7}
+              placeholder="What did they say? Motivation, objections, timing, pricing expectations..."
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 resize-none"
+            />
+          </div>
+
+          <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+              {CALL_OUTCOMES.map(o => (
+                <button key={o.status} onClick={() => handleOutcome(o.status)}
+                  className={`border rounded-xl px-3 py-3 text-xs font-bold transition-all text-center ${o.color}`}>
+                  <span className="text-base block">{o.icon}</span>
+                  <span className="block mt-0.5">{o.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-col sm:flex-row sm:items-end gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Callback Date</label>
+                <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)}
+                  className="bg-slate-800 border border-amber-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+              </div>
+              <button onClick={saveNotes} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm transition-all">Save Note</button>
+              <button onClick={() => go(-1)} disabled={index === 0} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
+              <button onClick={() => go(1)} disabled={index >= queue.length - 1} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2">Next Contact</button>
+            </div>
+            {activeFollowUpPrompt && (
+              <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <p className="text-sm text-amber-300 font-semibold">Add a follow-up task before moving on?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => createFollowUpTask(activeFollowUpPrompt)} className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-lg text-xs">Add Task + Next</button>
+                  <button onClick={() => { setFollowUpPrompt(null); setIndex(Math.min(queue.length - 1, index + 1)); }} className="text-xs text-slate-400 hover:text-white px-3 py-2">Skip Task</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <aside className="space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <h3 className="text-sm font-black text-white mb-3">Research</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {researchLinks.map(link => (
+                <a key={link.key} href={link.href} target="_blank" rel="noopener noreferrer"
+                  className={`border rounded-xl px-3 py-2 text-xs font-bold transition-all ${RESEARCH_LINK_CLASSES[link.key]}`}>
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-black text-white">Tasks</h3>
+              <span className="text-xs text-slate-600">{openTasks.length} open</span>
+            </div>
+            <RelatedTasks taskApi={taskApi} relatedType="contact" relatedId={current.id} relatedName={contactDisplayName(current)} source="database" maxVisible={4} />
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <h3 className="text-sm font-black text-white mb-3">Call History</h3>
+            {current.callHistory?.length > 0 ? (
+              <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                {[...current.callHistory].reverse().slice(0, 8).map((h, i) => (
+                  <div key={i} className="text-xs bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-slate-300">{STATUS_LABELS[h.outcome] ?? h.outcome}</span>
+                      <span className="text-slate-600">{h.date}</span>
+                    </div>
+                    {h.notes && <p className="text-slate-500 mt-0.5 line-clamp-2">{h.notes}</p>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-600 italic">No calls logged yet.</p>
+            )}
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <h3 className="text-sm font-black text-white mb-3">Activity</h3>
+            {recentActivity.length > 0 ? (
+              <div className="space-y-1.5">
+                {recentActivity.map((entry, i) => (
+                  <div key={i} className="text-xs text-slate-400 bg-slate-800 rounded-lg px-3 py-2">
+                    {entry.note || entry.type || 'Action'} {entry.date ? `· ${entry.date}` : ''}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-600 italic">No activity logged yet.</p>
+            )}
+          </div>
+
+          {onPromote && (
+            <button onClick={() => onPromote(current)}
+              className="w-full bg-blue-600/20 hover:bg-blue-600/30 border border-blue-600/40 text-blue-300 font-black px-4 py-3 rounded-2xl text-sm transition-all">
+              Promote to Client / Pipeline
+            </button>
+          )}
+          <p className="text-xs text-slate-600 px-1">Shortcuts: N next, B back, X no answer, V voicemail, C callback.</p>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function LegacyCallQueue({ queue, index, setIndex, callNote, setCallNote, callbackDate, setCallbackDate, onOutcome, lists }) {
   if (queue.length === 0) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center">
