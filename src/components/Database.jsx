@@ -3,6 +3,7 @@ import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDragg
 import ImportListModal from './ImportListModal';
 import DuplicateReview from './DuplicateReview';
 import { findDuplicateGroups } from '../lib/duplicateReview';
+import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
@@ -95,21 +96,8 @@ function isTypingTarget(target) {
 }
 
 // ─── Editable field ───────────────────────────────────────────────────────────
-const RESEARCH_LINK_CLASSES = {
-  google: 'bg-blue-600/15 border-blue-600/30 text-blue-300 hover:bg-blue-600/25',
-  maps: 'bg-green-600/15 border-green-600/30 text-green-300 hover:bg-green-600/25',
-  linkedin: 'bg-sky-600/15 border-sky-600/30 text-sky-300 hover:bg-sky-600/25',
-  whitepages: 'bg-slate-700/60 border-slate-600 text-slate-300 hover:bg-slate-700',
-};
-
 function contactDisplayName(contact) {
   return contact?.ownerName || contact?.facilityName || 'Unknown Owner';
-}
-
-function contactSearchQuery(contact) {
-  return [contact?.facilityName, contact?.ownerName, 'self storage', contact?.market || contact?.state]
-    .filter(Boolean)
-    .join(' ');
 }
 
 function EditableField({ label, value, placeholder, onChange, mono, href, type = 'text' }) {
@@ -289,14 +277,19 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
   const [taskPrompt, setTaskPrompt] = useState(null); // 'callback' | 'suggest' | null
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Build Google search query for this facility
-  const searchQuery = [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ');
-  const missingInfo = !contact.phone || !contact.email || !contact.address;
   const contactName = contact.ownerName || contact.facilityName || 'Contact';
   const openTasks = taskApi?.getRelatedTasks('contact', contact.id) ?? [];
   const source = contactSource(contact, lists);
 
   function saveNotes() { onNotesChange(contact.id, notes); }
+
+  // Sprint 12 — research notes append through the modal's own notes state so
+  // an unsaved draft in the textarea is never clobbered.
+  function addResearchNote(line) {
+    const next = [notes, line].filter(Boolean).join('\n');
+    setNotes(next);
+    onNotesChange(contact.id, next);
+  }
 
   function handleOutcome(status) {
     onStatusChange(contact.id, status, notes);
@@ -342,50 +335,8 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
 
         <div className="flex-1 overflow-auto p-5 space-y-5">
 
-          {/* ── Google Business Finder ── */}
-          <div className={`rounded-xl p-4 border ${missingInfo ? 'bg-amber-500/5 border-amber-500/20' : 'bg-slate-800/50 border-slate-700'}`}>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">
-                🔍 Find Business Info
-              </p>
-              {missingInfo && (
-                <span className="text-xs text-amber-400 font-semibold">Missing data detected</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <a
-                href={`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`}
-                target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 bg-blue-600/20 border border-blue-600/40 text-blue-400 hover:bg-blue-600/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
-              >
-                🌐 Google Search
-              </a>
-              <a
-                href={`https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`}
-                target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 bg-green-600/20 border border-green-600/40 text-green-400 hover:bg-green-600/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
-              >
-                📍 Google Maps
-              </a>
-              <a
-                href={`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&tbm=lcl`}
-                target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 bg-yellow-600/20 border border-yellow-600/40 text-yellow-400 hover:bg-yellow-600/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
-              >
-                🏢 Business Listing
-              </a>
-              {contact.ownerName && (
-                <a
-                  href={`https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(contact.ownerName + ' self storage')}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 bg-blue-800/20 border border-blue-800/40 text-blue-300 hover:bg-blue-800/30 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
-                >
-                  💼 LinkedIn
-                </a>
-              )}
-            </div>
-            <p className="text-xs text-slate-600 mt-2">Click to open in new tab — copy info back into the fields below</p>
-          </div>
+          {/* ── Owner Research Hub (Sprint 12) ── */}
+          <OwnerResearchPanel contact={contact} onAddNote={addResearchNote} />
 
           {/* ── Editable contact fields ── */}
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-4">
@@ -1019,10 +970,11 @@ function CallModeQueuePicker({ queues, onSelect, onExit }) {
 export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, entryRequest, onEntryConsumed }) {
   const {
     lists, contacts, masterListId,
-    importList, importIntoList, removeDuplicates, mergeDuplicateContact, moveContactToList, createList, addContact,
+    importList, importIntoList, mergeDuplicateContact, moveContactToList, createList, addContact,
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB, logContactAction,
+    dismissedDuplicateKeys, dismissalStorage, dismissDuplicateGroup,
   } = db;
 
   const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
@@ -1098,8 +1050,11 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     [contacts]
   );
   // Sprint 11 — duplicate group count for the sidebar badge. Recomputed only
-  // when contacts change; the review panel itself recomputes with task counts.
-  const duplicateGroupCount = useMemo(() => findDuplicateGroups(contacts).length, [contacts]);
+  // when contacts/dismissals change; the review panel recomputes with task counts.
+  const duplicateGroupCount = useMemo(
+    () => findDuplicateGroups(contacts).filter(g => !dismissedDuplicateKeys?.has(g.key)).length,
+    [contacts, dismissedDuplicateKeys]
+  );
 
   const importHistory = useMemo(() => {
     return [...lists]
@@ -1473,6 +1428,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             onDelete={deleteContact}
             onOpenContact={(c) => setOpenContact(c)}
             onExit={() => setSubView('contacts')}
+            dismissedKeys={dismissedDuplicateKeys}
+            onDismissGroup={dismissDuplicateGroup}
+            dismissalStorage={dismissalStorage}
           />
         )}
 
@@ -1565,17 +1523,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               )}
               {activeListId === masterListId && (
                 <>
+                  {/* Sprint 12 — the old auto-deleting "Remove Duplicates" is retired.
+                      This routes to the Duplicate Review Center instead; nothing is
+                      deleted without per-group confirmation there. */}
                   <button
-                    onClick={async () => {
-                      if (!confirm('Scan Master Database for duplicate contacts and remove them?')) return;
-                      const { removed, error } = await removeDuplicates(masterListId);
-                      if (error) alert('Could not remove duplicates: ' + error);
-                      else alert(removed ? `Removed ${removed} duplicate contact${removed > 1 ? 's' : ''}.` : 'No duplicates found — your Master Database is clean.');
-                    }}
+                    onClick={() => setSubView('duplicates')}
                     className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
-                    title="Find contacts that share a phone, email, or owner+facility and keep only the most-worked record"
+                    title="Open the Duplicate Review Center — review, merge, and confirm each delete"
                   >
-                    🧹 Remove Duplicates
+                    🧹 Review Duplicates{duplicateGroupCount > 0 ? ` (${duplicateGroupCount})` : ''}
                   </button>
                   <button
                     onClick={() => setShowMasterImport(true)}
@@ -1669,6 +1625,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           existingContacts={contacts}
           onOpenImportedList={openImportedList}
           onStartImportedCallSession={startImportedCallSession}
+          onOpenDuplicateReview={() => { setShowImport(false); setSubView('duplicates'); }}
         />
       )}
 
@@ -1678,6 +1635,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           existingContacts={contacts}
           onImport={(_name, _source, rawText, options) => importIntoList(masterListId, rawText, options)}
           onClose={() => setShowMasterImport(false)}
+          onOpenDuplicateReview={() => { setShowMasterImport(false); setSubView('duplicates'); }}
         />
       )}
 
@@ -1858,7 +1816,6 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
   const due = dueMeta(nextTask?.dueDate);
   const latestCall = [...(current.callHistory ?? [])].reverse()[0];
   const recentActivity = [...(current.actionLog ?? [])].reverse().slice(0, 4);
-  const searchQuery = contactSearchQuery(current);
 
   async function finalizePostOutcome(followUpKind) {
     if (activePostOutcome?.completeExisting && current?.queueTaskId) {
@@ -1882,13 +1839,6 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
     setPostOutcome(null);
     setIndex(Math.min(queue.length - 1, index + 1));
   }
-
-  const researchLinks = [
-    { key: 'google', label: 'Google Search', href: `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}` },
-    { key: 'maps', label: 'Google Maps', href: `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}` },
-    current.ownerName && { key: 'linkedin', label: 'LinkedIn', href: `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(current.ownerName + ' self storage')}` },
-    (current.ownerName || current.phone) && { key: 'whitepages', label: 'Whitepages', href: `https://www.whitepages.com/name/${encodeURIComponent(current.ownerName || current.phone)}` },
-  ].filter(Boolean);
 
   return (
     <div className="space-y-4">
@@ -2035,14 +1985,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
         <aside className="space-y-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
             <h3 className="text-sm font-black text-white mb-3">Research</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {researchLinks.map(link => (
-                <a key={link.key} href={link.href} target="_blank" rel="noopener noreferrer"
-                  className={`border rounded-xl px-3 py-2 text-xs font-bold transition-all ${RESEARCH_LINK_CLASSES[link.key]}`}>
-                  {link.label}
-                </a>
-              ))}
-            </div>
+            {/* Sprint 12 — compact strip: Maps · Whitepages · Google · LinkedIn · County · SOS */}
+            <ResearchStrip contact={current} />
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">

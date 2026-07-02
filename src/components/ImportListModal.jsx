@@ -52,6 +52,7 @@ export default function ImportListModal({
   existingContacts = [],
   onOpenImportedList,
   onStartImportedCallSession,
+  onOpenDuplicateReview,
 }) {
   const intoFixed = !!fixedListName;
   const [name, setName] = useState('');
@@ -386,6 +387,27 @@ export default function ImportListModal({
               {metric('Extra phones imported', importResult.additionalPhonesImported ?? 0, (importResult.additionalPhonesImported ?? 0) ? 'blue' : 'slate')}
             </div>
             <p className="mt-3 text-xs text-slate-400">Source applied: <span className="font-semibold text-emerald-300">{importResult.sourceApplied ?? importResult.source}</span></p>
+
+            {/* Sprint 12 — post-import duplicate nudge into the Review Center */}
+            {(() => {
+              const dupTouched = (importResult.skippedDuplicates ?? 0) + (importResult.mergedDuplicates ?? 0);
+              const dupSeen = Math.max(dupTouched, duplicateCount);
+              if (dupSeen === 0 || !onOpenDuplicateReview) return null;
+              return (
+                <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-amber-300">
+                    {dupSeen} possible duplicate{dupSeen === 1 ? '' : 's'} found in this import — review what's already in your database.
+                  </p>
+                  <button
+                    onClick={onOpenDuplicateReview}
+                    className="text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-900 px-3 py-1.5 rounded-lg transition-all"
+                  >
+                    Open Duplicate Review
+                  </button>
+                </div>
+              );
+            })()}
+
             <div className="flex flex-wrap gap-2 mt-4">
               {importResult.list?.id && (
                 <>

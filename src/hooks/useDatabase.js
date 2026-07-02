@@ -679,6 +679,33 @@ function dbToList(row) {
 
 const MASTER_DB_NAME = 'Master Database';
 
+// Sprint 12 — persistent "Not a duplicate" dismissals. Supabase-backed
+// (sql/duplicate_dismissals_migration.sql); falls back to localStorage if the
+// migration hasn't been run so dismissals still survive a reload on this
+// machine (just not across devices).
+const DISMISSALS_LOCAL_KEY = 'storageHero.duplicateDismissals';
+
+function isMissingTableError(error) {
+  if (!error) return false;
+  const msg = error.message ?? '';
+  return error.code === '42P01' || error.code === 'PGRST205'
+    || /relation .*duplicate_dismissals.* does not exist|could not find the table/i.test(msg);
+}
+
+function readLocalDismissals() {
+  try {
+    const raw = localStorage.getItem(DISMISSALS_LOCAL_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalDismissals(rows) {
+  try { localStorage.setItem(DISMISSALS_LOCAL_KEY, JSON.stringify(rows)); } catch { /* storage full/blocked — dismissal stays session-only */ }
+}
+
 // Keys that identify the "same" contact: normalized phone, email, or owner+facility.
 // Two contacts are duplicates if they share ANY key.
 function dupKeys(c) {
@@ -716,9 +743,53 @@ export function useDatabase() {
   const [lists, setLists] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [masterListId, setMasterListId] = useState(null);
+  // Sprint 12 — pair keys of duplicate groups marked "Not a duplicate", plus
+  // where they're persisted ('supabase' | 'local') for honest UI messaging.
+  const [dismissedDuplicateKeys, setDismissedDuplicateKeys] = useState(() => new Set());
+  const [dismissalStorage, setDismissalStorage] = useState('supabase');
+
+  const loadDismissals = useCallback(async () => {
+    const { data, error } = await supabase.from('duplicate_dismissals').select('pair_key');
+    if (error) {
+      if (!isMissingTableError(error)) console.warn('Could not load duplicate dismissals:', error.message);
+      setDismissalStorage('local');
+      setDismissedDuplicateKeys(new Set(readLocalDismissals().map(d => d.pairKey)));
+      return;
+    }
+    setDismissalStorage('supabase');
+    setDismissedDuplicateKeys(new Set((data ?? []).map(d => d.pair_key)));
+  }, []);
 
   useEffect(() => {
     loadAll();
+    loadDismissals();
+  }, [loadDismissals]);
+
+  const dismissDuplicateGroup = useCallback(async (pairKey, contactIds = [], note = '') => {
+    setDismissedDuplicateKeys(prev => new Set(prev).add(pairKey));
+    const { error } = await supabase.from('duplicate_dismissals')
+      .upsert([{ pair_key: pairKey, contact_ids: contactIds, note }], { onConflict: 'pair_key' });
+    if (error) {
+      // Table missing (or any write failure): keep it working via localStorage.
+      const rows = readLocalDismissals().filter(d => d.pairKey !== pairKey);
+      rows.push({ pairKey, contactIds, note, createdAt: new Date().toISOString() });
+      writeLocalDismissals(rows);
+      if (isMissingTableError(error)) setDismissalStorage('local');
+      return { ok: true, storage: 'local' };
+    }
+    return { ok: true, storage: 'supabase' };
+  }, []);
+
+  const restoreDuplicateGroup = useCallback(async (pairKey) => {
+    setDismissedDuplicateKeys(prev => {
+      const next = new Set(prev);
+      next.delete(pairKey);
+      return next;
+    });
+    // Remove from both stores — cheap, and covers a migration run mid-session.
+    await supabase.from('duplicate_dismissals').delete().eq('pair_key', pairKey);
+    writeLocalDismissals(readLocalDismissals().filter(d => d.pairKey !== pairKey));
+    return { ok: true };
   }, []);
 
   async function loadAll() {
@@ -1160,6 +1231,10 @@ export function useDatabase() {
     importIntoList,
     removeDuplicates,
     mergeDuplicateContact,
+    dismissedDuplicateKeys,
+    dismissalStorage,
+    dismissDuplicateGroup,
+    restoreDuplicateGroup,
     moveContactToList,
     createList,
     addContact,

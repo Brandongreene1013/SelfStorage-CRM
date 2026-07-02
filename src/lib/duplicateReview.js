@@ -227,6 +227,28 @@ export function isProtectedRecord(contact, { openTaskCount = 0 } = {}) {
   return (contact.callHistory?.length ?? 0) > 0 || openTaskCount > 0;
 }
 
+const STATUS_SIGNAL_LABELS = {
+  conversation: 'Conversation status',
+  appointment: 'Appointment set',
+  callback: 'Callback promised',
+};
+
+// Sprint 12 — human-readable reasons why a record is recommended/protected,
+// shown on the Duplicate Review cards so the keep recommendation isn't a
+// black box. Ordered to match the keep-scoring priority.
+export function keepSignals(contact, { openTaskCount = 0 } = {}) {
+  const signals = [];
+  const calls = contact.callHistory?.length ?? 0;
+  if (calls > 0) signals.push({ label: `Has call history (${calls})`, protective: true });
+  if (openTaskCount > 0) signals.push({ label: `${openTaskCount} open task${openTaskCount === 1 ? '' : 's'}`, protective: true });
+  const statusLabel = STATUS_SIGNAL_LABELS[contact.status];
+  if (statusLabel) signals.push({ label: statusLabel, protective: false });
+  if ((contact.notes ?? '').trim()) signals.push({ label: 'Has notes', protective: false });
+  if (!contact.source && !contact.importedAt) signals.push({ label: 'Manual/worked record', protective: false });
+  else if (contact.source) signals.push({ label: `Imported: ${contact.source}`, protective: false, imported: true });
+  return signals;
+}
+
 // ── Group detection ──────────────────────────────────────────────────────────
 // Returns duplicate groups sorted High-confidence first:
 // { key, confidence, reasons, memberIds, recommendedKeepId }
