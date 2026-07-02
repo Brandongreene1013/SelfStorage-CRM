@@ -109,6 +109,22 @@ export default function App() {
     deleteClient(client.id);
   }, [db, deleteClient]);
 
+  // Dashboard → Database deep links: "Start Calling" / Attack List quick
+  // actions navigate into Database and tell it what to open. Consumed once
+  // by Database, then cleared here so the same action can fire again.
+  const [dbEntryRequest, setDbEntryRequest] = useState(null);
+
+  const handleStartCallMode = useCallback(() => {
+    setDbEntryRequest({ listId: 'all', subView: 'callQueue' });
+    setView('Database');
+  }, []);
+
+  const handleOpenContact = useCallback((contact) => {
+    if (!contact) return;
+    setDbEntryRequest({ openContactId: contact.id });
+    setView('Database');
+  }, []);
+
   // When a call is logged from Database, auto-increment dashboard counters
   const handleCallLogged = useCallback((outcome) => {
     incrementProgress('calls');
@@ -259,7 +275,9 @@ export default function App() {
             contacts={db.contacts}
             meetings={allMeetings}
             onNavigateCalendar={() => setView('Calendar')}
-            onAddToPipeline={(data) => { addClient(data); setView('Pipeline'); }}
+            onStartCallMode={handleStartCallMode}
+            onOpenContact={handleOpenContact}
+            onEditClient={handleEdit}
             taskApi={taskApi}
             review={{
               items: reviewItems,
@@ -335,6 +353,8 @@ export default function App() {
               onLogAction: logClientAction,
             }}
             taskApi={taskApi}
+            entryRequest={dbEntryRequest}
+            onEntryConsumed={() => setDbEntryRequest(null)}
           />
         )}
 

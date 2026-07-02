@@ -5,7 +5,265 @@ import RecentActivity from './RecentActivity';
 import NeedsReview from './NeedsReview';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState } from './ui';
-import { TaskRow, TaskModal } from './tasks';
+import { TaskRow, TaskModal, getNextOpenTask } from './tasks';
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+// ─── Attack List / Needs Follow-Up / Pipeline Attention builders ─────────────
+// These read the universal tasks table plus Database contacts and Clients —
+// no new data source, no new schema. Kept as plain functions (not hooks) so
+// they're easy to reason about and cheap to recompute via useMemo below.
+
+function buildAttackList(taskApi, contacts, clients) {
+  if (!taskApi) return [];
+  const today = todayStr();
+  const { overdue = [], dueToday = [] } = taskApi.groups ?? {};
+  const dated = [...overdue, ...dueToday].filter(t => t.relatedType === 'contact' || t.relatedType === 'client');
+
+  const rows = dated.map(t => {
+    const isOverdue = !!(t.dueDate && t.dueDate < today);
+    if (t.relatedType === 'contact') {
+      const c = contacts.find(x => x.id === t.relatedId);
+      return {
+        key: `task-${t.id}`, kind: 'contact', taskId: t.id,
+        name: c?.ownerName || t.relatedName || 'Unknown Owner',
+        facilityName: c?.facilityName || '', phone: c?.phone || '',
+        reason: t.title, overdue: isOverdue, dueDate: t.dueDate,
+        contact: c ?? null,
+      };
+    }
+    const cl = clients.find(x => x.id === t.relatedId);
+    return {
+      key: `task-${t.id}`, kind: 'client', taskId: t.id,
+      name: cl?.name || t.relatedName || 'Unknown Client',
+      facilityName: cl?.facilityName || '', phone: cl?.phone || '',
+      reason: t.title, overdue: isOverdue, dueDate: t.dueDate,
+      client: cl ?? null,
+    };
+  });
+
+  // Safety net for contacts flagged "Call Back" with a due date but no
+  // matching task row (e.g. legacy data predating Sprint 4's task creation).
+  const coveredContactIds = new Set(rows.filter(r => r.kind === 'contact' && r.contact).map(r => r.contact.id));
+  contacts.forEach(c => {
+    if (c.status === 'callback' && c.callbackDate && c.callbackDate <= today && !coveredContactIds.has(c.id)) {
+      rows.push({
+        key: `callback-${c.id}`, kind: 'contact',
+        name: c.ownerName || 'Unknown Owner',
+        facilityName: c.facilityName || '', phone: c.phone || '',
+        reason: 'Callback due', overdue: c.callbackDate < today, dueDate: c.callbackDate,
+        contact: c,
+      });
+    }
+  });
+
+  rows.sort((a, b) => {
+    if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+    return (a.dueDate || '').localeCompare(b.dueDate || '');
+  });
+  return rows;
+}
+
+function buildNeedsFollowUp(taskApi, contacts, clients) {
+  if (!taskApi) return [];
+  const rows = [];
+  contacts.forEach(c => {
+    if (c.status !== 'conversation' && c.status !== 'appointment') return;
+    if (taskApi.getRelatedTasks('contact', c.id).length > 0) return;
+    rows.push({
+      key: `nf-contact-${c.id}`, kind: 'contact',
+      name: c.ownerName || 'Unknown Owner', facilityName: c.facilityName || '',
+      reason: c.status === 'appointment' ? 'Appt set — no follow-up task' : 'Conversation logged — no follow-up task',
+      contact: c,
+    });
+  });
+  clients.forEach(cl => {
+    if (cl.stageId < 2 || cl.stageId > 9) return;
+    if (cl.nextActionType) return;
+    if (taskApi.getRelatedTasks('client', cl.id).length > 0) return;
+    rows.push({
+      key: `nf-client-${cl.id}`, kind: 'client',
+      name: cl.name, facilityName: cl.facilityName || '',
+      reason: 'Active pipeline stage — no next action',
+      client: cl,
+    });
+  });
+  return rows.slice(0, 10);
+}
+
+function buildPipelineAttention(taskApi, clients, meetings) {
+  const today = todayStr();
+  const rows = [];
+  clients.forEach(cl => {
+    if (cl.stageId < 2 || cl.stageId > 9) return;
+    const open = taskApi?.getRelatedTasks('client', cl.id) ?? [];
+    const next = getNextOpenTask(open);
+    let reason = null;
+    if (next?.dueDate && next.dueDate < today) reason = 'Overdue task';
+    else if (next?.dueDate === today) reason = 'Task due today';
+    else if (!next && !cl.nextActionType) reason = 'No next action';
+    const meeting = meetings.find(m => m.clientId === cl.id && m.date >= today);
+    if (!reason && !meeting) return;
+    rows.push({ key: `pa-${cl.id}`, client: cl, reason: reason || 'Upcoming meeting', meeting });
+  });
+  const rank = { 'Overdue task': 0, 'Task due today': 1, 'No next action': 2 };
+  rows.sort((a, b) => (rank[a.reason] ?? 3) - (rank[b.reason] ?? 3));
+  return rows.slice(0, 8);
+}
+
+// ─── Today Command Header ────────────────────────────────────────────────────
+function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, meetingsToday, onStartCallMode }) {
+  const dateLabel = new Date().toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
+  const stats = [
+    { label: 'Calls Today', value: today.calls, accent: 'text-blue-400' },
+    { label: 'Conversations', value: today.conversations, accent: 'text-green-400' },
+    { label: 'Appts Set', value: today.firstAppts, accent: 'text-amber-400' },
+    { label: 'BOVs Due', value: bovsDueCount, accent: bovsDueCount > 0 ? 'text-purple-400' : 'text-slate-600' },
+    { label: 'Due Today', value: dueTodayCount, accent: dueTodayCount > 0 ? 'text-amber-400' : 'text-slate-600' },
+    { label: 'Overdue', value: overdueCount, accent: overdueCount > 0 ? 'text-red-400' : 'text-slate-600' },
+    { label: 'Meetings Today', value: meetingsToday, accent: meetingsToday > 0 ? 'text-cyan-400' : 'text-slate-600' },
+  ];
+
+  return (
+    <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 rounded-2xl p-5">
+      <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+        <div>
+          <h2 className="text-xl font-black text-white">Today · {dateLabel}</h2>
+          <p className="text-xs text-slate-500 mt-0.5">What Brandon should attack today</p>
+        </div>
+        <button
+          onClick={onStartCallMode}
+          className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-black px-5 py-3 rounded-xl text-sm transition-all shadow flex items-center gap-2"
+        >
+          📞 Start Calling
+        </button>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+        {stats.map(s => (
+          <div key={s.label} className="bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5 text-center">
+            <p className={`text-2xl font-black leading-none ${s.accent}`}>{s.value}</p>
+            <p className="text-xs text-slate-500 mt-1 leading-tight">{s.label}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Today's Attack List ──────────────────────────────────────────────────────
+function AttackList({ rows, onCallContact, onEditClient, onOpenDatabase }) {
+  return (
+    <SectionCard
+      title="Today's Attack List"
+      subtitle="Who to contact next, ranked overdue → due today"
+      actions={
+        <button onClick={onOpenDatabase} className="text-xs text-amber-500 hover:text-amber-400 font-semibold transition-colors">
+          Open Call Mode →
+        </button>
+      }
+    >
+      {rows.length === 0 ? (
+        <EmptyState icon="🎯" message="Nothing overdue or due today — you're caught up." />
+      ) : (
+        <div className="space-y-1.5 max-h-[28rem] overflow-y-auto pr-1">
+          {rows.map(r => (
+            <div key={r.key}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${
+                r.overdue ? 'bg-red-500/10 border-red-500/30' : 'bg-slate-800 border-slate-700'
+              }`}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-bold text-white truncate">{r.name}</span>
+                  {r.facilityName && <span className="text-xs text-slate-500 truncate">{r.facilityName}</span>}
+                </div>
+                <p className={`text-xs mt-0.5 truncate ${r.overdue ? 'text-red-400' : 'text-amber-400/80'}`}>
+                  {r.overdue ? 'OVERDUE — ' : ''}{r.reason}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {r.kind === 'contact' && r.phone && (
+                  <a href={`tel:${r.phone}`} onClick={e => e.stopPropagation()}
+                    className="text-xs font-bold bg-green-600/20 border border-green-600/40 text-green-400 hover:bg-green-600/30 px-2 py-1 rounded-lg transition-all">
+                    📞
+                  </a>
+                )}
+                {r.kind === 'contact' && r.contact && (
+                  <button onClick={() => onCallContact(r.contact)}
+                    className="text-xs font-bold bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 px-2.5 py-1 rounded-lg transition-all">
+                    Call
+                  </button>
+                )}
+                {r.kind === 'client' && r.client && (
+                  <button onClick={() => onEditClient(r.client)}
+                    className="text-xs font-bold bg-blue-500/15 border border-blue-500/40 text-blue-400 hover:bg-blue-500/25 px-2.5 py-1 rounded-lg transition-all">
+                    Push
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+// ─── Pipeline Attention ───────────────────────────────────────────────────────
+function PipelineAttention({ rows, onEditClient }) {
+  return (
+    <SectionCard title="Pipeline Attention" subtitle="Deals that need a push">
+      {rows.length === 0 ? (
+        <p className="text-xs text-slate-600 italic text-center py-4">No active deals need attention right now.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {rows.map(r => {
+            const stage = PIPELINE_STAGES.find(s => s.id === r.client.stageId);
+            const tone = r.reason === 'Overdue task' ? 'text-red-400'
+              : r.reason === 'Task due today' ? 'text-amber-400'
+              : r.reason === 'No next action' ? 'text-slate-400'
+              : 'text-cyan-400';
+            return (
+              <button key={r.key} onClick={() => onEditClient(r.client)}
+                className="w-full text-left flex items-center gap-3 px-3 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/50 hover:border-slate-600 rounded-lg transition-all">
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: stage?.hex ?? '#475569' }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-white truncate">{r.client.name}</p>
+                  <p className={`text-xs truncate ${tone}`}>{r.reason}{r.meeting ? ` · Meeting ${r.meeting.date === todayStr() ? 'today' : r.meeting.date}` : ''}</p>
+                </div>
+                <span className={`text-xs font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${stage?.text ?? 'text-slate-400'}`} style={{ fontSize: '9px' }}>
+                  {stage?.short}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+// ─── Needs Follow-Up (V1) ─────────────────────────────────────────────────────
+function NeedsFollowUp({ rows, onCallContact, onEditClient }) {
+  if (rows.length === 0) return null;
+  return (
+    <SectionCard title="Needs Follow-Up" subtitle="Activity logged with no open task">
+      <div className="space-y-1.5">
+        {rows.map(r => (
+          <button key={r.key}
+            onClick={() => r.kind === 'contact' ? onCallContact(r.contact) : onEditClient(r.client)}
+            className="w-full text-left flex items-center gap-3 px-3 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/50 hover:border-slate-600 rounded-lg transition-all">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-white truncate">{r.name}</p>
+              <p className="text-xs text-slate-500 truncate">{r.reason}</p>
+            </div>
+            <span className="text-xs text-slate-600 flex-shrink-0">{r.kind === 'contact' ? '☎' : '💼'}</span>
+          </button>
+        ))}
+      </div>
+    </SectionCard>
+  );
+}
 
 // ─── Pipeline Continuum Snapshot ──────────────────────────────────────────────
 function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
@@ -72,11 +330,11 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
   );
 }
 
-// ─── Today's Progress ─────────────────────────────────────────────────────────
-function TodaysProgress({ today, increment, decrement, setValue, todayLabel }) {
+// ─── Daily Production ─────────────────────────────────────────────────────────
+function DailyProduction({ today, increment, decrement, setValue, todayLabel, completedTodayCount, callbacksCreatedToday }) {
   return (
     <SectionCard
-      title="Today's Progress"
+      title="Daily Production"
       subtitle={`${todayLabel} · Resets at midnight`}
       actions={
         <div className="flex items-center gap-1.5 bg-slate-800 rounded-lg px-2.5 py-1.5">
@@ -114,6 +372,16 @@ function TodaysProgress({ today, increment, decrement, setValue, todayLabel }) {
             </div>
           </div>
         ))}
+        <div className="flex gap-2 pt-1">
+          <div className="flex-1 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-center">
+            <p className="text-lg font-black text-emerald-400 leading-none">{completedTodayCount}</p>
+            <p className="text-xs text-slate-500 mt-1">Tasks Completed</p>
+          </div>
+          <div className="flex-1 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-center">
+            <p className="text-lg font-black text-purple-400 leading-none">{callbacksCreatedToday}</p>
+            <p className="text-xs text-slate-500 mt-1">Callbacks Created</p>
+          </div>
+        </div>
       </div>
     </SectionCard>
   );
@@ -190,16 +458,16 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
 
 // ─── Upcoming Meetings ────────────────────────────────────────────────────────
 function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const upcoming = [...meetings]
-    .filter(m => m.date >= todayStr)
+    .filter(m => m.date >= today)
     .sort((a, b) => (a.date + (a.startTime ?? '')).localeCompare(b.date + (b.startTime ?? '')))
     .slice(0, 5);
-  const todayCount = meetings.filter(m => m.date === todayStr).length;
+  const todayCount = meetings.filter(m => m.date === today).length;
 
   return (
     <SectionCard
-      title="Upcoming Meetings"
+      title="Meetings"
       subtitle={new Date().toLocaleDateString('default', { month: 'long', day: 'numeric' })}
       actions={
         <div className="text-right">
@@ -223,7 +491,7 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
         <div className="space-y-1.5">
           {upcoming.map(m => {
             const client = clients.find(c => c.id === m.clientId);
-            const isToday = m.date === todayStr;
+            const isToday = m.date === today;
             const isTomorrow = m.date === (() => {
               const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10);
             })();
@@ -254,54 +522,6 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
             className="w-full text-xs text-slate-600 hover:text-amber-400 py-1 transition-colors text-center">
             View full calendar →
           </button>
-        </div>
-      )}
-    </SectionCard>
-  );
-}
-
-// ─── Active Relationships (Follow-ups) ────────────────────────────────────────
-function ActiveRelationships({ clients }) {
-  // Clients in relationship-building stages
-  const active = clients
-    .filter(c => [2, 3, 4, 5].includes(c.stageId))
-    .sort((a, b) => a.stageId - b.stageId)
-    .slice(0, 6);
-
-  return (
-    <SectionCard
-      title="Active Relationships"
-      subtitle="Cold Call → Exclusive Listing"
-      actions={
-        <span className="text-xs bg-slate-800 text-slate-500 px-2 py-0.5 rounded-md font-semibold">
-          {clients.filter(c => [2,3,4,5].includes(c.stageId)).length}
-        </span>
-      }
-    >
-      {active.length === 0 ? (
-        <p className="text-xs text-slate-600 italic text-center py-4">No active relationships</p>
-      ) : (
-        <div className="space-y-1.5">
-          {active.map(c => {
-            const stage = PIPELINE_STAGES.find(s => s.id === c.stageId);
-            return (
-              <div key={c.id} className="flex items-center gap-3 px-3 py-2 bg-slate-800 rounded-lg">
-                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: stage?.hex ?? '#475569' }} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{c.name}</p>
-                </div>
-                <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${stage?.text ?? 'text-slate-400'}`}
-                  style={{ fontSize: '9px' }}>
-                  {stage?.short}
-                </span>
-              </div>
-            );
-          })}
-          {clients.filter(c => [2,3,4,5].includes(c.stageId)).length > 6 && (
-            <p className="text-xs text-slate-600 text-center pt-1">
-              +{clients.filter(c => [2,3,4,5].includes(c.stageId)).length - 6} more
-            </p>
-          )}
         </div>
       )}
     </SectionCard>
@@ -419,7 +639,10 @@ function DashboardTasks({ taskApi }) {
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function Dashboard({ clients, contacts = [], meetings = [], onNavigateCalendar, onAddToPipeline, review, taskApi }) {
+export default function Dashboard({
+  clients, contacts = [], meetings = [], onNavigateCalendar,
+  onStartCallMode, onOpenContact, onEditClient, review, taskApi,
+}) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
   const inContract  = clients.filter(c => c.stageId === 8).length;
@@ -456,8 +679,53 @@ export default function Dashboard({ clients, contacts = [], meetings = [], onNav
     { label: 'Closed',        value: closed,      accent: 'text-purple-400', sub: 'Close + Post-Close' },
   ];
 
+  const attackRows = useMemo(() => buildAttackList(taskApi, contacts, clients), [taskApi, contacts, clients]);
+  const followUpRows = useMemo(() => buildNeedsFollowUp(taskApi, contacts, clients), [taskApi, contacts, clients]);
+  const attentionRows = useMemo(() => buildPipelineAttention(taskApi, clients, meetings), [taskApi, clients, meetings]);
+
+  const overdueCount = taskApi?.groups?.overdue?.length ?? 0;
+  const dueTodayCount = taskApi?.groups?.dueToday?.length ?? 0;
+  const bovsDueCount = useMemo(() => {
+    const { overdue = [], dueToday = [] } = taskApi?.groups ?? {};
+    return [...overdue, ...dueToday].filter(t => t.taskType === 'bov').length;
+  }, [taskApi]);
+  const meetingsToday = meetings.filter(m => m.date === todayStr()).length;
+  const completedTodayCount = taskApi?.groups?.completedToday?.length ?? 0;
+  const callbacksCreatedToday = useMemo(() => {
+    const today = todayStr();
+    return (taskApi?.tasks ?? []).filter(t =>
+      t.taskType === 'call' && t.source === 'database' && (t.createdAt ?? '').slice(0, 10) === today
+    ).length;
+  }, [taskApi]);
+
   return (
     <div className="space-y-4">
+
+      {/* ── Today Command Header ── */}
+      <CommandHeader
+        today={today}
+        overdueCount={overdueCount}
+        dueTodayCount={dueTodayCount}
+        bovsDueCount={bovsDueCount}
+        meetingsToday={meetingsToday}
+        onStartCallMode={onStartCallMode}
+      />
+
+      {/* ── Attack List + Pipeline Attention ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <AttackList
+            rows={attackRows}
+            onCallContact={onOpenContact}
+            onEditClient={onEditClient}
+            onOpenDatabase={onStartCallMode}
+          />
+        </div>
+        <div className="space-y-4">
+          <PipelineAttention rows={attentionRows} onEditClient={onEditClient} />
+          <NeedsFollowUp rows={followUpRows} onCallContact={onOpenContact} onEditClient={onEditClient} />
+        </div>
+      </div>
 
       {/* ── KPI Strip ── */}
       <MetricCardGrid metrics={kpiStats} />
@@ -472,14 +740,16 @@ export default function Dashboard({ clients, contacts = [], meetings = [], onNav
       {/* ── Main Body: Left content + Right sidebar ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Left: Today's Progress + Analytics + Funnel */}
+        {/* Left: Daily Production + Analytics + Funnel */}
         <div className="lg:col-span-2 space-y-4">
-          <TodaysProgress
+          <DailyProduction
             today={today}
             increment={increment}
             decrement={decrement}
             setValue={setValue}
             todayLabel={todayLabel}
+            completedTodayCount={completedTodayCount}
+            callbacksCreatedToday={callbacksCreatedToday}
           />
 
           <ProductivityAnalytics
@@ -493,7 +763,7 @@ export default function Dashboard({ clients, contacts = [], meetings = [], onNav
           <FunnelChart clients={clients} filter="All" />
         </div>
 
-        {/* Right: Tasks + Meetings + Recent Activity + Active Relationships */}
+        {/* Right: Tasks + Meetings + Recent Activity */}
         <div className="space-y-4">
           <DashboardTasks taskApi={taskApi} />
           <UpcomingMeetingsWidget
@@ -511,7 +781,6 @@ export default function Dashboard({ clients, contacts = [], meetings = [], onNav
             />
           )}
           <RecentActivity clients={clients} contacts={contacts} />
-          <ActiveRelationships clients={clients} />
         </div>
 
       </div>

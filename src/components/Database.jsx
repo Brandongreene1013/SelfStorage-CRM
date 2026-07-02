@@ -780,7 +780,7 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 }
 
 // ─── Main Database Component ──────────────────────────────────────────────────
-export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi }) {
+export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, entryRequest, onEntryConsumed }) {
   const {
     lists, contacts, masterListId,
     importList, importIntoList, removeDuplicates, moveContactToList, createList, addContact,
@@ -848,6 +848,25 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     filtered.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
     [filtered]
   );
+
+  // Deep-link entry from the Dashboard command center ("Start Calling" /
+  // Attack List "Call" quick action). Consumed once, then cleared by the
+  // parent so re-clicking the same action still fires (App.jsx passes a
+  // fresh object each time).
+  useEffect(() => {
+    if (!entryRequest) return;
+    if (entryRequest.openContactId) {
+      const c = contacts.find(x => x.id === entryRequest.openContactId);
+      if (c) setOpenContact(c);
+    } else {
+      if (entryRequest.listId) setActiveListId(entryRequest.listId);
+      if (entryRequest.subView) {
+        setSubView(entryRequest.subView);
+        if (entryRequest.subView === 'callQueue') setCallQueueIndex(0);
+      }
+    }
+    onEntryConsumed?.();
+  }, [entryRequest, contacts, onEntryConsumed]);
 
   // In the Master Database view, clients are merged in (unified view, no duplicates)
   const masterView = activeListId === masterListId;
@@ -1584,140 +1603,6 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
   );
 }
 
-function LegacyCallQueue({ queue, index, setIndex, callNote, setCallNote, callbackDate, setCallbackDate, onOutcome, lists }) {
-  if (queue.length === 0) {
-    return (
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center">
-        <div className="text-5xl mb-3">🎉</div>
-        <h3 className="text-lg font-bold text-white mb-1">Queue Empty</h3>
-        <p className="text-sm text-slate-500">No fresh contacts to call. Import a new list.</p>
-      </div>
-    );
-  }
-
-  const current = queue[Math.min(index, queue.length - 1)];
-  const list = lists.find(l => l.id === current.listId);
-  const progress = ((index + 1) / queue.length) * 100;
-
-  return (
-    <div className="space-y-4">
-      {/* Progress */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-3">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold text-slate-400">
-            {list?.name ?? 'All Lists'} · Contact {index + 1} of {queue.length}
-          </p>
-          <p className="text-xs font-semibold text-amber-400">{Math.round(progress)}% through queue</p>
-        </div>
-        <div className="w-full bg-slate-800 rounded-full h-2">
-          <div className="bg-amber-500 h-2 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
-        </div>
-      </div>
-
-      {/* Contact card */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          <div className="flex-1 space-y-4">
-            <div>
-              <h3 className="text-2xl font-black text-white">{current.ownerName || 'Unknown Owner'}</h3>
-              {current.facilityName ? (
-                <a
-                  href={`https://www.google.com/maps/search/${encodeURIComponent([current.facilityName, 'self storage', current.market || current.state].filter(Boolean).join(' '))}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="text-sm text-slate-400 hover:text-blue-400 mt-0.5 inline-flex items-center gap-1 transition-colors"
-                >
-                  {current.facilityName} 🗺
-                </a>
-              ) : (
-                <a
-                  href={`https://www.google.com/maps/search/${encodeURIComponent([(current.ownerName ?? ''), 'self storage', current.market || current.state].filter(Boolean).join(' '))}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="text-sm text-slate-500 hover:text-blue-400 mt-0.5 italic inline-flex items-center gap-1 transition-colors"
-                >
-                  Find facility on Maps 🗺
-                </a>
-              )}
-            </div>
-            <div className="bg-green-600/10 border border-green-600/30 rounded-xl p-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-green-400/70 font-semibold uppercase">Phone</p>
-                <p className="text-2xl font-black text-green-400 font-mono">{current.phone || 'No phone'}</p>
-              </div>
-              {current.phone && (
-                <a href={`tel:${current.phone}`} className="bg-green-600 hover:bg-green-500 text-white font-bold px-5 py-3 rounded-xl text-sm transition-all shadow flex items-center gap-2">
-                  📞 Call Now
-                </a>
-              )}
-            </div>
-            {current.email && (
-              <a href={`mailto:${current.email}`} className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300">
-                <span>📧</span> {current.email}
-              </a>
-            )}
-            {current.address && (
-              <a
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(current.address)}`}
-                target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300"
-              >
-                <span>📍</span> {current.address}
-              </a>
-            )}
-            {current.market && (
-              <span className="inline-block bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold px-2.5 py-1 rounded-md">
-                {current.market}
-              </span>
-            )}
-          </div>
-
-          <div className="lg:w-72 space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">Call Notes</label>
-              <textarea
-                value={callNote}
-                onChange={e => setCallNote(e.target.value)}
-                rows={3}
-                placeholder="Quick notes..."
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 resize-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-2">Log Outcome</label>
-              <div className="grid grid-cols-2 gap-2">
-                {CALL_OUTCOMES.map(o => (
-                  <button key={o.status} onClick={() => onOutcome(current, o.status)}
-                    className={`border rounded-xl px-3 py-2.5 text-xs font-bold transition-all text-center ${o.color}`}>
-                    <span className="text-base">{o.icon}</span>
-                    <span className="block mt-0.5">{o.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">Callback Date</label>
-              <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-800">
-          <button onClick={() => setIndex(Math.max(0, index - 1))} disabled={index === 0}
-            className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold">
-            ← Previous
-          </button>
-          <p className="text-xs text-slate-600">{STATUS_LABELS[current.status] ?? 'Fresh'}</p>
-          <button onClick={() => setIndex(Math.min(queue.length - 1, index + 1))} disabled={index >= queue.length - 1}
-            className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold">
-            Skip →
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Markets View ─────────────────────────────────────────────────────────────
 function MarketsView({ contacts }) {
   const stateRollup = {};
   contacts.forEach(c => {
