@@ -5,11 +5,12 @@ import TaskModal from './TaskModal';
 // Compact "open tasks for this entity" block + Add Task button. Used inside
 // ClientCard and Database's ContactDetailModal — deliberately small (per
 // Sprint 2's "don't make the UI huge" constraint), not a full task manager.
-export default function RelatedTasks({ taskApi, relatedType, relatedId, relatedName, source, maxVisible = 3 }) {
+export default function RelatedTasks({ taskApi, relatedType, relatedId, relatedName, source, maxVisible = 3, excludeTaskIds = [] }) {
   const [showAdd, setShowAdd] = useState(false);
   if (!taskApi) return null;
 
-  const openTasks = taskApi.getRelatedTasks(relatedType, relatedId);
+  const excluded = new Set(excludeTaskIds);
+  const openTasks = taskApi.getRelatedTasks(relatedType, relatedId).filter(t => !excluded.has(t.id));
   const visible = openTasks.slice(0, maxVisible);
   const hiddenCount = openTasks.length - visible.length;
 

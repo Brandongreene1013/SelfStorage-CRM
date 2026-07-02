@@ -11,7 +11,7 @@ function plusDays(n) {
 // Create (or quick-edit) a universal task. `context` carries where it's tied
 // to: { relatedType, relatedId, relatedName, source }. Pass `emphasizeDueDate`
 // to visually push for a due date (used for the "Call Back" outcome prompt).
-export default function TaskModal({ context, defaults = {}, emphasizeDueDate = false, onSave, onClose }) {
+export default function TaskModal({ context, defaults = {}, emphasizeDueDate = false, heading = 'Add Task', saveLabel = 'Save Task', onSave, onClose }) {
   const [title, setTitle] = useState(defaults.title ?? '');
   const [taskType, setTaskType] = useState(defaults.taskType ?? 'follow_up');
   const [priority, setPriority] = useState(defaults.priority ?? 'normal');
@@ -45,7 +45,7 @@ export default function TaskModal({ context, defaults = {}, emphasizeDueDate = f
     <ModalLayout onClose={onClose} size="md">
       <div className="flex items-center justify-between p-5 border-b border-slate-800">
         <div>
-          <h2 className="text-base font-black text-white">Add Task</h2>
+          <h2 className="text-base font-black text-white">{heading}</h2>
           {context?.relatedName && (
             <p className="text-xs text-slate-500 mt-0.5">For {context.relatedName}</p>
           )}
@@ -160,7 +160,7 @@ export default function TaskModal({ context, defaults = {}, emphasizeDueDate = f
             title.trim() ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
           }`}
         >
-          Save Task
+          {saveLabel}
         </button>
       </div>
     </ModalLayout>

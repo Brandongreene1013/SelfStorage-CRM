@@ -1,23 +1,27 @@
 import { useState } from 'react';
 import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { useFileStorage } from '../hooks/useFileStorage';
-import ActionModal from './ActionModal';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import { StatusBadge } from './ui';
-import { RelatedTasks } from './tasks';
+import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
 export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, compact = false, taskApi }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
   const { openFile } = useFileStorage();
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
   const docs = client.documents ?? [];
-  const [showActionModal, setShowActionModal] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const isOverdue = client.nextActionDate && client.nextActionDate < today;
-  const isDueToday = client.nextActionDate === today;
+  const openTasks = taskApi?.getRelatedTasks('client', client.id) ?? [];
+  const nextTask = getNextOpenTask(openTasks);
+  const nextTaskType = nextTask ? TASK_TYPE_MAP[nextTask.taskType] : null;
+  const nextTaskDue = dueMeta(nextTask?.dueDate);
   const actionType = ACTION_TYPES.find(a => a.value === client.nextActionType);
+  const fallbackDue = dueMeta(client.nextActionDate);
+  const modalDefaults = nextTask
+    ? {}
+    : legacyActionDefaults(client.nextActionType, client.nextActionDate, client.nextActionNote);
 
   return (
     <>
@@ -164,13 +168,45 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
 
       {/* Next Action display / set button */}
       <div className="mt-3 pt-3 border-t border-slate-700">
-        {actionType ? (
+        {nextTask ? (
           <button
-            onClick={() => setShowActionModal(true)}
+            onClick={() => setShowTaskModal(true)}
             className={`w-full rounded-xl px-3 py-2.5 text-left transition-all border ${
-              isOverdue
+              nextTaskDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
-                : isDueToday
+                : nextTaskDue?.tone === 'amber'
+                  ? 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20'
+                  : 'bg-slate-800/60 border-slate-700 hover:border-slate-600'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm flex-shrink-0">{nextTaskType?.icon ?? '>'}</span>
+                <span className={`text-xs font-bold truncate ${
+                  nextTaskDue?.tone === 'red' ? 'text-red-400' : nextTaskDue?.tone === 'amber' ? 'text-amber-400' : 'text-slate-300'
+                }`}>
+                  {nextTask.title}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {nextTaskDue && (
+                  <span className={`text-xs font-black ${
+                    nextTaskDue.tone === 'red' ? 'text-red-400' : nextTaskDue.tone === 'amber' ? 'text-amber-400' : 'text-slate-500'
+                  }`}>{nextTaskDue.label}</span>
+                )}
+              </div>
+            </div>
+            {nextTask.description && (
+              <p className="text-xs text-slate-500 mt-1 truncate">{nextTask.description}</p>
+            )}
+          </button>
+        ) : actionType ? (
+          <button
+            onClick={() => setShowTaskModal(true)}
+            className={`w-full rounded-xl px-3 py-2.5 text-left transition-all border ${
+              fallbackDue?.tone === 'red'
+                ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
+                : fallbackDue?.tone === 'amber'
                   ? 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20'
                   : 'bg-slate-800/60 border-slate-700 hover:border-slate-600'
             }`}
@@ -179,18 +215,16 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
               <div className="flex items-center gap-2 min-w-0">
                 <span className="text-sm flex-shrink-0">{actionType.icon}</span>
                 <span className={`text-xs font-bold truncate ${
-                  isOverdue ? 'text-red-400' : isDueToday ? 'text-amber-400' : 'text-slate-300'
+                  fallbackDue?.tone === 'red' ? 'text-red-400' : fallbackDue?.tone === 'amber' ? 'text-amber-400' : 'text-slate-300'
                 }`}>
                   {actionType.label}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                {isOverdue && <span className="text-xs text-red-400 font-black">OVERDUE</span>}
-                {isDueToday && !isOverdue && <span className="text-xs text-amber-400 font-black">TODAY</span>}
-                {client.nextActionDate && !isOverdue && !isDueToday && (
-                  <span className="text-xs text-slate-500">{client.nextActionDate}</span>
-                )}
-              </div>
+              {fallbackDue && (
+                <span className={`text-xs font-black flex-shrink-0 ${
+                  fallbackDue.tone === 'red' ? 'text-red-400' : fallbackDue.tone === 'amber' ? 'text-amber-400' : 'text-slate-500'
+                }`}>{fallbackDue.label}</span>
+              )}
             </div>
             {client.nextActionNote && (
               <p className="text-xs text-slate-500 mt-1 truncate">{client.nextActionNote}</p>
@@ -198,7 +232,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
           </button>
         ) : (
           <button
-            onClick={() => setShowActionModal(true)}
+            onClick={() => setShowTaskModal(true)}
             className="w-full bg-transparent border border-dashed border-slate-700 hover:border-amber-500/40 text-slate-500 hover:text-amber-400 font-semibold px-3 py-2.5 rounded-xl text-xs transition-all"
           >
             + Set Next Action
@@ -226,6 +260,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         relatedId={client.id}
         relatedName={client.name}
         source="client"
+        excludeTaskIds={nextTask ? [nextTask.id] : []}
       />
 
       {/* Stage selector (mini) */}
@@ -257,15 +292,14 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       )}
     </div>
 
-    {showActionModal && (
-      <ActionModal
-        name={client.name}
-        subtitle={client.facilityName}
-        actionType={client.nextActionType}
-        actionDate={client.nextActionDate}
-        actionNote={client.nextActionNote}
-        onSave={(fields) => onSetAction(client.id, fields)}
-        onClose={() => setShowActionModal(false)}
+    {showTaskModal && (
+      <TaskModal
+        context={{ relatedType: 'client', relatedId: client.id, relatedName: client.name, source: compact ? 'pipeline' : 'client' }}
+        defaults={modalDefaults}
+        heading="Set Next Action"
+        saveLabel="Save Next Action"
+        onSave={taskApi?.createTask}
+        onClose={() => setShowTaskModal(false)}
       />
     )}
     {showLogModal && (

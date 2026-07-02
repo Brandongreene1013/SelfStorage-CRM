@@ -13,7 +13,6 @@ import Dashboard from './components/Dashboard';
 import Calendar from './components/Calendar';
 import Database from './components/Database';
 import Analyst from './components/Analyst';
-import ActionModal from './components/ActionModal';
 import { PIPELINE_STAGES } from './data/constants';
 import { SearchToolbar, FilterPills, EmptyState, PageHeader, Button } from './components/ui';
 import './index.css';
@@ -129,7 +128,6 @@ export default function App() {
   const [editingClient, setEditingClient] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [deletingClient, setDeletingClient] = useState(null);
-  const [actionClient, setActionClient] = useState(null);
 
   function handleEdit(client) {
     setEditingClient(client);
@@ -280,7 +278,6 @@ export default function App() {
               clients={visibleClients}
               onEdit={handleEdit}
               onStageChange={moveClientToStage}
-              onSetAction={setActionClient}
               onLogAction={logClientAction}
               onMoveToDatabase={handleClientToDatabase}
               filter={filter}
@@ -375,20 +372,6 @@ export default function App() {
           clientName={deletingClient.name}
           onConfirm={confirmDelete}
           onClose={() => setDeletingClient(null)}
-        />
-      )}
-      {actionClient && (
-        <ActionModal
-          name={actionClient.name}
-          subtitle={actionClient.facilityName}
-          actionType={actionClient.nextActionType}
-          actionDate={actionClient.nextActionDate}
-          actionNote={actionClient.nextActionNote}
-          onSave={(fields) => {
-            setClientAction(actionClient.id, fields);
-            setActionClient(null);
-          }}
-          onClose={() => setActionClient(null)}
         />
       )}
     </div>

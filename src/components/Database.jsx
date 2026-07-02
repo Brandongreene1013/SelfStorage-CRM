@@ -1,13 +1,12 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core';
 import ImportListModal from './ImportListModal';
-import ActionModal from './ActionModal';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
 import { ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
-import { RelatedTasks, TaskModal } from './tasks';
+import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -129,7 +128,10 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
   function handleOutcome(status) {
     onStatusChange(contact.id, status, notes);
     onNotesChange(contact.id, notes);
-    if (status === 'callback') setTaskPrompt('callback');
+    if (status === 'callback') {
+      if (callbackDate) onUpdate(contact.id, { callbackDate });
+      setTaskPrompt('callback');
+    }
     else if (status === 'conversation' || status === 'appointment') setTaskPrompt('suggest');
     else setTaskPrompt(null);
   }
@@ -318,7 +320,7 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
         {(taskPrompt === 'callback' || taskPrompt === 'open') && (
           <TaskModal
             context={{ relatedType: 'contact', relatedId: contact.id, relatedName: contactName, source: 'database' }}
-            defaults={{ title: taskPrompt === 'callback' ? 'Call back' : '', taskType: 'call' }}
+            defaults={{ title: taskPrompt === 'callback' ? 'Call back' : '', taskType: 'call', dueDate: callbackDate || undefined }}
             emphasizeDueDate={taskPrompt === 'callback'}
             onSave={(fields) => taskApi?.createTask(fields)}
             onClose={() => setTaskPrompt(null)}
@@ -329,17 +331,22 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, isMasterDB, lists = [], onMoveToList, onToClients }) {
+function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, isMasterDB, lists = [], onMoveToList, onToClients, taskApi }) {
   const [added, setAdded] = useState(false);
-  const [showAction, setShowAction] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: contact.id, data: { contact } });
 
-  const today = new Date().toISOString().slice(0, 10);
+  const openTasks = taskApi?.getRelatedTasks('contact', contact.id) ?? [];
+  const nextTask = getNextOpenTask(openTasks);
+  const nextTaskType = nextTask ? TASK_TYPE_MAP[nextTask.taskType] : null;
+  const nextTaskDue = dueMeta(nextTask?.dueDate);
   const actionType = ACTION_TYPES.find(a => a.value === contact.nextActionType);
-  const isOverdue = contact.nextActionDate && contact.nextActionDate < today;
-  const isDueToday = contact.nextActionDate === today;
+  const fallbackDue = dueMeta(contact.nextActionDate);
+  const modalDefaults = nextTask
+    ? {}
+    : legacyActionDefaults(contact.nextActionType, contact.nextActionDate, contact.nextActionNote);
 
   const mapsQuery = encodeURIComponent(
     [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ')
@@ -361,8 +368,6 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
     <div
       ref={setNodeRef}
       onClick={onClick}
-      {...listeners}
-      {...attributes}
       className={`bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-black/30 group ${isDragging ? 'opacity-40' : ''}`}
     >
       {/* Status + lead temp + market */}
@@ -394,6 +399,15 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           })()}
         </div>
         <div className="flex items-center gap-1.5">
+          <button
+            {...listeners}
+            {...attributes}
+            onClick={e => e.stopPropagation()}
+            className="text-xs text-slate-600 hover:text-slate-300 px-1.5 py-0.5 rounded transition-all cursor-grab active:cursor-grabbing"
+            title="Drag contact"
+          >
+            Drag
+          </button>
           {contact.market && (
             <span className="text-xs text-amber-400/70 font-semibold">{contact.market}</span>
           )}
@@ -435,9 +449,15 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
       )}
 
       {/* Owner Name */}
-      <h3 className="font-bold text-white text-sm leading-tight group-hover:text-amber-400 transition-colors line-clamp-1 mb-2">
-        {contact.ownerName || <span className="text-slate-500 italic text-sm font-semibold">Unknown Owner</span>}
-      </h3>
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); onClick(); }}
+        className="block w-full text-left mb-2"
+      >
+        <h3 className="font-bold text-white text-sm leading-tight group-hover:text-amber-400 transition-colors line-clamp-1">
+          {contact.ownerName || <span className="text-slate-500 italic text-sm font-semibold">Unknown Owner</span>}
+        </h3>
+      </button>
 
       <div className="h-px bg-slate-800 mb-3" />
 
@@ -478,25 +498,39 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
 
       {/* Next action */}
       <div className="mt-2">
-        {actionType ? (
+        {nextTask ? (
           <button
-            onClick={e => { e.stopPropagation(); setShowAction(true); }}
+            onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
             className={`w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-all border ${
-              isOverdue
+              nextTaskDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                : isDueToday
+                : nextTaskDue?.tone === 'amber'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                  : 'bg-slate-800/60 border-slate-700 text-slate-400'
+            }`}
+          >
+            <span>{nextTaskType?.icon ?? '>'}</span>
+            <span className="font-semibold truncate">{nextTask.title}</span>
+            {nextTaskDue && <span className="font-black ml-auto flex-shrink-0">{nextTaskDue.label}</span>}
+          </button>
+        ) : actionType ? (
+          <button
+            onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
+            className={`w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-all border ${
+              fallbackDue?.tone === 'red'
+                ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                : fallbackDue?.tone === 'amber'
                   ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                   : 'bg-slate-800/60 border-slate-700 text-slate-400'
             }`}
           >
             <span>{actionType.icon}</span>
             <span className="font-semibold truncate">{actionType.label}</span>
-            {isOverdue && <span className="font-black ml-auto flex-shrink-0">OVERDUE</span>}
-            {isDueToday && !isOverdue && <span className="font-black ml-auto flex-shrink-0">TODAY</span>}
+            {fallbackDue && <span className="font-black ml-auto flex-shrink-0">{fallbackDue.label}</span>}
           </button>
         ) : (
           <button
-            onClick={e => { e.stopPropagation(); setShowAction(true); }}
+            onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
             className="w-full text-xs text-slate-600 hover:text-amber-400 border border-dashed border-slate-700 hover:border-amber-500/40 rounded-lg px-2.5 py-1.5 transition-all"
           >
             + Set Action
@@ -517,17 +551,6 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
         </div>
       )}
 
-      {showAction && (
-        <ActionModal
-          name={contact.ownerName || contact.facilityName || 'Contact'}
-          subtitle={contact.facilityName}
-          actionType={contact.nextActionType}
-          actionDate={contact.nextActionDate}
-          actionNote={contact.nextActionNote}
-          onSave={(fields) => onSetAction(contact.id, fields)}
-          onClose={() => setShowAction(false)}
-        />
-      )}
       {showLog && (
         <LogActionModal
           name={contact.ownerName || contact.facilityName || 'Contact'}
@@ -535,6 +558,16 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           actionLog={contact.actionLog}
           onSave={(entry) => onLogAction(contact.id, entry)}
           onClose={() => setShowLog(false)}
+        />
+      )}
+      {showTaskModal && (
+        <TaskModal
+          context={{ relatedType: 'contact', relatedId: contact.id, relatedName: contact.ownerName || contact.facilityName || 'Contact', source: 'database' }}
+          defaults={modalDefaults}
+          heading="Set Next Action"
+          saveLabel="Save Next Action"
+          onSave={taskApi?.createTask}
+          onClose={() => setShowTaskModal(false)}
         />
       )}
 
@@ -814,8 +847,25 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     : [];
 
   function handleCallOutcome(contact, status) {
+    if (status === 'callback' && !callbackDate) {
+      alert('Pick a callback date before logging Call Back.');
+      return;
+    }
     updateContactStatus(contact.id, status, callNote);
     if (status === 'callback' && callbackDate) updateContactCallback(contact.id, callbackDate);
+    if (status === 'callback') {
+      taskApi?.createTask({
+        title: 'Call back',
+        description: callNote.trim(),
+        taskType: 'call',
+        priority: 'normal',
+        dueDate: callbackDate,
+        relatedType: 'contact',
+        relatedId: contact.id,
+        relatedName: contact.ownerName || contact.facilityName || 'Contact',
+        source: 'database',
+      });
+    }
     if (onCallLogged) onCallLogged(status);
     setCallNote('');
     setCallbackDate('');
@@ -1083,6 +1133,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     lists={lists}
                     onMoveToList={moveContactToList}
                     onToClients={onContactToClients}
+                    taskApi={taskApi}
                   />
                 ))}
                 {/* Clients merged into the Master Database view (unified, no duplicates) */}

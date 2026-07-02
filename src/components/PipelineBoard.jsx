@@ -13,11 +13,12 @@ import { PIPELINE_STAGES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import MoveMenu from './MoveMenu';
 import { StatusBadge } from './ui';
-import { NextActionIndicator } from './tasks';
+import { NextActionIndicator, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
 /* ── Draggable client chip ── */
-function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction, onMoveToDatabase, taskApi }) {
+function DraggableChip({ client, onEdit, onLogAction, onMoveToDatabase, taskApi }) {
   const [showLog, setShowLog] = useState(false);
+  const [showTaskModal, setShowTaskModal] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: client.id,
     data: { client },
@@ -27,10 +28,15 @@ function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction, onMove
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const openTasks = taskApi?.getRelatedTasks('client', client.id) ?? [];
+  const nextTask = getNextOpenTask(openTasks);
+  const nextTaskType = nextTask ? TASK_TYPE_MAP[nextTask.taskType] : null;
+  const nextTaskDue = dueMeta(nextTask?.dueDate);
   const actionType = ACTION_TYPES.find(a => a.value === client.nextActionType);
-  const isOverdue = client.nextActionDate && client.nextActionDate < today;
-  const isDueToday = client.nextActionDate === today;
+  const fallbackDue = dueMeta(client.nextActionDate);
+  const modalDefaults = nextTask
+    ? {}
+    : legacyActionDefaults(client.nextActionType, client.nextActionDate, client.nextActionNote);
 
   return (
     <div
@@ -56,7 +62,12 @@ function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction, onMove
                 </span>
               ) : null;
             })()}
-            <NextActionIndicator taskApi={taskApi} relatedType="client" relatedId={client.id} />
+            <NextActionIndicator
+              taskApi={taskApi}
+              relatedType="client"
+              relatedId={client.id}
+              onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
+            />
           </div>
           <p className="text-sm font-semibold text-white truncate leading-tight">{client.name}</p>
           {client.facilityName && (
@@ -87,27 +98,42 @@ function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction, onMove
       </div>
 
       {/* Next action indicator */}
-      {actionType ? (
+      {nextTask ? (
         <div
           onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); onSetAction?.(client); }}
+          onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
           className={`mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-all border ${
-            isOverdue
+            nextTaskDue?.tone === 'red'
               ? 'bg-red-500/10 border-red-500/30 text-red-400'
-              : isDueToday
+              : nextTaskDue?.tone === 'amber'
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                : 'bg-slate-700/50 border-slate-600/50 text-slate-400'
+          }`}
+        >
+          <span>{nextTaskType?.icon ?? '>'}</span>
+          <span className="font-semibold truncate">{nextTask.title}</span>
+          {nextTaskDue && <span className="font-black ml-auto flex-shrink-0">{nextTaskDue.label}</span>}
+        </div>
+      ) : actionType ? (
+        <div
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
+          className={`mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-all border ${
+            fallbackDue?.tone === 'red'
+              ? 'bg-red-500/10 border-red-500/30 text-red-400'
+              : fallbackDue?.tone === 'amber'
                 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                 : 'bg-slate-700/50 border-slate-600/50 text-slate-400'
           }`}
         >
           <span>{actionType.icon}</span>
           <span className="font-semibold truncate">{actionType.label}</span>
-          {isOverdue && <span className="font-black ml-auto flex-shrink-0">OVERDUE</span>}
-          {isDueToday && !isOverdue && <span className="font-black ml-auto flex-shrink-0">TODAY</span>}
+          {fallbackDue && <span className="font-black ml-auto flex-shrink-0">{fallbackDue.label}</span>}
         </div>
       ) : (
         <button
           onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); onSetAction?.(client); }}
+          onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
           className="mt-2 w-full text-xs text-slate-600 hover:text-amber-400 border border-dashed border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1.5 transition-all"
         >
           + Set Action
@@ -137,12 +163,22 @@ function DraggableChip({ client, stage, onEdit, onSetAction, onLogAction, onMove
           onClose={() => setShowLog(false)}
         />
       )}
+      {showTaskModal && (
+        <TaskModal
+          context={{ relatedType: 'client', relatedId: client.id, relatedName: client.name, source: 'pipeline' }}
+          defaults={modalDefaults}
+          heading="Set Next Action"
+          saveLabel="Save Next Action"
+          onSave={taskApi?.createTask}
+          onClose={() => setShowTaskModal(false)}
+        />
+      )}
     </div>
   );
 }
 
 /* ── Droppable column ── */
-function StageColumn({ stage, clients, onEdit, onSetAction, onLogAction, onMoveToDatabase, taskApi, isOver: isOverProp }) {
+function StageColumn({ stage, clients, onEdit, onLogAction, onMoveToDatabase, taskApi, isOver: isOverProp }) {
   const { setNodeRef, isOver } = useDroppable({ id: String(stage.id) });
   const active = isOver || isOverProp;
 
@@ -180,7 +216,7 @@ function StageColumn({ stage, clients, onEdit, onSetAction, onLogAction, onMoveT
           </div>
         )}
         {clients.map(c => (
-          <DraggableChip key={c.id} client={c} stage={stage} onEdit={onEdit} onSetAction={onSetAction} onLogAction={onLogAction} onMoveToDatabase={onMoveToDatabase} taskApi={taskApi} />
+          <DraggableChip key={c.id} client={c} onEdit={onEdit} onLogAction={onLogAction} onMoveToDatabase={onMoveToDatabase} taskApi={taskApi} />
         ))}
       </div>
     </div>
@@ -203,7 +239,7 @@ function OverlayChip({ client }) {
 }
 
 /* ── Main Pipeline Board ── */
-export default function PipelineBoard({ clients, onEdit, onStageChange, onSetAction, onLogAction, onMoveToDatabase, filter, taskApi }) {
+export default function PipelineBoard({ clients, onEdit, onStageChange, onLogAction, onMoveToDatabase, filter, taskApi }) {
   const [activeClient, setActiveClient] = useState(null);
 
   const sensors = useSensors(
@@ -242,7 +278,6 @@ export default function PipelineBoard({ clients, onEdit, onStageChange, onSetAct
             stage={stage}
             clients={filteredClients.filter(c => c.stageId === stage.id)}
             onEdit={onEdit}
-            onSetAction={onSetAction}
             onLogAction={onLogAction}
             onMoveToDatabase={onMoveToDatabase}
             taskApi={taskApi}
