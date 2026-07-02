@@ -79,19 +79,31 @@ alter table public.tasks add constraint tasks_task_type_check
 create index if not exists idx_tasks_status_due   on public.tasks (status, due_date);
 create index if not exists idx_tasks_related       on public.tasks (related_type, related_id);
 
--- 5. RLS: this project's other app-data tables (clients, contacts, lists,
---    meetings) use a permissive policy that allows the anon/publishable key
---    full access (see CLAUDE.md). The pre-existing `tasks` table already
---    worked with the anon key for the old to-do widget, so it already has an
---    equivalent policy — no RLS changes should be needed. If tasks ever stop
---    loading after this migration with a "permission denied" error, run:
---
---   alter table public.tasks enable row level security;
---   create policy "allow anon full access" on public.tasks
---     for all using (true) with check (true);
---
+-- 5. RLS. VERIFIED NEEDED IN PRODUCTION (2026-07-01): this table had RLS
+--    enabled with no permissive policy attached, which silently blocked every
+--    insert/update from the app's anon key (both old- and new-shape rows) —
+--    even though this project's other app-data tables (clients, contacts,
+--    lists, meetings) already allow the anon key full access. This step is
+--    NOT optional/conditional — always run it.
+alter table public.tasks enable row level security;
+drop policy if exists "allow anon full access" on public.tasks;
+create policy "allow anon full access" on public.tasks
+  for all using (true) with check (true);
+
+-- 6. Drop the leftover NOT NULL on the old `text` column. VERIFIED NEEDED IN
+--    PRODUCTION (2026-07-01): the original simple to-do schema required
+--    `text` on every row. New-shape task creation never sets `text`, so
+--    every insert failed with "null value in column text violates not-null
+--    constraint" until this ran. Safe no-op if `text` is already nullable.
+alter table public.tasks alter column text drop not null;
+
 -- ============================================================================
 -- Done. After running this, refresh the app — the Dashboard's task widget,
 -- Client/Contact "Add Task", and Pipeline's next-action indicator will all
 -- start working against this same table.
+--
+-- This exact sequence (steps 0-6) was run against production on 2026-07-01
+-- and verified end-to-end via a live create → complete → delete → bad-value-
+-- rejected → select round trip using the app's real anon key. All five
+-- checks passed. Nothing further should be needed.
 -- ============================================================================

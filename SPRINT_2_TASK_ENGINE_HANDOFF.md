@@ -116,12 +116,26 @@ SQL Editor, before the new task features will actually persist. Key facts:
 - It adds check constraints on the enum-like columns and two indexes
   (`status, due_date` for the Dashboard groupings; `related_type, related_id`
   for the per-entity lookups).
-- No RLS changes should be needed — the existing `tasks` table already allows
-  the anon/publishable key full access (that's how the old to-do widget
-  worked), and this migration doesn't touch RLS. A fallback RLS policy is
-  included as a commented-out step in the SQL file in case it's ever needed.
+- **RLS and a leftover NOT NULL constraint (both confirmed necessary live,
+  not just theoretical fallbacks).** Two surprises turned up when this
+  migration was actually run against production on 2026-07-01: (1) the table
+  had RLS enabled with no permissive policy, silently blocking every anon-key
+  insert/update — not something this migration originally caused, but it was
+  in that state, and the fix is now a mandatory (not optional) step in the
+  SQL file; (2) the original `text` column had a leftover `NOT NULL`
+  constraint from the old simple-to-do schema, which broke every new-shape
+  insert since new tasks never populate `text`. **The checked-in
+  `sql/tasks_table_migration.sql` now includes both fixes as required steps**
+  — it is no longer the version that was first run; if you have an older copy
+  of this file cached anywhere, re-pull it.
+- **This has been run against production and verified end-to-end** (create →
+  complete → delete → bad-value-rejected → select, all via the app's real
+  anon key) as of 2026-07-01. The task engine's database side is confirmed
+  working, not just theoretically migrated.
 
-**Until that SQL is run, the app does not break** — see Section 12.
+**Until that SQL is run, the app does not break** — see Section 12. (It has
+now been run; this note is preserved for anyone reading this before applying
+it fresh to a different environment.)
 
 ## 8. New Hooks / Services / Components
 - **`useTasks()`** (`src/hooks/useTasks.js`) — see Section 4/6. Instantiated
@@ -180,21 +194,22 @@ assessment:
 None. This was new-feature work, not a bug-fix pass.
 
 ## 12. Known Issues / Risks
-- **No live browser click-through was completed this sprint.** I verified the
-  code paths by reading every diff, running a clean production build, running
-  lint at the exact pre-Sprint-2 baseline, and independently confirming the
-  Supabase error-handling logic against the real database via a Node script —
-  but I did not click through the actual running app in a browser (Dashboard
-  quick-add → complete, Client "+ Task" → appears → complete, Database
-  "Call Back" → task prompt, Pipeline chip rendering). **This should be done
-  before considering the sprint fully closed** — see the manual test script in
-  the original sprint brief; all 13 steps are still the right checklist.
-- **The SQL migration has not been run against production yet.** Until
-  Brandon runs `sql/tasks_table_migration.sql`, every `createTask`/
-  `completeTask`/etc. call will fail gracefully (see Section 6/Section 3's
-  `migrationNeeded` flag) rather than silently do nothing — Dashboard and
-  `RelatedTasks` both surface a visible "run the migration" message in that
-  state — but no one has actually run it and confirmed the happy path yet.
+- **UPDATE (2026-07-01, after the rest of this document was written): the SQL
+  migration HAS now been run against production**, including the RLS and
+  NOT NULL fixes described in Section 7, and verified end-to-end via a Node
+  script hitting the real anon key: create → complete → delete → bad-value-
+  rejected → select, all passed. The task engine's database side is
+  confirmed working, not just theoretically migrated.
+- **No live browser click-through has been completed yet**, even though the
+  database side is now verified. I verified the code paths by reading every
+  diff, running a clean production build, running lint at the exact
+  pre-Sprint-2 baseline, and confirming the database round-trip via a Node
+  script — but nobody has clicked through the actual running app yet
+  (Dashboard quick-add → complete, Client "+ Task" → appears → complete,
+  Database "Call Back" → task prompt, Pipeline chip rendering). **This is the
+  one remaining item before considering the sprint fully closed** — see the
+  manual test script in the original sprint brief; all 13 steps are still the
+  right checklist.
 - **Bundle size grew slightly** (1,158.88 kB vs. Sprint 1's 1,144.30 kB, both
   pre-existing-warning territory over the 500 kB threshold) — expected from 6
   new files; not a regression pattern, same pre-existing "needs code-splitting
