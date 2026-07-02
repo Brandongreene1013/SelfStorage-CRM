@@ -9,7 +9,7 @@ https://self-storage-crm.vercel.app/
 Current production/default branch:
 claude/storage-investment-crm-vV018
 
-Latest commit on that branch: 297b3cb "Fix Needs Follow-Up nagging lukewarm Master Database leads"
+Latest commit on that branch: see `git log` — Sprint 7 ("Sprint 7: Add safe QA and call mode polish") is the most recent sprint.
 
 Project context:
 Storage Hero is a custom self-storage investment sales CRM / operating system for Brandon Greene at RIPCO. Used daily for sourcing owners, cold calling, logging outcomes, creating follow-ups, promoting owners into pipeline, scheduling meetings, and winning exclusive listings. Not a generic CRM — read `CLAUDE.md` at the repo root before doing anything, it has stack/deployment/convention details that override defaults.
@@ -18,6 +18,7 @@ Storage Hero is a custom self-storage investment sales CRM / operating system fo
 SPRINT HISTORY (read the handoff docs at repo root, most recent first)
 --------------------------------------------------
 
+- `SPRINT_7_SAFE_QA_CALL_MODE_POLISH_HANDOFF.md` — Safe QA tooling + Call Mode polish. `scripts/qa-seed.mjs` (seed/status/cleanup) creates and safely deletes QA-prefixed test data so Call Mode/tasks/queues can be tested without touching real owners (see `QA_CALL_MODE_TESTING.md`). Call Mode now remembers queue position per queue for the session; the Dashboard command header shows Today's/Overdue callback counts (same shared logic as the picker, via `buildCallbackTaskQueue` in `tasks/taskUtils.js`); picker/queue copy clarified; Dashboard button renamed "Start Call Session".
 - `SPRINT_6_CALL_MODE_QUEUE_PICKER_HANDOFF.md` — Call Mode now opens a queue picker first (Active List / Today's Callbacks / Overdue Callbacks / Follow-Up Needed / All Contacts), each with live counts and a stated reason. Today's/Overdue Callbacks are built from the universal tasks table (taskType `call`, relatedType `contact`), deduped, sorted by due date. Logging an outcome on a task-sourced contact now offers a "Complete existing callback task" checkbox (pre-checked for Conversation/Appt Set/Not Interested/Call Back). Task editing shipped — clicking any task row (Dashboard Tasks panel, RelatedTasks in ClientCard/contact detail/Call Mode sidebar) opens it in edit mode via `taskApi.updateTask`, fixing a real bug where `taskType` edits were silently dropped.
 - `SPRINT_5_DASHBOARD_COMMAND_CENTER_HANDOFF.md` — Dashboard rebuilt into a "Today Command Center": header with today's counts, Today's Attack List (task-driven, ranked overdue→due-today), Pipeline Attention, Needs Follow-Up, one-click "Start Calling".
 - `SPRINT_4_CALL_MODE_HANDOFF.md` — original Call Mode / broker calling workspace inside Database.
@@ -29,8 +30,8 @@ Post-Sprint-6 fix (commit 297b3cb, not yet in a numbered sprint doc): Needs Foll
 KNOWN ISSUES / RECURRING FLAGS — READ BEFORE STARTING NEW WORK
 --------------------------------------------------
 
-1. **QA seed/cleanup script is overdue — flagged in Sprints 4, 5, and 6.** There's still no safe way to test call outcomes / task creation without touching real production contacts. Every sprint that needed live verification had to mutate a real contact (most recently "Larry Crees") and manually clean it up afterward via direct Supabase REST calls. This should be the first thing built in the next feature sprint, or at minimum before any sprint that needs to exercise Call Mode outcomes.
-2. **"Resume Last Session" queue was not built** (Sprint 6, explicitly documented as skipped). Selecting a queue from the picker always starts at position 1, even if Brandon was mid-way through it earlier in the session. Only the per-list Database toolbar button ("Resume Call Mode") preserves position.
+1. **QA seed/cleanup tooling now exists (Sprint 7)** — use `node scripts/qa-seed.mjs seed|status|cleanup` and follow `QA_CALL_MODE_TESTING.md` for any testing that logs outcomes or creates tasks. Never test against real contacts anymore. Note the script writes to the one shared Supabase project (there is no separate QA environment), so QA records are visible in the live app until cleanup runs.
+2. **Queue position now persists per queue within a session (Sprint 7).** A full page reload deliberately resets it. Cross-reload resume (localStorage) remains unbuilt by choice.
 3. **Appt Set outcomes don't create a Calendar meeting** — flagged as a "nice to have if clean" in Sprint 6, not built since it needs real Calendar integration.
 4. Lint baseline sits at 55 problems (46 errors, 9 warnings) — pre-existing categories (API `process` globals, React Compiler hook findings in a few untouched files, unused vars, one empty block in `useOutlookCalendar.js`). Every sprint has confirmed no *new* category was introduced; don't try to "fix the baseline" as a side effect of an unrelated sprint — track lint count explicitly if asked to clean it up.
 5. Local dev: the user (Brandon) often already has his own `npm run dev` running on port 5173. If Claude Code's preview tool can't bind port 5173, temporarily edit `.claude/launch.json`'s `storage-hero-dev` entry to use `--port 5180 --strictPort`, test, then **restore it to port 5173 exactly as it was** before finishing — don't leave that file's port changed in the final diff/commit.
@@ -50,11 +51,10 @@ CONVENTIONS THAT HAVE BEEN FOLLOWED (see CLAUDE.md for full detail)
 SUGGESTED WAY TO OPEN THE NEXT CHAT
 --------------------------------------------------
 
-Paste this file's content (or just reference it: "read NEXT_SESSION_HANDOFF.md at the repo root") plus whatever new sprint objective or bug report Brandon has. If it's a fresh feature sprint, the recommended next focus (from Sprint 6's handoff) is, in priority order:
+Paste this file's content (or just reference it: "read NEXT_SESSION_HANDOFF.md at the repo root") plus whatever new sprint objective or bug report Brandon has. If it's a fresh feature sprint, the recommended next focus (from Sprint 7's handoff) is, in priority order:
 
-1. QA seed/delete script (temporary contact + temporary tasks, safely removable) — stop deferring this.
-2. Persist queue position across a picker round-trip within the same Call Mode session.
-3. Surface Today's/Overdue Callback counts somewhere on the Dashboard itself, not just inside Database's picker.
-4. Revisit Appt Set → Calendar meeting creation if a clean integration path exists.
+1. Make the Dashboard callback pills clickable deep links straight into their Call Mode queue.
+2. Revisit Appt Set → Calendar meeting creation if a clean integration path exists (deferred since Sprint 6).
+3. Clean up the pre-existing Active-List index clamp in `Database.jsx`'s `handleCallOutcome` (see Sprint 7 handoff §13).
 
 If it's a bug report or UX complaint instead (like the Needs Follow-Up fix above), treat it the way that one was handled: find the actual root cause in the relevant `build*` function or component, fix it directly, verify live against real data, clean up any test mutations immediately, then commit with a plain-language message (no sprint number needed for a small fix).

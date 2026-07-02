@@ -6,7 +6,7 @@ import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
 import { ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
-import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
+import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -779,43 +779,21 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
   );
 }
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+// Sprint 7 — Call Mode remembers where Brandon left off in each queue, keyed
+// by queue key (Active List keyed per list id, since "position 12" in one
+// list means nothing in another). Module-level on purpose: it survives
+// Database unmounting (e.g. a Dashboard round-trip mid-session) but resets on
+// a full page reload — session-level memory only, so no stale "resume at #37"
+// carries over to the next morning's fresh queues.
+const callQueuePositions = {};
 
 // ─── Call Mode queue builders (Sprint 6) ──────────────────────────────────────
 // Each row is a shallow contact copy carrying `queueReason` (why this contact
 // is in the queue) and, for task-based queues, `queueTaskId`/`queueTaskTitle`
 // so Call Mode can show the reason and optionally complete that exact task
-// after an outcome is logged.
-
-function buildCallbackTaskQueue(contacts, taskApi, { overdue }) {
-  if (!taskApi) return [];
-  const today = todayStr();
-  const relevant = taskApi.tasks.filter(t =>
-    t.status === 'open' && t.relatedType === 'contact' && t.taskType === 'call' && t.dueDate &&
-    (overdue ? t.dueDate < today : t.dueDate === today)
-  );
-  // Dedupe: if a contact somehow has more than one open call task due in this
-  // window, only surface the earliest-due one.
-  const byContact = new Map();
-  relevant.forEach(t => {
-    const existing = byContact.get(t.relatedId);
-    if (!existing || t.dueDate < existing.dueDate) byContact.set(t.relatedId, t);
-  });
-  const rows = [];
-  byContact.forEach((task, contactId) => {
-    const c = contacts.find(x => x.id === contactId);
-    if (!c) return;
-    rows.push({
-      ...c,
-      queueReason: overdue ? `Callback task overdue — was due ${task.dueDate}` : 'Callback task due today',
-      queueTaskId: task.id,
-      queueTaskTitle: task.title,
-      queueDueDate: task.dueDate,
-    });
-  });
-  rows.sort((a, b) => a.queueDueDate.localeCompare(b.queueDueDate));
-  return rows;
-}
+// after an outcome is logged. The callback-task builder lives in
+// tasks/taskUtils.js (Sprint 7) so the Dashboard's callback counters share
+// the exact same logic.
 
 function buildFollowUpQueue(contacts, taskApi) {
   if (!taskApi) return [];
@@ -835,7 +813,7 @@ function CallModeQueuePicker({ queues, onSelect, onExit }) {
         <div>
           <h2 className="text-lg font-black text-white">Choose a Call Mode queue</h2>
           <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
-            Call Mode lets you work one owner at a time. Log the result, set the next action, then move to the next owner.
+            Pick a queue, call one owner at a time, log the result, and set the next action.
           </p>
         </div>
         <button onClick={onExit} className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5 transition-all">
@@ -940,8 +918,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // Sprint 6 — task-based Call Mode queues, computed over ALL contacts (not
   // scoped to whichever list happens to be selected in the sidebar), since
   // "who owes a callback today" is a cross-list question.
-  const todayCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi, { overdue: false }), [contacts, taskApi]);
-  const overdueCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi, { overdue: true }), [contacts, taskApi]);
+  const todayCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }), [contacts, taskApi]);
+  const overdueCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }), [contacts, taskApi]);
   const followUpQueue = useMemo(() => buildFollowUpQueue(contacts, taskApi), [contacts, taskApi]);
   const allContactsQueue = useMemo(() =>
     contacts.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
@@ -957,41 +935,58 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     {
       key: 'activeList',
       label: activeListLabel,
-      reason: 'Fresh, callback, no-answer, and voicemail contacts in the list currently selected on the left.',
+      reason: 'Work the list currently selected on the left — its fresh, callback, no-answer, and voicemail owners.',
       queue: callQueue,
       disabled: activeListId === null,
     },
     {
       key: 'today',
       label: "Today's Callbacks",
-      reason: 'Owners with an open call task due today.',
+      reason: 'Owners due for a callback today.',
       queue: todayCallbackQueue,
     },
     {
       key: 'overdue',
       label: 'Overdue Callbacks',
-      reason: 'Owners with an open call task past its due date.',
+      reason: 'Owners you owe a call to — their callback date has passed.',
       queue: overdueCallbackQueue,
     },
     {
       key: 'followup',
       label: 'Follow-Up Needed',
-      reason: 'Conversations or appointments logged with no follow-up task.',
+      reason: 'Conversations or appointments logged with no follow-up task — set the next step.',
       queue: followUpQueue,
     },
     {
       key: 'all',
       label: 'All Contacts',
-      reason: 'Fresh, callback, no-answer, and voicemail contacts across every list.',
+      reason: 'Broad calling mode — every callable owner across all of your lists.',
       queue: allContactsQueue,
     },
   ], [activeListLabel, activeListId, callQueue, todayCallbackQueue, overdueCallbackQueue, followUpQueue, allContactsQueue]);
 
   const activeQueueDef = QUEUE_DEFS.find(q => q.key === callQueueSource) ?? null;
 
+  // Position keys for the session-level queue-position memory. The Active
+  // List queue is keyed per list so switching lists never resumes into the
+  // wrong list's position.
+  const positionKey = (key) => key === 'activeList' ? `activeList:${activeListId}` : key;
+
   function selectQueue(key) {
     setCallQueueSource(key);
-    setCallQueueIndex(0);
+    // Resume where Brandon left off in this queue earlier in the session, as
+    // long as that position still exists in the (live-recomputed) queue.
+    const saved = callQueuePositions[positionKey(key)] ?? 0;
+    const len = QUEUE_DEFS.find(q => q.key === key)?.queue.length ?? 0;
+    setCallQueueIndex(saved > 0 && saved < len ? saved : 0);
+  }
+
+  // All Call Mode index changes flow through here so the per-queue position
+  // memory stays current no matter how the index moved (next/back, outcome
+  // advance, queue shrink).
+  function setQueueIndex(next) {
+    setCallQueueIndex(next);
+    if (callQueueSource) callQueuePositions[positionKey(callQueueSource)] = next;
   }
 
   // Deep-link entry from the Dashboard command center ("Start Calling" /
@@ -1051,7 +1046,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     if (onCallLogged) onCallLogged(status);
     setCallNote('');
     setCallbackDate('');
-    if (callQueueIndex >= callQueue.length - 1) setCallQueueIndex(Math.max(0, callQueue.length - 2));
+    if (callQueueIndex >= callQueue.length - 1) setQueueIndex(Math.max(0, callQueue.length - 2));
   }
 
   function handleStatusChangeFromModal(id, status, notes) {
@@ -1231,7 +1226,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             <CallQueue
               queue={activeQueueDef?.queue ?? []}
               index={callQueueIndex}
-              setIndex={setCallQueueIndex}
+              setIndex={setQueueIndex}
               callbackDate={callbackDate}
               setCallbackDate={setCallbackDate}
               onOutcome={handleCallOutcome}
@@ -1292,15 +1287,14 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 <button
                   onClick={() => {
                     setSubView('callQueue');
-                    setCallQueueSource('activeList');
-                    if (callQueueSource !== 'activeList' || callQueueIndex >= callQueue.length) setCallQueueIndex(0);
+                    selectQueue('activeList');
                   }}
                   disabled={callQueue.length === 0}
                   className={`bg-amber-500/15 border border-amber-500/40 text-amber-400 font-black px-3 py-2 rounded-lg text-xs transition-all ${
                     callQueue.length > 0 ? 'hover:bg-amber-500/25' : 'opacity-50 cursor-not-allowed'
                   }`}
                 >
-                  {callQueueSource === 'activeList' && callQueueIndex > 0 ? 'Resume Call Mode' : 'Start Call Mode'}
+                  {(callQueuePositions[`activeList:${activeListId}`] ?? 0) > 0 ? 'Resume Call Mode' : 'Start Call Mode'}
                 </button>
               )}
               {activeListId === masterListId && (

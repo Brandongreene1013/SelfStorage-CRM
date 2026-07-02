@@ -5,7 +5,7 @@ import RecentActivity from './RecentActivity';
 import NeedsReview from './NeedsReview';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState } from './ui';
-import { TaskRow, TaskModal, getNextOpenTask } from './tasks';
+import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
@@ -116,7 +116,7 @@ function buildPipelineAttention(taskApi, clients, meetings) {
 }
 
 // ─── Today Command Header ────────────────────────────────────────────────────
-function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, meetingsToday, onStartCallMode }) {
+function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, meetingsToday, todayCallbacks, overdueCallbacks, onStartCallMode }) {
   const dateLabel = new Date().toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
   const stats = [
     { label: 'Calls Today', value: today.calls, accent: 'text-blue-400' },
@@ -135,12 +135,29 @@ function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, meeti
           <h2 className="text-xl font-black text-white">Today · {dateLabel}</h2>
           <p className="text-xs text-slate-500 mt-0.5">What Brandon should attack today</p>
         </div>
-        <button
-          onClick={onStartCallMode}
-          className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-black px-5 py-3 rounded-xl text-sm transition-all shadow flex items-center gap-2"
-        >
-          📞 Start Calling
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          <button
+            onClick={onStartCallMode}
+            className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-black px-5 py-3 rounded-xl text-sm transition-all shadow flex items-center gap-2"
+          >
+            📞 Start Call Session
+          </button>
+          {/* Callbacks owed — same task-based logic as Call Mode's Today's/
+              Overdue Callbacks queues, so these numbers always match what
+              the queue picker will show. */}
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+              todayCallbacks > 0 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-slate-800/60 border-slate-700 text-slate-600'
+            }`}>
+              {todayCallbacks} callback{todayCallbacks === 1 ? '' : 's'} due today
+            </span>
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+              overdueCallbacks > 0 ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-slate-800/60 border-slate-700 text-slate-600'
+            }`}>
+              {overdueCallbacks} overdue callback{overdueCallbacks === 1 ? '' : 's'}
+            </span>
+          </div>
+        </div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
         {stats.map(s => (
@@ -728,6 +745,13 @@ export default function Dashboard({
     return [...overdue, ...dueToday].filter(t => t.taskType === 'bov').length;
   }, [taskApi]);
   const meetingsToday = meetings.filter(m => m.date === todayStr()).length;
+  // Callback counts (Sprint 7) — identical logic to Call Mode's Today's /
+  // Overdue Callbacks queues (open call tasks on contacts, deduped), via the
+  // shared builder in tasks/taskUtils.js.
+  const todayCallbacks = useMemo(() =>
+    buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }).length, [contacts, taskApi]);
+  const overdueCallbacks = useMemo(() =>
+    buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }).length, [contacts, taskApi]);
   const completedTodayCount = taskApi?.groups?.completedToday?.length ?? 0;
   const callbacksCreatedToday = useMemo(() => {
     const today = todayStr();
@@ -746,6 +770,8 @@ export default function Dashboard({
         dueTodayCount={dueTodayCount}
         bovsDueCount={bovsDueCount}
         meetingsToday={meetingsToday}
+        todayCallbacks={todayCallbacks}
+        overdueCallbacks={overdueCallbacks}
         onStartCallMode={onStartCallMode}
       />
 
