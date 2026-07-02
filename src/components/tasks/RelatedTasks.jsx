@@ -7,6 +7,7 @@ import TaskModal from './TaskModal';
 // Sprint 2's "don't make the UI huge" constraint), not a full task manager.
 export default function RelatedTasks({ taskApi, relatedType, relatedId, relatedName, source, maxVisible = 3, excludeTaskIds = [] }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
   if (!taskApi) return null;
 
   const excluded = new Set(excludeTaskIds);
@@ -31,7 +32,7 @@ export default function RelatedTasks({ taskApi, relatedType, relatedId, relatedN
       {visible.length > 0 && (
         <div className="space-y-1">
           {visible.map(t => (
-            <TaskRow key={t.id} task={t} onComplete={taskApi.completeTask} compact />
+            <TaskRow key={t.id} task={t} onComplete={taskApi.completeTask} onEdit={setEditingTask} compact />
           ))}
           {hiddenCount > 0 && (
             <p className="text-xs text-slate-600 text-center pt-0.5">+{hiddenCount} more</p>
@@ -50,6 +51,23 @@ export default function RelatedTasks({ taskApi, relatedType, relatedId, relatedN
           context={{ relatedType, relatedId, relatedName, source }}
           onSave={taskApi.createTask}
           onClose={() => setShowAdd(false)}
+        />
+      )}
+
+      {editingTask && (
+        <TaskModal
+          context={{ relatedType, relatedId, relatedName, source }}
+          defaults={{
+            title: editingTask.title,
+            taskType: editingTask.taskType,
+            priority: editingTask.priority,
+            dueDate: editingTask.dueDate ?? undefined,
+            description: editingTask.description,
+          }}
+          heading="Edit Task"
+          saveLabel="Save Changes"
+          onSave={(fields) => taskApi.updateTask(editingTask.id, fields)}
+          onClose={() => setEditingTask(null)}
         />
       )}
     </div>

@@ -779,6 +779,92 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
   );
 }
 
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+// ─── Call Mode queue builders (Sprint 6) ──────────────────────────────────────
+// Each row is a shallow contact copy carrying `queueReason` (why this contact
+// is in the queue) and, for task-based queues, `queueTaskId`/`queueTaskTitle`
+// so Call Mode can show the reason and optionally complete that exact task
+// after an outcome is logged.
+
+function buildCallbackTaskQueue(contacts, taskApi, { overdue }) {
+  if (!taskApi) return [];
+  const today = todayStr();
+  const relevant = taskApi.tasks.filter(t =>
+    t.status === 'open' && t.relatedType === 'contact' && t.taskType === 'call' && t.dueDate &&
+    (overdue ? t.dueDate < today : t.dueDate === today)
+  );
+  // Dedupe: if a contact somehow has more than one open call task due in this
+  // window, only surface the earliest-due one.
+  const byContact = new Map();
+  relevant.forEach(t => {
+    const existing = byContact.get(t.relatedId);
+    if (!existing || t.dueDate < existing.dueDate) byContact.set(t.relatedId, t);
+  });
+  const rows = [];
+  byContact.forEach((task, contactId) => {
+    const c = contacts.find(x => x.id === contactId);
+    if (!c) return;
+    rows.push({
+      ...c,
+      queueReason: overdue ? `Callback task overdue — was due ${task.dueDate}` : 'Callback task due today',
+      queueTaskId: task.id,
+      queueTaskTitle: task.title,
+      queueDueDate: task.dueDate,
+    });
+  });
+  rows.sort((a, b) => a.queueDueDate.localeCompare(b.queueDueDate));
+  return rows;
+}
+
+function buildFollowUpQueue(contacts, taskApi) {
+  if (!taskApi) return [];
+  return contacts
+    .filter(c => (c.status === 'conversation' || c.status === 'appointment') && taskApi.getRelatedTasks('contact', c.id).length === 0)
+    .map(c => ({
+      ...c,
+      queueReason: c.status === 'appointment' ? 'Appt set — no follow-up task' : 'Conversation logged — no follow-up task',
+    }));
+}
+
+// ─── Call Mode queue picker (Sprint 6) ────────────────────────────────────────
+function CallModeQueuePicker({ queues, onSelect, onExit }) {
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-black text-white">Choose a Call Mode queue</h2>
+          <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
+            Call Mode lets you work one owner at a time. Log the result, set the next action, then move to the next owner.
+          </p>
+        </div>
+        <button onClick={onExit} className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5 transition-all">
+          Exit
+        </button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {queues.map(q => (
+          <button
+            key={q.key}
+            onClick={() => !q.disabled && onSelect(q.key)}
+            disabled={q.disabled}
+            className={`text-left bg-slate-900 border rounded-2xl p-4 transition-all ${
+              q.disabled ? 'border-slate-800 opacity-50 cursor-not-allowed' : 'border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/60'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <h3 className="text-sm font-black text-white">{q.label}</h3>
+              <span className={`text-lg font-black ${q.queue.length > 0 ? 'text-amber-400' : 'text-slate-700'}`}>{q.queue.length}</span>
+            </div>
+            <p className="text-xs text-slate-500 leading-snug">{q.reason}</p>
+            {q.disabled && <p className="text-xs text-slate-600 italic mt-2">Select a list on the left first.</p>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Database Component ──────────────────────────────────────────────────
 export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, entryRequest, onEntryConsumed }) {
   const {
@@ -822,6 +908,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [callQueueIndex, setCallQueueIndex] = useState(0);
   const [callNote, setCallNote]       = useState('');
   const [callbackDate, setCallbackDate] = useState('');
+  // null = show the queue picker; otherwise one of QUEUE_DEFS' keys below
+  const [callQueueSource, setCallQueueSource] = useState(null);
 
   // Filtered contacts
   const filtered = useMemo(() => {
@@ -849,6 +937,63 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     [filtered]
   );
 
+  // Sprint 6 — task-based Call Mode queues, computed over ALL contacts (not
+  // scoped to whichever list happens to be selected in the sidebar), since
+  // "who owes a callback today" is a cross-list question.
+  const todayCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi, { overdue: false }), [contacts, taskApi]);
+  const overdueCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi, { overdue: true }), [contacts, taskApi]);
+  const followUpQueue = useMemo(() => buildFollowUpQueue(contacts, taskApi), [contacts, taskApi]);
+  const allContactsQueue = useMemo(() =>
+    contacts.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
+    [contacts]
+  );
+
+  const activeListLabel = activeListId === null ? 'Active List'
+    : activeListId === masterListId ? 'Master Database'
+    : activeListId === 'all' ? 'All Contacts'
+    : (lists.find(l => l.id === activeListId)?.name ?? 'Active List');
+
+  const QUEUE_DEFS = useMemo(() => [
+    {
+      key: 'activeList',
+      label: activeListLabel,
+      reason: 'Fresh, callback, no-answer, and voicemail contacts in the list currently selected on the left.',
+      queue: callQueue,
+      disabled: activeListId === null,
+    },
+    {
+      key: 'today',
+      label: "Today's Callbacks",
+      reason: 'Owners with an open call task due today.',
+      queue: todayCallbackQueue,
+    },
+    {
+      key: 'overdue',
+      label: 'Overdue Callbacks',
+      reason: 'Owners with an open call task past its due date.',
+      queue: overdueCallbackQueue,
+    },
+    {
+      key: 'followup',
+      label: 'Follow-Up Needed',
+      reason: 'Conversations or appointments logged with no follow-up task.',
+      queue: followUpQueue,
+    },
+    {
+      key: 'all',
+      label: 'All Contacts',
+      reason: 'Fresh, callback, no-answer, and voicemail contacts across every list.',
+      queue: allContactsQueue,
+    },
+  ], [activeListLabel, activeListId, callQueue, todayCallbackQueue, overdueCallbackQueue, followUpQueue, allContactsQueue]);
+
+  const activeQueueDef = QUEUE_DEFS.find(q => q.key === callQueueSource) ?? null;
+
+  function selectQueue(key) {
+    setCallQueueSource(key);
+    setCallQueueIndex(0);
+  }
+
   // Deep-link entry from the Dashboard command center ("Start Calling" /
   // Attack List "Call" quick action). Consumed once, then cleared by the
   // parent so re-clicking the same action still fires (App.jsx passes a
@@ -862,7 +1007,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       if (entryRequest.listId) setActiveListId(entryRequest.listId);
       if (entryRequest.subView) {
         setSubView(entryRequest.subView);
-        if (entryRequest.subView === 'callQueue') setCallQueueIndex(0);
+        if (entryRequest.subView === 'callQueue') { setCallQueueIndex(0); setCallQueueSource(null); }
       }
     }
     onEntryConsumed?.();
@@ -1015,12 +1160,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             Views
           </p>
           {[
-            { key: 'callQueue', label: 'Call Mode', badge: callQueue.length },
+            { key: 'callQueue', label: 'Call Mode', badge: todayCallbackQueue.length + overdueCallbackQueue.length },
             { key: 'markets',   label: '🗺 Markets',    badge: null },
           ].map(t => (
             <button
               key={t.key}
-              onClick={() => { setSubView(t.key); if (t.key === 'callQueue' && callQueueIndex >= callQueue.length) setCallQueueIndex(0); }}
+              onClick={() => { setSubView(t.key); if (t.key === 'callQueue') setCallQueueSource(null); }}
               className={`w-full text-left px-3 py-2.5 flex items-center justify-between text-sm border-b border-slate-800/50 transition-all ${
                 subView === t.key
                   ? 'bg-amber-500/10 text-amber-400 border-l-2 border-amber-500'
@@ -1064,14 +1209,44 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
       {/* ── RIGHT: Main Content ── */}
       <div className="flex-1 min-w-0 space-y-4">
-        {activeListId === null && (
+        {activeListId === null && subView !== 'callQueue' && (
           <EmptyState
             icon="📂"
             title="No list selected"
             message="Select a list from the left, or create a new one."
           />
         )}
-        {activeListId !== null && (<>
+
+        {/* ── Call Queue — independent of activeListId, so Dashboard-launched
+             queues (Today's Callbacks / Overdue / Follow-Up / All Contacts)
+             work even when no list is selected in the sidebar. ── */}
+        {subView === 'callQueue' && (
+          callQueueSource === null ? (
+            <CallModeQueuePicker
+              queues={QUEUE_DEFS}
+              onSelect={selectQueue}
+              onExit={() => setSubView('contacts')}
+            />
+          ) : (
+            <CallQueue
+              queue={activeQueueDef?.queue ?? []}
+              index={callQueueIndex}
+              setIndex={setCallQueueIndex}
+              callbackDate={callbackDate}
+              setCallbackDate={setCallbackDate}
+              onOutcome={handleCallOutcome}
+              onSaveNotes={updateContactNotes}
+              onPromote={onContactToClients}
+              taskApi={taskApi}
+              queueLabel={activeQueueDef?.label ?? 'Call Mode'}
+              queueReasonText={activeQueueDef?.reason ?? ''}
+              onExit={() => { setSubView('contacts'); setCallQueueSource(null); }}
+              onBackToPicker={() => setCallQueueSource(null)}
+            />
+          )
+        )}
+
+        {activeListId !== null && subView !== 'callQueue' && (<>
 
         {/* Stats bar */}
         <div className="grid grid-cols-4 gap-3">
@@ -1115,13 +1290,17 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               <span className="text-xs text-slate-600">{filtered.length + clientsInView.length} contacts</span>
               {activeListId !== null && (
                 <button
-                  onClick={() => { setSubView('callQueue'); if (callQueueIndex >= callQueue.length) setCallQueueIndex(0); }}
+                  onClick={() => {
+                    setSubView('callQueue');
+                    setCallQueueSource('activeList');
+                    if (callQueueSource !== 'activeList' || callQueueIndex >= callQueue.length) setCallQueueIndex(0);
+                  }}
                   disabled={callQueue.length === 0}
                   className={`bg-amber-500/15 border border-amber-500/40 text-amber-400 font-black px-3 py-2 rounded-lg text-xs transition-all ${
                     callQueue.length > 0 ? 'hover:bg-amber-500/25' : 'opacity-50 cursor-not-allowed'
                   }`}
                 >
-                  {callQueueIndex > 0 ? 'Resume Call Mode' : 'Start Call Mode'}
+                  {callQueueSource === 'activeList' && callQueueIndex > 0 ? 'Resume Call Mode' : 'Start Call Mode'}
                 </button>
               )}
               {activeListId === masterListId && (
@@ -1200,23 +1379,6 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               </div>
             )}
           </div>
-        )}
-
-        {/* ── Call Queue ── */}
-        {subView === 'callQueue' && (
-          <CallQueue
-            queue={callQueue}
-            index={callQueueIndex}
-            setIndex={setCallQueueIndex}
-            callbackDate={callbackDate}
-            setCallbackDate={setCallbackDate}
-            onOutcome={handleCallOutcome}
-            onSaveNotes={updateContactNotes}
-            onPromote={onContactToClients}
-            lists={lists}
-            taskApi={taskApi}
-            onExit={() => setSubView('contacts')}
-          />
         )}
 
         {/* ── Markets ── */}
@@ -1320,16 +1482,19 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 }
 
 // ─── Call Queue ────────────────────────────────────────────────────────────────
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOutcome, onSaveNotes, onPromote, lists, taskApi, onExit }) {
+const OFFER_FOLLOWUP_STATUSES = ['voicemail', 'conversation', 'appointment'];
+const DEFAULT_COMPLETE_STATUSES = ['conversation', 'appointment', 'not_interested', 'callback'];
+
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOutcome, onSaveNotes, onPromote, taskApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
-  const [followUpPrompt, setFollowUpPrompt] = useState(null);
+  const [postOutcome, setPostOutcome] = useState(null);
   const contactNote = current?.notes ?? '';
   const noteText = noteDraft.contactId === current?.id ? noteDraft.text : contactNote;
   const hasNoteChanges = noteText !== contactNote;
   const noteSaved = noteSavedFor === current?.id;
-  const activeFollowUpPrompt = followUpPrompt?.contactId === current?.id ? followUpPrompt.status : null;
+  const activePostOutcome = postOutcome?.contactId === current?.id ? postOutcome : null;
 
   async function saveNotes() {
     if (!current) return;
@@ -1352,11 +1517,17 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
       return;
     }
     await onOutcome(current, status, noteText);
-    if (['voicemail', 'conversation', 'appointment'].includes(status)) {
-      setFollowUpPrompt({ contactId: current.id, status });
+    const offerFollowUp = OFFER_FOLLOWUP_STATUSES.includes(status);
+    const hasQueueTask = !!current.queueTaskId;
+    if (offerFollowUp || hasQueueTask) {
+      setPostOutcome({
+        contactId: current.id,
+        status,
+        completeExisting: hasQueueTask && DEFAULT_COMPLETE_STATUSES.includes(status),
+      });
       return;
     }
-    setFollowUpPrompt(null);
+    setPostOutcome(null);
     setIndex(Math.min(queue.length - 1, index + 1));
   }
 
@@ -1378,16 +1549,22 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center">
         <div className="text-4xl mb-3 text-slate-500">CALL</div>
-        <h3 className="text-lg font-bold text-white mb-1">Call Mode is empty</h3>
-        <p className="text-sm text-slate-500">No fresh, callback, no-answer, or voicemail contacts are in this list.</p>
-        <button onClick={onExit} className="mt-5 text-sm font-semibold text-amber-400 hover:text-amber-300">
-          Back to contacts
-        </button>
+        <h3 className="text-lg font-bold text-white mb-1">{queueLabel ?? 'Call Mode'} is empty</h3>
+        <p className="text-sm text-slate-500 max-w-md mx-auto">{queueReasonText} Nobody currently matches, or you've already worked through everyone.</p>
+        <div className="flex items-center justify-center gap-4 mt-5">
+          {onBackToPicker && (
+            <button onClick={onBackToPicker} className="text-sm font-semibold text-amber-400 hover:text-amber-300">
+              Choose a different queue
+            </button>
+          )}
+          <button onClick={onExit} className="text-sm font-semibold text-slate-400 hover:text-white">
+            Back to contacts
+          </button>
+        </div>
       </div>
     );
   }
 
-  const list = lists.find(l => l.id === current.listId);
   const progress = ((index + 1) / queue.length) * 100;
   const openTasks = taskApi?.getRelatedTasks('contact', current.id) ?? [];
   const nextTask = getNextOpenTask(openTasks);
@@ -1396,21 +1573,26 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
   const recentActivity = [...(current.actionLog ?? [])].reverse().slice(0, 4);
   const searchQuery = contactSearchQuery(current);
 
-  async function createFollowUpTask(kind) {
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + (kind === 'appointment' ? 1 : 2));
-    await taskApi?.createTask({
-      title: kind === 'voicemail' ? 'Follow up after voicemail' : kind === 'appointment' ? 'Follow up after appointment' : 'Follow up after conversation',
-      description: noteText.trim(),
-      taskType: kind === 'appointment' ? 'meeting' : 'call',
-      priority: kind === 'appointment' ? 'high' : 'normal',
-      dueDate: dueDate.toISOString().slice(0, 10),
-      relatedType: 'contact',
-      relatedId: current.id,
-      relatedName: contactDisplayName(current),
-      source: 'database',
-    });
-    setFollowUpPrompt(null);
+  async function finalizePostOutcome(followUpKind) {
+    if (activePostOutcome?.completeExisting && current?.queueTaskId) {
+      await taskApi?.completeTask(current.queueTaskId);
+    }
+    if (followUpKind) {
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + (followUpKind === 'appointment' ? 1 : 2));
+      await taskApi?.createTask({
+        title: followUpKind === 'voicemail' ? 'Follow up after voicemail' : followUpKind === 'appointment' ? 'Follow up after appointment' : 'Follow up after conversation',
+        description: noteText.trim(),
+        taskType: followUpKind === 'appointment' ? 'meeting' : 'call',
+        priority: followUpKind === 'appointment' ? 'high' : 'normal',
+        dueDate: dueDate.toISOString().slice(0, 10),
+        relatedType: 'contact',
+        relatedId: current.id,
+        relatedName: contactDisplayName(current),
+        source: 'database',
+      });
+    }
+    setPostOutcome(null);
     setIndex(Math.min(queue.length - 1, index + 1));
   }
 
@@ -1426,13 +1608,16 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
       <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
           <div>
-            <p className="text-xs font-semibold text-slate-400">
-              {list?.name ?? 'All Lists'} · Contact {index + 1} of {queue.length}
-            </p>
-            <h2 className="text-lg font-black text-white">Call Mode</h2>
+            <h2 className="text-lg font-black text-white">{queueLabel ?? 'Call Mode'} — {index + 1} of {queue.length}</h2>
+            {queueReasonText && <p className="text-xs text-slate-500 mt-0.5">{queueReasonText}</p>}
           </div>
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold text-amber-400">{Math.round(progress)}% through queue</p>
+            {onBackToPicker && (
+              <button onClick={onBackToPicker} className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5">
+                Change Queue
+              </button>
+            )}
             <button onClick={onExit} className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5">
               Exit
             </button>
@@ -1455,6 +1640,9 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
               </div>
               <h3 className="text-3xl font-black text-white leading-tight">{contactDisplayName(current)}</h3>
               <p className="text-base text-slate-400 mt-1">{current.facilityName || 'Facility unknown'}</p>
+              {current.queueReason && (
+                <p className="text-xs text-amber-400/80 mt-1.5 font-semibold">Why they're up: {current.queueReason}</p>
+              )}
             </div>
             <div className="bg-green-600/10 border border-green-600/30 rounded-xl p-4 min-w-[260px]">
               <p className="text-xs text-green-400/70 font-semibold uppercase">Phone</p>
@@ -1523,12 +1711,28 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
               <button onClick={() => go(-1)} disabled={index === 0} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
               <button onClick={() => go(1)} disabled={index >= queue.length - 1} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2">Next Contact</button>
             </div>
-            {activeFollowUpPrompt && (
-              <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <p className="text-sm text-amber-300 font-semibold">Add a follow-up task before moving on?</p>
-                <div className="flex gap-2">
-                  <button onClick={() => createFollowUpTask(activeFollowUpPrompt)} className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-lg text-xs">Add Task + Next</button>
-                  <button onClick={() => { setFollowUpPrompt(null); setIndex(Math.min(queue.length - 1, index + 1)); }} className="text-xs text-slate-400 hover:text-white px-3 py-2">Skip Task</button>
+            {activePostOutcome && (
+              <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 space-y-3">
+                {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) && (
+                  <p className="text-sm text-amber-300 font-semibold">Add a follow-up task before moving on?</p>
+                )}
+                {current.queueTaskId && (
+                  <label className="flex items-center gap-2 text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={activePostOutcome.completeExisting}
+                      onChange={e => setPostOutcome(p => ({ ...p, completeExisting: e.target.checked }))}
+                    />
+                    Complete existing callback task ({current.queueTaskTitle || 'Call back'})
+                  </label>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) && (
+                    <button onClick={() => finalizePostOutcome(activePostOutcome.status)} className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-lg text-xs">Add Task + Next</button>
+                  )}
+                  <button onClick={() => finalizePostOutcome(null)} className="text-xs text-slate-400 hover:text-white px-3 py-2">
+                    {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) ? 'Skip Task' : 'Continue'}
+                  </button>
                 </div>
               </div>
             )}

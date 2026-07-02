@@ -115,7 +115,10 @@ export default function App() {
   const [dbEntryRequest, setDbEntryRequest] = useState(null);
 
   const handleStartCallMode = useCallback(() => {
-    setDbEntryRequest({ listId: 'all', subView: 'callQueue' });
+    // Opens Database's Call Mode queue picker (Sprint 6) rather than jumping
+    // straight into an ambiguous All Contacts session — Brandon chooses which
+    // queue to work from there.
+    setDbEntryRequest({ subView: 'callQueue' });
     setView('Database');
   }, []);
 

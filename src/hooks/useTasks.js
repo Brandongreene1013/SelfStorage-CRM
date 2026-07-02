@@ -84,6 +84,7 @@ export function useTasks() {
     if (fields.dueDate !== undefined) db.due_date = fields.dueDate || null;
     if (fields.status !== undefined) db.status = fields.status;
     if (fields.completedAt !== undefined) db.completed_at = fields.completedAt;
+    if (fields.taskType !== undefined) db.task_type = fields.taskType;
 
     const { data, error } = await supabase.from('tasks').update(db).eq('id', id).select().single();
     if (error) {

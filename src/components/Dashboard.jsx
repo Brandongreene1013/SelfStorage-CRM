@@ -533,6 +533,7 @@ function DashboardTasks({ taskApi }) {
   const [quickTitle, setQuickTitle] = useState('');
   const [showFullModal, setShowFullModal] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
 
   if (!taskApi) return null;
   const { loading, migrationNeeded, groups, createTask, completeTask, deleteTask } = taskApi;
@@ -553,7 +554,7 @@ function DashboardTasks({ taskApi }) {
         <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${tone}`}>{label} ({items.length})</p>
         <div className="space-y-1.5">
           {items.map(t => (
-            <TaskRow key={t.id} task={t} onComplete={completeTask} onDelete={deleteTask} />
+            <TaskRow key={t.id} task={t} onComplete={completeTask} onDelete={deleteTask} onEdit={setEditingTask} />
           ))}
         </div>
       </div>
@@ -632,6 +633,28 @@ function DashboardTasks({ taskApi }) {
           context={{ relatedType: 'general', source: 'dashboard' }}
           onSave={createTask}
           onClose={() => setShowFullModal(false)}
+        />
+      )}
+
+      {editingTask && (
+        <TaskModal
+          context={{
+            relatedType: editingTask.relatedType,
+            relatedId: editingTask.relatedId,
+            relatedName: editingTask.relatedName,
+            source: editingTask.source,
+          }}
+          defaults={{
+            title: editingTask.title,
+            taskType: editingTask.taskType,
+            priority: editingTask.priority,
+            dueDate: editingTask.dueDate ?? undefined,
+            description: editingTask.description,
+          }}
+          heading="Edit Task"
+          saveLabel="Save Changes"
+          onSave={(fields) => taskApi.updateTask(editingTask.id, fields)}
+          onClose={() => setEditingTask(null)}
         />
       )}
     </SectionCard>

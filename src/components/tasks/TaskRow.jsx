@@ -17,7 +17,7 @@ function dueLabel(dueDate) {
 // One task row — used on the Dashboard and in RelatedTasks (Client/Contact).
 // `compact` drops the related-entity name (redundant when already scoped to
 // one entity's task list).
-export default function TaskRow({ task, onComplete, onDelete, compact = false }) {
+export default function TaskRow({ task, onComplete, onDelete, onEdit, compact = false }) {
   const type = TYPE_MAP[task.taskType] ?? TYPE_MAP.general;
   const priority = PRIORITY_MAP[task.priority] ?? PRIORITY_MAP.normal;
   const due = dueLabel(task.dueDate);
@@ -29,7 +29,11 @@ export default function TaskRow({ task, onComplete, onDelete, compact = false })
         title="Mark complete"
         className="flex-shrink-0 mt-0.5 w-4 h-4 rounded border-2 border-slate-600 hover:border-amber-500 hover:bg-amber-500/20 transition-all"
       />
-      <div className="flex-1 min-w-0">
+      <div
+        className={`flex-1 min-w-0 ${onEdit ? 'cursor-pointer' : ''}`}
+        onClick={onEdit ? () => onEdit(task) : undefined}
+        title={onEdit ? 'Click to edit this task' : undefined}
+      >
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs flex-shrink-0">{type.icon}</span>
           <span className="text-sm text-slate-200 truncate">{task.title}</span>
