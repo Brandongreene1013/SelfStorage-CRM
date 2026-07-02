@@ -385,11 +385,11 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
     <div
       ref={setNodeRef}
       onClick={onClick}
-      className={`bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-black/30 group ${isDragging ? 'opacity-40' : ''}`}
+      className={`bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-black/30 group min-w-0 ${isDragging ? 'opacity-40' : ''}`}
     >
       {/* Status + lead temp + market */}
-      <div className="flex items-center justify-between mb-2 gap-1.5">
-        <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-start justify-between mb-3 gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <StatusBadge variant={STATUS_VARIANT[contact.status] ?? 'slate'} pill={false} className="font-bold">
             {STATUS_LABELS[contact.status] ?? 'Fresh'}
           </StatusBadge>
@@ -404,52 +404,52 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
             }
             return temp ? (
               <button onClick={cycleTemp} title="Click to change lead temperature"
-                className={`text-xs font-black px-2 py-0.5 rounded-md border transition-all ${temp.bg} ${temp.border} ${temp.text}`}>
+                className={`text-xs font-black px-2.5 py-1 rounded-md border transition-all whitespace-nowrap ${temp.bg} ${temp.border} ${temp.text}`}>
                 {temp.icon} {temp.label}
               </button>
             ) : (
               <button onClick={cycleTemp} title="Set lead temperature"
-                className="text-xs font-semibold px-2 py-0.5 rounded-md border border-dashed border-slate-700 text-slate-600 hover:text-slate-400 hover:border-slate-500 transition-all">
+                className="text-xs font-semibold px-2.5 py-1 rounded-md border border-dashed border-slate-700 text-slate-600 hover:text-slate-400 hover:border-slate-500 transition-all whitespace-nowrap">
                 + Temp
               </button>
             );
           })()}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-shrink-0 items-center gap-1.5">
           <button
             {...listeners}
             {...attributes}
             onClick={e => e.stopPropagation()}
-            className="text-xs text-slate-600 hover:text-slate-300 px-1.5 py-0.5 rounded transition-all cursor-grab active:cursor-grabbing"
+            className="text-xs text-slate-600 hover:text-slate-300 px-1.5 py-1 rounded transition-all cursor-grab active:cursor-grabbing whitespace-nowrap"
             title="Drag contact"
           >
             Drag
           </button>
           {contact.market && (
-            <span className="text-xs text-amber-400/70 font-semibold">{contact.market}</span>
+            <span className="text-xs text-amber-400/70 font-black whitespace-nowrap">{contact.market}</span>
           )}
           {(() => {
             const moveOptions = [];
             if (onToClients) moveOptions.push({ label: '→ Pipeline (Clients)', onClick: () => onToClients(contact) });
             lists.filter(l => l.id !== contact.listId).forEach(l =>
               moveOptions.push({ label: `→ ${l.name}`, onClick: () => onMoveToList?.(contact.id, l.id) }));
-            return moveOptions.length ? <MoveMenu options={moveOptions} /> : null;
+            return moveOptions.length ? <MoveMenu options={moveOptions} label="Move" /> : null;
           })()}
         </div>
       </div>
 
       {/* Facility Name — PRIMARY, in your face */}
       {contact.facilityName ? (
-        <div className="flex items-center gap-2 mb-1.5">
+        <div className="mb-2">
           <a
             href={`https://www.google.com/maps/search/${mapsQuery}`}
             target="_blank"
             rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 rounded-lg px-2.5 py-1 hover:bg-amber-500/25 transition-all min-w-0"
+            className="flex w-full min-w-0 items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 rounded-lg px-2.5 py-2 hover:bg-amber-500/25 transition-all"
           >
             <span className="text-sm flex-shrink-0">🏢</span>
-            <span className="text-sm font-bold text-amber-400 truncate">{contact.facilityName}</span>
+            <span className="text-sm font-bold text-amber-400 truncate min-w-0">{contact.facilityName}</span>
             <span className="text-xs text-amber-600 flex-shrink-0">🗺</span>
           </a>
         </div>
@@ -469,9 +469,9 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
       <button
         type="button"
         onClick={e => { e.stopPropagation(); onClick(); }}
-        className="block w-full text-left mb-2"
+        className="block w-full text-left mb-3"
       >
-        <h3 className="font-bold text-white text-sm leading-tight group-hover:text-amber-400 transition-colors line-clamp-1">
+        <h3 className="font-black text-white text-base leading-tight group-hover:text-amber-400 transition-colors line-clamp-1">
           {contact.ownerName || <span className="text-slate-500 italic text-sm font-semibold">Unknown Owner</span>}
         </h3>
       </button>
@@ -1149,7 +1149,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 }
               />
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
+              <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
                 {filtered.map(c => (
                   <PropertyCard
                     key={c.id}

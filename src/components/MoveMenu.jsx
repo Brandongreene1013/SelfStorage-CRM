@@ -18,7 +18,7 @@ export default function MoveMenu({ options = [], label = 'Move ▾', align = 'ri
       <button
         onPointerDown={e => e.stopPropagation()}
         onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
-        className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
+        className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2.5 py-1 transition-all whitespace-nowrap"
       >
         {label}
       </button>
