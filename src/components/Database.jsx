@@ -53,6 +53,10 @@ const SOURCE_COLORS = {
   'Internal DB': 'bg-blue-600/20 text-blue-400 border-blue-600/30',
   'CoStar':      'bg-green-600/20 text-green-400 border-green-600/30',
   'Tractiq':     'bg-purple-600/20 text-purple-400 border-purple-600/30',
+  'TractIQ':     'bg-purple-600/20 text-purple-400 border-purple-600/30',
+  'Reonomy':     'bg-cyan-600/20 text-cyan-400 border-cyan-600/30',
+  'County Records': 'bg-yellow-600/20 text-yellow-400 border-yellow-600/30',
+  'Manual Excel': 'bg-slate-600/40 text-slate-300 border-slate-600/30',
   'Other':       'bg-slate-600/40 text-slate-400 border-slate-600/30',
 };
 const PHONE_LABELS = ['Mobile', 'Office', 'Owner', 'Manager', 'Unknown'];
@@ -1203,11 +1207,26 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     setOpenContact(prev => prev?.id === id ? { ...prev, status, lastCalled: new Date().toISOString().slice(0,10) } : prev);
   }
 
-  function handleImport(name, source, rawText) {
-    const result = importList(name, source, rawText);
-    setShowImport(false);
+  async function handleImport(name, source, rawText, options) {
+    const result = await importList(name, source, rawText, options);
     setSubView('contacts');
     if (result?.list?.id) setActiveListId(result.list.id);
+    return result;
+  }
+
+  function openImportedList(listId) {
+    setActiveListId(listId);
+    setSubView('contacts');
+    setShowImport(false);
+  }
+
+  function startImportedCallSession(listId) {
+    setActiveListId(listId);
+    setSubView('callQueue');
+    setCallQueueSource('activeList');
+    setCallQueueIndex(0);
+    callQueuePositions[`activeList:${listId}`] = 0;
+    setShowImport(false);
   }
 
   // Aggregate stats
@@ -1545,13 +1564,20 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       )}
 
       {showImport && (
-        <ImportListModal onImport={handleImport} onClose={() => setShowImport(false)} />
+        <ImportListModal
+          onImport={handleImport}
+          onClose={() => setShowImport(false)}
+          existingContacts={contacts}
+          onOpenImportedList={openImportedList}
+          onStartImportedCallSession={startImportedCallSession}
+        />
       )}
 
       {showMasterImport && (
         <ImportListModal
           fixedListName="Master Database"
-          onImport={(_name, _source, rawText) => importIntoList(masterListId, rawText)}
+          existingContacts={contacts}
+          onImport={(_name, _source, rawText, options) => importIntoList(masterListId, rawText, options)}
           onClose={() => setShowMasterImport(false)}
         />
       )}

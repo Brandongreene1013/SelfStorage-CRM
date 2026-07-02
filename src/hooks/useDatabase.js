@@ -79,6 +79,304 @@ function tokenizeDelimited(text, delimiter) {
   return rows;
 }
 
+export const IMPORT_FIELD_OPTIONS = [
+  { value: 'ignore', label: 'Ignore' },
+  { value: 'ownerName', label: 'Owner / Contact Name' },
+  { value: 'facilityName', label: 'Facility / Property Name' },
+  { value: 'primaryPhone', label: 'Primary Phone' },
+  { value: 'additionalPhone', label: 'Additional Phone' },
+  { value: 'email', label: 'Email' },
+  { value: 'address', label: 'Property Address' },
+  { value: 'mailingAddress', label: 'Mailing Address' },
+  { value: 'city', label: 'City' },
+  { value: 'state', label: 'State' },
+  { value: 'zip', label: 'Zip' },
+  { value: 'source', label: 'Source' },
+  { value: 'notes', label: 'Notes' },
+  { value: 'nextAction', label: 'Next Action' },
+];
+
+const IMPORTANT_IMPORT_FIELDS = [
+  { field: 'ownerName', label: 'owner name' },
+  { field: 'facilityName', label: 'facility/property name' },
+  { field: 'primaryPhone', label: 'phone' },
+  { field: 'address', label: 'property address' },
+];
+
+function normalizedHeader(header) {
+  return (header ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function compactHeader(header) {
+  return normalizedHeader(header).replace(/\s+/g, '');
+}
+
+function headerMatches(header, aliases) {
+  const normalized = normalizedHeader(header);
+  const compact = compactHeader(header);
+  return aliases.some(alias => {
+    const a = normalizedHeader(alias);
+    const ac = compactHeader(alias);
+    return normalized === a || compact === ac;
+  });
+}
+
+function headerIncludes(header, words) {
+  const normalized = normalizedHeader(header);
+  return words.some(word => normalized.includes(word));
+}
+
+function detectFieldForHeader(header) {
+  if (headerMatches(header, [
+    'owner', 'owner name', 'contact', 'contact name', 'property owner', 'mailing name',
+    'entity name', 'llc', 'company', 'taxpayer', 'grantee', 'buyer', 'seller',
+    'full name', 'primary contact', 'name',
+  ])) return 'ownerName';
+  if (headerMatches(header, [
+    'facility', 'facility name', 'property', 'property name', 'asset name',
+    'location name', 'site name', 'business name', 'storage name', 'self storage',
+  ])) return 'facilityName';
+  if (headerMatches(header, [
+    'phone 2', 'phone2', 'alternate phone', 'secondary phone', 'mobile phone',
+    'office phone', 'manager phone', 'owner phone 2', 'contact phone 2',
+    'alt phone', 'alt number', 'alternate number', 'secondary number',
+  ])) return 'additionalPhone';
+  if (headerMatches(header, [
+    'phone', 'phone number', 'primary phone', 'owner phone', 'contact phone',
+    'mobile', 'cell', 'telephone', 'tel', 'number',
+  ])) return 'primaryPhone';
+  if (headerMatches(header, ['email', 'email address', 'owner email', 'contact email', 'e mail'])) return 'email';
+  if (headerMatches(header, [
+    'address', 'property address', 'site address', 'street address',
+    'facility address', 'location address', 'situs address',
+  ])) return 'address';
+  if (headerMatches(header, ['mailing address', 'owner address', 'tax mailing address', 'mailing street', 'taxpayer address'])) return 'mailingAddress';
+  if (headerMatches(header, ['city', 'property city', 'mailing city', 'town'])) return 'city';
+  if (headerMatches(header, ['state', 'property state', 'mailing state', 'st'])) return 'state';
+  if (headerMatches(header, ['zip', 'zipcode', 'zip code', 'postal code'])) return 'zip';
+  if (headerMatches(header, ['source', 'data source', 'platform'])) return 'source';
+  if (headerMatches(header, ['notes', 'comments', 'remarks', 'description', 'details'])) return 'notes';
+  if (headerIncludes(header, ['next action', 'follow up', 'follow-up'])) return 'nextAction';
+  if (headerIncludes(header, ['conversation', 'spoke', 'talked'])) return 'notes';
+  if (headerIncludes(header, ['message', 'voicemail', 'vm'])) return 'notes';
+  return 'ignore';
+}
+
+function buildDetectedMappings(headers) {
+  const mappings = headers.map((header, index) => ({ index, header, field: detectFieldForHeader(header) }));
+  const primaryPhoneIndexes = mappings.filter(m => m.field === 'primaryPhone').map(m => m.index);
+  if (primaryPhoneIndexes.length > 1) {
+    primaryPhoneIndexes.slice(1).forEach(idx => { mappings[idx].field = 'additionalPhone'; });
+  }
+  return mappings;
+}
+
+function mappingsToFieldMap(headers, mappings) {
+  const fieldMap = { additionalPhones: [] };
+  mappings.forEach((mapping, idx) => {
+    const field = mapping?.field ?? 'ignore';
+    if (field === 'ignore') return;
+    if (field === 'additionalPhone') {
+      fieldMap.additionalPhones.push(idx);
+    } else if (field === 'primaryPhone') {
+      if (fieldMap.phone == null) fieldMap.phone = idx;
+      else fieldMap.additionalPhones.push(idx);
+    } else if (fieldMap[field] == null) {
+      fieldMap[field] = idx;
+    }
+  });
+
+  if (fieldMap.ownerName == null) {
+    const firstNameIdx = headers.findIndex(h => /^first\s*name$|^first$/i.test(normalizedHeader(h)));
+    const lastNameIdx = headers.findIndex(h => /^last\s*name$|^last$/i.test(normalizedHeader(h)));
+    if (firstNameIdx >= 0) {
+      fieldMap._firstNameIdx = firstNameIdx;
+      fieldMap._lastNameIdx = lastNameIdx >= 0 ? lastNameIdx : null;
+    }
+  }
+  return fieldMap;
+}
+
+function normalizePhoneReadable(phone) {
+  const raw = (phone ?? '').trim();
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  return raw;
+}
+
+function phoneKey(phone) {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (digits.length < 7) return '';
+  return digits.slice(-10);
+}
+
+function inferPhoneLabel(header) {
+  const h = normalizedHeader(header);
+  if (/\bmobile\b|\bcell\b/.test(h)) return 'Mobile';
+  if (/\boffice\b|\bwork\b|\bbusiness\b/.test(h)) return 'Office';
+  if (/\bmanager\b|\bmgmt\b/.test(h)) return 'Manager';
+  if (/\bowner\b|\bcontact\b/.test(h)) return 'Owner';
+  return 'Unknown';
+}
+
+function normalizeNameKey(value) {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function normalizeAddressKey(value) {
+  return normalizeNameKey(value).replace(/\b(street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd)\b/g, '');
+}
+
+function collectPhoneKeys(contact) {
+  const keys = [];
+  const primary = phoneKey(contact.phone);
+  if (primary) keys.push(primary);
+  (contact.alternatePhones ?? []).forEach(p => {
+    const key = phoneKey(p?.phone);
+    if (key) keys.push(key);
+  });
+  return keys;
+}
+
+export function getImportMappingWarnings(mappings = []) {
+  return IMPORTANT_IMPORT_FIELDS
+    .filter(({ field }) => !mappings.some(m => m.field === field || (field === 'primaryPhone' && m.field === 'additionalPhone')))
+    .map(({ label }) => label);
+}
+
+export function buildImportDuplicateIndex(existingContacts = []) {
+  const phone = new Map();
+  const email = new Map();
+  const ownerAddress = new Map();
+  const facilityMarket = new Map();
+
+  existingContacts.forEach(contact => {
+    collectPhoneKeys(contact).forEach(key => {
+      if (!phone.has(key)) phone.set(key, []);
+      phone.get(key).push(contact);
+    });
+    const emailKey = (contact.email ?? '').trim().toLowerCase();
+    if (emailKey) {
+      if (!email.has(emailKey)) email.set(emailKey, []);
+      email.get(emailKey).push(contact);
+    }
+    const ownerKey = normalizeNameKey(contact.ownerName);
+    const addressKey = normalizeAddressKey(contact.address);
+    if (ownerKey && addressKey) {
+      const key = `${ownerKey}|${addressKey}`;
+      if (!ownerAddress.has(key)) ownerAddress.set(key, []);
+      ownerAddress.get(key).push(contact);
+    }
+    const facilityKey = normalizeNameKey(contact.facilityName);
+    const marketKey = normalizeNameKey(contact.market || [contact.city, contact.state].filter(Boolean).join(' '));
+    if (facilityKey && marketKey) {
+      const key = `${facilityKey}|${marketKey}`;
+      if (!facilityMarket.has(key)) facilityMarket.set(key, []);
+      facilityMarket.get(key).push(contact);
+    }
+  });
+
+  return { phone, email, ownerAddress, facilityMarket };
+}
+
+function findImportDuplicates(contact, duplicateIndex) {
+  if (!duplicateIndex) return [];
+  const reasons = new Set();
+  collectPhoneKeys(contact).forEach(key => {
+    if (duplicateIndex.phone.get(key)?.length) reasons.add('phone match');
+  });
+  const emailKey = (contact.email ?? '').trim().toLowerCase();
+  if (emailKey && duplicateIndex.email.get(emailKey)?.length) reasons.add('email match');
+  const ownerKey = normalizeNameKey(contact.ownerName);
+  const addressKey = normalizeAddressKey(contact.address);
+  if (ownerKey && addressKey && duplicateIndex.ownerAddress.get(`${ownerKey}|${addressKey}`)?.length) {
+    reasons.add('owner + address match');
+  }
+  const facilityKey = normalizeNameKey(contact.facilityName);
+  const marketKey = normalizeNameKey(contact.market || contact.state);
+  if (facilityKey && marketKey && duplicateIndex.facilityMarket.get(`${facilityKey}|${marketKey}`)?.length) {
+    reasons.add('facility + market match');
+  }
+  return [...reasons];
+}
+
+function getImportFlags(contact, duplicateReasons = []) {
+  const flags = [];
+  if (!contact.phone && !contact.alternatePhones?.length) flags.push('Missing phone');
+  if (!contact.ownerName) flags.push('Missing owner name');
+  if (!contact.facilityName) flags.push('Missing property/facility name');
+  if (!contact.address) flags.push('Missing property address');
+  if (duplicateReasons.length) flags.push('Possible duplicate');
+  if (contact.alternatePhones?.length) flags.push('Multiple phones found');
+  if (contact.ownerName && (contact.phone || contact.alternatePhones?.length) && (contact.facilityName || contact.address)) {
+    flags.push('Ready to call');
+  }
+  return flags;
+}
+
+function summarizeImportRows(rows) {
+  return rows.reduce((acc, row) => {
+    acc.total += 1;
+    if (row.flags.includes('Ready to call')) acc.readyToCall += 1;
+    if (row.flags.includes('Missing phone')) acc.missingPhone += 1;
+    if (row.flags.includes('Missing owner name')) acc.missingOwner += 1;
+    if (row.flags.includes('Missing property/facility name')) acc.missingFacility += 1;
+    if (row.flags.includes('Missing property address')) acc.missingAddress += 1;
+    if (row.flags.includes('Possible duplicate')) acc.possibleDuplicates += 1;
+    if (row.flags.includes('Multiple phones found')) acc.multiplePhoneRecords += 1;
+    acc.additionalPhones += row.contact.alternatePhones?.length ?? 0;
+    return acc;
+  }, {
+    total: 0,
+    readyToCall: 0,
+    missingPhone: 0,
+    missingOwner: 0,
+    missingFacility: 0,
+    missingAddress: 0,
+    possibleDuplicates: 0,
+    multiplePhoneRecords: 0,
+    additionalPhones: 0,
+  });
+}
+
+function selectImportRows(rawText, options) {
+  const parsed = options?.rows
+    ? { rows: options.rows, contacts: options.rows.map(row => row.contact), summary: summarizeImportRows(options.rows) }
+    : parseImportData(rawText, { mappings: options?.mappings, existingContacts: options?.existingContacts });
+  const duplicateMode = options?.duplicateMode ?? 'import';
+  const rows = duplicateMode === 'skip'
+    ? parsed.rows.filter(row => !row.flags.includes('Possible duplicate'))
+    : parsed.rows;
+  return {
+    rows,
+    contacts: rows.map(row => row.contact),
+    skippedDuplicates: parsed.rows.length - rows.length,
+    originalSummary: parsed.summary,
+    importedAdditionalPhones: rows.reduce((sum, row) => sum + (row.contact.alternatePhones?.length ?? 0), 0),
+  };
+}
+
+function contactInsertRow(listId, c) {
+  return {
+    list_id: listId,
+    owner_name: c.ownerName,
+    facility_name: c.facilityName,
+    phone: c.phone,
+    alternate_phones: c.alternatePhones ?? [],
+    email: c.email,
+    address: c.address,
+    state: c.state,
+    notes: c.notes ?? '',
+    status: 'fresh',
+    call_history: [],
+    next_action_type: c.nextActionType ?? '',
+    next_action_date: c.nextActionDate ?? '',
+    next_action_note: c.nextActionNote ?? '',
+  };
+}
+
 // Map a free-text "Next Action" to one of the platform's action types.
 function inferActionType(text) {
   const t = (text || '').toLowerCase();
@@ -89,8 +387,8 @@ function inferActionType(text) {
   return 'call'; // call blocks default to a follow-up call
 }
 
-export function parseImportData(text) {
-  if (!text || !text.trim()) return { contacts: [], headers: [], fieldMap: {} };
+export function parseImportData(text, options = {}) {
+  if (!text || !text.trim()) return { contacts: [], headers: [], fieldMap: {}, mappings: [], rows: [], summary: summarizeImportRows([]) };
 
   // Detect delimiter from the header line (headers are unquoted)
   const headerLine = text.slice(0, text.indexOf('\n') === -1 ? text.length : text.indexOf('\n'));
@@ -99,66 +397,16 @@ export function parseImportData(text) {
   const delimiter = tabCount >= commaCount ? '\t' : ',';
 
   const rows = tokenizeDelimited(text, delimiter);
-  if (rows.length < 2) return { contacts: [], headers: [], fieldMap: {} };
+  if (rows.length < 2) return { contacts: [], headers: [], fieldMap: {}, mappings: [], rows: [], summary: summarizeImportRows([]) };
 
   const clean = s => (s ?? '').replace(/\s+/g, ' ').trim(); // collapse embedded newlines
   const rawHeaders = rows[0].map(clean);
-
-  const fieldMap = {};
-  let firstNameIdx = null;
-  let lastNameIdx  = null;
-
-  rawHeaders.forEach((h, i) => {
-    const lh = h.toLowerCase().trim();
-    if (!fieldMap.facilityName && /facili|property[\s_]name|storage[\s_]name|business[\s_]name|self.?storage/i.test(lh)) {
-      fieldMap.facilityName = i;
-    } else if (!fieldMap.ownerName && /owner[\s_]*name|contact[\s_]name|full[\s_]name|^name$|primary[\s_]contact|^owner$/i.test(lh)) {
-      fieldMap.ownerName = i;
-    } else if (firstNameIdx == null && /^first[\s_]?name$|^first$/i.test(lh)) {
-      firstNameIdx = i;
-    } else if (lastNameIdx == null && /^last[\s_]?name$|^last$/i.test(lh)) {
-      lastNameIdx = i;
-    } else if (!fieldMap.phone && /phone|tel|mobile|cell|#|\bnumber\b/i.test(lh)) {
-      fieldMap.phone = i;
-    } else if (!fieldMap.email && /email|e.?mail/i.test(lh)) {
-      fieldMap.email = i;
-    } else if (!fieldMap.nextAction && /next[\s_]*action|follow.?up/i.test(lh)) {
-      fieldMap.nextAction = i;
-    } else if (!fieldMap.address && /address|street|location/i.test(lh)) {
-      fieldMap.address = i;
-    } else if (!fieldMap.city && /city|town/i.test(lh)) {
-      fieldMap.city = i;
-    } else if (!fieldMap.state && /\bstate\b|\bst\b$/i.test(lh)) {
-      fieldMap.state = i;
-    } else if (!fieldMap.zip && /zip|postal/i.test(lh)) {
-      fieldMap.zip = i;
-    } else if (!fieldMap.units && /unit|door|count/i.test(lh)) {
-      fieldMap.units = i;
-    } else if (!fieldMap.sqft && /sq.?ft|sq.?footage|footage|square|size/i.test(lh)) {
-      fieldMap.sqft = i;
-    } else if (!fieldMap.conversation && /conversation|spoke|talked/i.test(lh)) {
-      fieldMap.conversation = i;
-    } else if (!fieldMap.message && /message|voicemail|\bvm\b|left.?msg/i.test(lh)) {
-      fieldMap.message = i;
-    } else if (!fieldMap.notes && /note|comment|remark|detail/i.test(lh)) {
-      fieldMap.notes = i;
-    }
-  });
-
-  if (fieldMap.ownerName == null) {
-    if (firstNameIdx != null) {
-      fieldMap._firstNameIdx = firstNameIdx;
-      fieldMap._lastNameIdx  = lastNameIdx;
-    } else {
-      rawHeaders.forEach((h, i) => {
-        if (/name/i.test(h) && fieldMap.ownerName == null && i !== fieldMap.facilityName) {
-          fieldMap.ownerName = i;
-        }
-      });
-    }
-  }
+  const mappings = options.mappings ?? buildDetectedMappings(rawHeaders);
+  const fieldMap = mappingsToFieldMap(rawHeaders, mappings);
+  const duplicateIndex = options.existingContacts ? buildImportDuplicateIndex(options.existingContacts) : options.duplicateIndex;
 
   const contacts = [];
+  const previewRows = [];
   for (let r = 1; r < rows.length; r++) {
     const cols = rows[r].map(clean);
     if (cols.every(c => !c)) continue;
@@ -205,15 +453,31 @@ export function parseImportData(text) {
 
     // Next Action → integrates into the platform's action system
     const nextActionText = fieldMap.nextAction != null ? (cols[fieldMap.nextAction] ?? '') : '';
+    const primaryPhone = normalizePhoneReadable(cols[fieldMap.phone] ?? '');
+    const primaryKey = phoneKey(primaryPhone);
+    const alternatePhones = [];
+    const seenAltKeys = new Set(primaryKey ? [primaryKey] : []);
+    (fieldMap.additionalPhones ?? []).forEach(idx => {
+      const phone = normalizePhoneReadable(cols[idx] ?? '');
+      const key = phoneKey(phone);
+      if (!phone || !key || seenAltKeys.has(key)) return;
+      seenAltKeys.add(key);
+      alternatePhones.push({
+        label: inferPhoneLabel(rawHeaders[idx]),
+        phone,
+      });
+    });
 
-    contacts.push({
+    const contact = {
       facilityName: cols[fieldMap.facilityName] ?? '',
       ownerName,
-      phone: cols[fieldMap.phone] ?? '',
+      phone: primaryPhone,
+      alternatePhones,
       email: cols[fieldMap.email] ?? '',
       address,
       state,
       market,
+      importSource: cols[fieldMap.source] ?? '',
       status: 'fresh',
       callHistory: [],
       callbackDate: null,
@@ -221,9 +485,22 @@ export function parseImportData(text) {
       nextActionType: nextActionText ? inferActionType(nextActionText) : '',
       nextActionDate: '',
       nextActionNote: nextActionText,
-    });
+    };
+    const duplicateReasons = findImportDuplicates(contact, duplicateIndex);
+    const flags = getImportFlags(contact, duplicateReasons);
+    contacts.push(contact);
+    previewRows.push({ rowNumber: r + 1, contact, flags, duplicateReasons, raw: cols });
   }
-  return { contacts, headers: rawHeaders, fieldMap };
+  return {
+    contacts,
+    headers: rawHeaders,
+    fieldMap,
+    mappings,
+    rows: previewRows,
+    delimiter,
+    mappingWarnings: getImportMappingWarnings(mappings),
+    summary: summarizeImportRows(previewRows),
+  };
 }
 
 // DB row → app shape
@@ -334,9 +611,10 @@ export function useDatabase() {
     setLists(loadedLists);
   }
 
-  const importList = useCallback(async (name, source, rawText) => {
-    const { contacts: parsed } = parseImportData(rawText);
-    if (parsed.length === 0) return { count: 0 };
+  const importList = useCallback(async (name, source, rawText, options = {}) => {
+    const importRows = selectImportRows(rawText, options);
+    const parsed = importRows.contacts;
+    if (parsed.length === 0) return { count: 0, skippedDuplicates: importRows.skippedDuplicates };
 
     // Create list
     const { data: listRow, error: listErr } = await supabase
@@ -347,17 +625,7 @@ export function useDatabase() {
     if (listErr) return { count: 0 };
 
     // Insert contacts in batches of 500
-    const rows = parsed.map(c => ({
-      list_id: listRow.id,
-      owner_name: c.ownerName,
-      facility_name: c.facilityName,
-      phone: c.phone,
-      email: c.email,
-      address: c.address,
-      state: c.state,
-      status: 'fresh',
-      call_history: [],
-    }));
+    const rows = parsed.map(c => contactInsertRow(listRow.id, c));
 
     const BATCH = 500;
     const inserted = [];
@@ -369,30 +637,25 @@ export function useDatabase() {
     const newList = dbToList(listRow);
     setLists(prev => [...prev, newList]);
     setContacts(prev => [...prev, ...inserted.map(dbToContact)]);
-    return { list: newList, count: inserted.length };
+    return {
+      list: newList,
+      count: inserted.length,
+      skipped: importRows.rows.length - inserted.length,
+      skippedDuplicates: importRows.skippedDuplicates,
+      missingPhoneCount: importRows.originalSummary.missingPhone,
+      readyToCallCount: importRows.originalSummary.readyToCall,
+      additionalPhonesImported: importRows.importedAdditionalPhones,
+    };
   }, []);
 
   // Bulk-import parsed contacts INTO an existing list (e.g. Master Database).
-  const importIntoList = useCallback(async (listId, rawText) => {
+  const importIntoList = useCallback(async (listId, rawText, options = {}) => {
     if (!listId) return { count: 0 };
-    const { contacts: parsed } = parseImportData(rawText);
-    if (parsed.length === 0) return { count: 0 };
+    const importRows = selectImportRows(rawText, options);
+    const parsed = importRows.contacts;
+    if (parsed.length === 0) return { count: 0, skippedDuplicates: importRows.skippedDuplicates };
 
-    const rows = parsed.map(c => ({
-      list_id: listId,
-      owner_name: c.ownerName,
-      facility_name: c.facilityName,
-      phone: c.phone,
-      email: c.email,
-      address: c.address,
-      state: c.state,
-      notes: c.notes ?? '',
-      status: 'fresh',
-      call_history: [],
-      next_action_type: c.nextActionType ?? '',
-      next_action_date: c.nextActionDate ?? '',
-      next_action_note: c.nextActionNote ?? '',
-    }));
+    const rows = parsed.map(c => contactInsertRow(listId, c));
 
     const BATCH = 500;
     const inserted = [];
@@ -401,7 +664,14 @@ export function useDatabase() {
       if (data) inserted.push(...data);
     }
     setContacts(prev => [...prev, ...inserted.map(dbToContact)]);
-    return { count: inserted.length };
+    return {
+      count: inserted.length,
+      skipped: importRows.rows.length - inserted.length,
+      skippedDuplicates: importRows.skippedDuplicates,
+      missingPhoneCount: importRows.originalSummary.missingPhone,
+      readyToCallCount: importRows.originalSummary.readyToCall,
+      additionalPhonesImported: importRows.importedAdditionalPhones,
+    };
   }, []);
 
   // Find duplicate contacts within a list and delete all but the most-worked one
@@ -606,6 +876,7 @@ export function useDatabase() {
         owner_name: contact.ownerName ?? '',
         facility_name: contact.facilityName ?? '',
         phone: contact.phone ?? '',
+        alternate_phones: contact.alternatePhones ?? [],
         email: contact.email ?? '',
         address: contact.address ?? '',
         state: contact.state ?? '',

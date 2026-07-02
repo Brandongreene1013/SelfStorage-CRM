@@ -1,9 +1,9 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { parseImportData } from '../hooks/useDatabase';
+import { IMPORT_FIELD_OPTIONS, parseImportData } from '../hooks/useDatabase';
 import ModalLayout from './ui/ModalLayout';
 
-const SOURCES = ['Internal DB', 'CoStar', 'Tractiq', 'Other'];
+const SOURCES = ['', 'TractIQ', 'Reonomy', 'CoStar', 'County Records', 'Manual Excel', 'Other'];
 
 function excelToTSV(file) {
   return new Promise((resolve, reject) => {
@@ -12,10 +12,8 @@ function excelToTSV(file) {
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
-        // Use the first sheet
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        // Convert to CSV (handles merged cells, numbers, etc.)
         const csv = XLSX.utils.sheet_to_csv(worksheet, { FS: '\t' });
         resolve({ tsv: csv, sheetName, sheetNames: workbook.SheetNames });
       } catch (err) {
@@ -27,34 +25,84 @@ function excelToTSV(file) {
   });
 }
 
-export default function ImportListModal({ onImport, onClose, fixedListName }) {
+function fileBaseName(fileName) {
+  return (fileName || '').replace(/\.[^.]+$/, '').trim();
+}
+
+function metric(label, value, tone = 'slate') {
+  const toneClass = {
+    amber: 'border-amber-500/30 text-amber-300 bg-amber-500/10',
+    red: 'border-red-500/30 text-red-300 bg-red-500/10',
+    green: 'border-emerald-500/30 text-emerald-300 bg-emerald-500/10',
+    blue: 'border-blue-500/30 text-blue-300 bg-blue-500/10',
+    slate: 'border-slate-700 text-slate-300 bg-slate-900',
+  }[tone];
+  return (
+    <div className={`border rounded-lg px-3 py-2 ${toneClass}`}>
+      <p className="text-lg font-black leading-tight">{value}</p>
+      <p className="text-[11px] text-slate-400">{label}</p>
+    </div>
+  );
+}
+
+export default function ImportListModal({
+  onImport,
+  onClose,
+  fixedListName,
+  existingContacts = [],
+  onOpenImportedList,
+  onStartImportedCallSession,
+}) {
   const intoFixed = !!fixedListName;
   const [name, setName] = useState('');
-  const [source, setSource] = useState('Internal DB');
+  const [source, setSource] = useState('');
   const [rawText, setRawText] = useState('');
   const [preview, setPreview] = useState(null);
+  const [mappings, setMappings] = useState([]);
+  const [duplicateMode, setDuplicateMode] = useState('import');
+  const [importResult, setImportResult] = useState(null);
   const [error, setError] = useState('');
   const [fileName, setFileName] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const fileInputRef = useRef(null);
+
+  const effectiveSource = useMemo(() => {
+    if (source) return source;
+    if (fileName) return fileBaseName(fileName);
+    return 'Manual / Unknown';
+  }, [source, fileName]);
+
+  const importableCount = preview
+    ? duplicateMode === 'skip'
+      ? preview.rows.filter(row => !row.flags.includes('Possible duplicate')).length
+      : preview.rows.length
+    : 0;
+
+  function buildPreview(text, nextMappings) {
+    const parsed = parseImportData(text, { mappings: nextMappings, existingContacts });
+    setPreview(parsed);
+    setMappings(parsed.mappings);
+    return parsed;
+  }
 
   async function handleFile(file) {
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
     if (!['xlsx', 'xls', 'csv', 'tsv'].includes(ext)) {
-      setError('Unsupported file type. Use .xlsx, .xls, or .csv');
+      setError('Unsupported file type. Use .xlsx, .xls, .csv, or .tsv.');
       return;
     }
 
     setLoading(true);
     setError('');
     setPreview(null);
+    setImportResult(null);
 
     try {
       let tsv;
       if (ext === 'csv' || ext === 'tsv') {
-        // Read as text
         tsv = await new Promise((res, rej) => {
           const r = new FileReader();
           r.onload = e => res(e.target.result);
@@ -68,18 +116,11 @@ export default function ImportListModal({ onImport, onClose, fixedListName }) {
 
       setRawText(tsv);
       setFileName(file.name);
+      if (!name) setName(fileBaseName(file.name));
 
-      // Auto-set list name from filename if not set
-      if (!name) {
-        setName(file.name.replace(/\.[^.]+$/, ''));
-      }
-
-      // Auto-preview
-      const parsed = parseImportData(tsv);
+      const parsed = buildPreview(tsv);
       if (parsed.contacts.length === 0) {
         setError('No contacts found. Make sure row 1 has column headers.');
-      } else {
-        setPreview(parsed);
       }
     } catch (err) {
       setError('Failed to read file: ' + err.message);
@@ -93,191 +134,276 @@ export default function ImportListModal({ onImport, onClose, fixedListName }) {
     setIsDragging(false);
     const file = e.dataTransfer.files[0];
     if (file) handleFile(file);
-  }, [name]);
+  }, [name, existingContacts]);
 
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = () => setIsDragging(false);
 
-  function handleImport() {
+  function updateMapping(index, field) {
+    const next = mappings.map(mapping => mapping.index === index ? { ...mapping, field } : mapping);
+    buildPreview(rawText, next);
+    setImportResult(null);
+  }
+
+  async function handleImport() {
     if (!preview) { setError('Load a file first'); return; }
     if (!intoFixed && !name.trim()) { setError('Give this list a name'); return; }
-    onImport(name.trim(), source, rawText);
-    onClose();
+    setImporting(true);
+    setError('');
+    try {
+      const result = await onImport(name.trim(), effectiveSource, rawText, {
+        rows: preview.rows,
+        mappings,
+        duplicateMode,
+        summary: preview.summary,
+      });
+      setImportResult({ ...result, listName: intoFixed ? fixedListName : name.trim(), source: effectiveSource });
+    } catch (err) {
+      setError('Import failed: ' + err.message);
+    } finally {
+      setImporting(false);
+    }
   }
 
   return (
-    <ModalLayout onClose={onClose} size="xl" className="max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-800">
-          <div>
-            <h2 className="text-lg font-black text-white">
-              {intoFixed ? `Bulk Upload to ${fixedListName}` : 'Import Cold Call List'}
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">Supports .xlsx · .xls · .csv</p>
+    <ModalLayout onClose={onClose} size="2xl" className="max-h-[92vh] flex flex-col">
+      <div className="flex items-center justify-between p-5 border-b border-slate-800">
+        <div>
+          <h2 className="text-lg font-black text-white">
+            {intoFixed ? `Bulk Upload to ${fixedListName}` : 'Import Cold Call List'}
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">Supports .xlsx, .xls, .csv, and .tsv</p>
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none p-2">x</button>
+      </div>
+
+      <div className="flex-1 overflow-auto p-5 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {!intoFixed && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 mb-1">List Name *</label>
+              <input
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="e.g. Florida Market - CoStar March 2026"
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          )}
+          <div className={intoFixed ? 'md:col-span-2' : ''}>
+            <label className="block text-xs font-semibold text-slate-400 mb-1">Source</label>
+            <select
+              value={source}
+              onChange={e => setSource(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+            >
+              {SOURCES.map(s => <option key={s || 'filename'} value={s}>{s || 'Use filename'}</option>)}
+            </select>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none p-2">✕</button>
         </div>
 
-        <div className="flex-1 overflow-auto p-5 space-y-4">
-          {/* Name + Source (hidden when importing into a fixed list like Master Database) */}
-          {intoFixed ? (
-            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2.5 text-sm text-emerald-300">
-              ⭐ Adding these contacts straight into <strong>{fixedListName}</strong>.
+        {intoFixed && (
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2.5 text-sm text-emerald-300">
+            Adding these contacts straight into <strong>{fixedListName}</strong>.
+          </div>
+        )}
+
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onClick={() => fileInputRef.current?.click()}
+          className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
+            isDragging
+              ? 'border-amber-500 bg-amber-500/10'
+              : preview
+                ? 'border-emerald-600/50 bg-emerald-600/5'
+                : 'border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-800'
+          }`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv,.tsv"
+            className="hidden"
+            onChange={e => handleFile(e.target.files[0])}
+          />
+          {loading ? (
+            <div className="flex flex-col items-center gap-2 text-slate-400">
+              <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm font-semibold">Reading file...</p>
+            </div>
+          ) : preview ? (
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-3xl">OK</div>
+              <p className="text-sm font-bold text-emerald-400">{fileName}</p>
+              <p className="text-xs text-slate-400">{preview.contacts.length} rows loaded, click to replace</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col items-center gap-3">
+              <div className="text-4xl">Import</div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">List Name *</label>
-                <input
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="e.g. Florida Market - CoStar March 2026"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Source</label>
-                <select
-                  value={source}
-                  onChange={e => setSource(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
-                >
-                  {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
+                <p className="text-sm font-bold text-white">Drop your Excel or CSV file here</p>
+                <p className="text-xs text-slate-500 mt-1">or click to browse</p>
               </div>
             </div>
           )}
+        </div>
 
-          {/* Drop zone */}
-          <div
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onClick={() => fileInputRef.current?.click()}
-            className={`relative border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all ${
-              isDragging
-                ? 'border-amber-500 bg-amber-500/10'
-                : preview
-                  ? 'border-green-600/50 bg-green-600/5'
-                  : 'border-slate-700 hover:border-slate-500 bg-slate-800/50 hover:bg-slate-800'
-            }`}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv,.tsv"
-              className="hidden"
-              onChange={e => handleFile(e.target.files[0])}
-            />
-            {loading ? (
-              <div className="flex flex-col items-center gap-2 text-slate-400">
-                <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm font-semibold">Reading file...</p>
-              </div>
-            ) : preview ? (
-              <div className="flex flex-col items-center gap-2">
-                <div className="text-4xl">✅</div>
-                <p className="text-sm font-bold text-green-400">{fileName}</p>
-                <p className="text-xs text-slate-400">{preview.contacts.length} contacts loaded — click to replace</p>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-3">
-                <div className="text-5xl">📂</div>
-                <div>
-                  <p className="text-sm font-bold text-white">Drop your Excel or CSV file here</p>
-                  <p className="text-xs text-slate-500 mt-1">or click to browse · .xlsx · .xls · .csv</p>
-                </div>
-                <p className="text-xs text-slate-600 mt-1">
-                  Auto-detects: Facility Name · Owner · Phone · Email · Address · City · State · Zip
-                </p>
+        {error && (
+          <p className="text-xs text-red-400 font-semibold bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">{error}</p>
+        )}
+
+        {preview && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {metric('Total rows', preview.summary.total)}
+              {metric('Ready to call', preview.summary.readyToCall, 'green')}
+              {metric('Missing phone', preview.summary.missingPhone, preview.summary.missingPhone ? 'red' : 'slate')}
+              {metric('Possible duplicates', preview.summary.possibleDuplicates, preview.summary.possibleDuplicates ? 'amber' : 'slate')}
+              {metric('Missing owner', preview.summary.missingOwner, preview.summary.missingOwner ? 'amber' : 'slate')}
+              {metric('Missing address', preview.summary.missingAddress, preview.summary.missingAddress ? 'amber' : 'slate')}
+              {metric('Multi-phone rows', preview.summary.multiplePhoneRecords, preview.summary.multiplePhoneRecords ? 'blue' : 'slate')}
+              {metric('Extra phones', preview.summary.additionalPhones, preview.summary.additionalPhones ? 'blue' : 'slate')}
+            </div>
+
+            {preview.mappingWarnings.length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3">
+                <p className="text-xs font-bold text-amber-300 uppercase tracking-wide mb-1">Missing important mapping</p>
+                <p className="text-sm text-amber-100">{preview.mappingWarnings.join(', ')}</p>
               </div>
             )}
-          </div>
 
-          {error && (
-            <p className="text-xs text-red-400 font-semibold bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">{error}</p>
-          )}
-
-          {/* Preview */}
-          {preview && (
             <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-bold text-green-400">
-                  {preview.contacts.length} contacts detected
-                </p>
-                <p className="text-xs text-slate-500">Columns: {preview.headers.slice(0, 6).join(', ')}{preview.headers.length > 6 ? '...' : ''}</p>
+                <p className="text-sm font-bold text-white">Column Mapping</p>
+                <p className="text-xs text-slate-500">Source saved as: {effectiveSource}</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {mappings.map(mapping => (
+                  <div key={`${mapping.index}-${mapping.header}`} className="grid grid-cols-[minmax(0,1fr)_190px] gap-2 items-center">
+                    <div className="min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
+                      <p className="text-xs text-slate-400 truncate">{mapping.header || `Column ${mapping.index + 1}`}</p>
+                    </div>
+                    <select
+                      value={mapping.field}
+                      onChange={e => updateMapping(mapping.index, e.target.value)}
+                      className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    >
+                      {IMPORT_FIELD_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                <p className="text-sm font-bold text-white">Import Preview</p>
+                <select
+                  value={duplicateMode}
+                  onChange={e => setDuplicateMode(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="import">Import anyway</option>
+                  <option value="skip">Skip possible duplicates</option>
+                </select>
               </div>
 
-              <div className="overflow-auto max-h-52">
+              <div className="overflow-auto max-h-72">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-slate-400 border-b border-slate-700">
+                      <th className="text-left py-1.5 px-2">Row</th>
                       <th className="text-left py-1.5 px-2">Facility</th>
                       <th className="text-left py-1.5 px-2">Owner</th>
                       <th className="text-left py-1.5 px-2">Phone</th>
-                      <th className="text-left py-1.5 px-2">State</th>
-                      <th className="text-left py-1.5 px-2">Market</th>
+                      <th className="text-left py-1.5 px-2">Extra</th>
+                      <th className="text-left py-1.5 px-2">Flags</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.contacts.slice(0, 8).map((c, i) => (
-                      <tr key={i} className="border-b border-slate-700/50 text-slate-300 hover:bg-slate-700/30">
-                        <td className="py-1.5 px-2 max-w-[180px] truncate">{c.facilityName || '—'}</td>
-                        <td className="py-1.5 px-2">{c.ownerName || '—'}</td>
-                        <td className="py-1.5 px-2 font-mono">{c.phone || '—'}</td>
-                        <td className="py-1.5 px-2">{c.state || '—'}</td>
-                        <td className="py-1.5 px-2">{c.market || '—'}</td>
+                    {preview.rows.slice(0, 12).map(row => (
+                      <tr key={row.rowNumber} className="border-b border-slate-700/50 text-slate-300 hover:bg-slate-700/30">
+                        <td className="py-1.5 px-2 text-slate-500">{row.rowNumber}</td>
+                        <td className="py-1.5 px-2 max-w-[170px] truncate">{row.contact.facilityName || '-'}</td>
+                        <td className="py-1.5 px-2 max-w-[150px] truncate">{row.contact.ownerName || '-'}</td>
+                        <td className="py-1.5 px-2 font-mono">{row.contact.phone || '-'}</td>
+                        <td className="py-1.5 px-2">{row.contact.alternatePhones?.length ?? 0}</td>
+                        <td className="py-1.5 px-2">
+                          <div className="flex flex-wrap gap-1">
+                            {row.flags.map(flag => (
+                              <span key={flag} className={`rounded px-1.5 py-0.5 border ${
+                                flag === 'Ready to call' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                  : flag === 'Possible duplicate' ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                                    : flag === 'Multiple phones found' ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+                                      : 'bg-red-500/10 border-red-500/30 text-red-300'
+                              }`}>
+                                {flag}
+                              </span>
+                            ))}
+                          </div>
+                          {row.duplicateReasons.length > 0 && (
+                            <p className="text-[11px] text-slate-500 mt-1">{row.duplicateReasons.join(', ')}</p>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {preview.contacts.length > 8 && (
-                  <p className="text-xs text-slate-500 mt-2 text-center">
-                    +{preview.contacts.length - 8} more rows
-                  </p>
+                {preview.rows.length > 12 && (
+                  <p className="text-xs text-slate-500 mt-2 text-center">+{preview.rows.length - 12} more rows</p>
                 )}
               </div>
-
-              {/* State badges */}
-              {(() => {
-                const states = {};
-                preview.contacts.forEach(c => { if (c.state) states[c.state] = (states[c.state] ?? 0) + 1; });
-                const entries = Object.entries(states).sort((a, b) => b[1] - a[1]);
-                if (!entries.length) return null;
-                return (
-                  <div className="mt-3 pt-3 border-t border-slate-700">
-                    <p className="text-xs font-semibold text-slate-400 mb-1.5">Markets Detected:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {entries.map(([st, count]) => (
-                        <span key={st} className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold px-2 py-0.5 rounded-md">
-                          {st}: {count}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
-          )}
-        </div>
+          </>
+        )}
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-800">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-all">
-            Cancel
-          </button>
+        {importResult && (
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
+            <p className="text-sm font-black text-emerald-300 mb-2">Import complete: {importResult.listName}</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {metric('Rows imported', importResult.count ?? 0, 'green')}
+              {metric('Rows skipped', importResult.skipped ?? 0, (importResult.skipped ?? 0) ? 'amber' : 'slate')}
+              {metric('Duplicates skipped', importResult.skippedDuplicates ?? 0, (importResult.skippedDuplicates ?? 0) ? 'amber' : 'slate')}
+              {metric('Missing phone', importResult.missingPhoneCount ?? 0, (importResult.missingPhoneCount ?? 0) ? 'red' : 'slate')}
+              {metric('Ready to call', importResult.readyToCallCount ?? 0, 'green')}
+              {metric('Extra phones imported', importResult.additionalPhonesImported ?? 0, (importResult.additionalPhonesImported ?? 0) ? 'blue' : 'slate')}
+            </div>
+            <div className="flex flex-wrap gap-2 mt-4">
+              {importResult.list?.id && (
+                <>
+                  <button onClick={() => onOpenImportedList?.(importResult.list.id)} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-3 py-2 rounded-lg text-xs transition-all">
+                    Open Imported List
+                  </button>
+                  <button onClick={() => onStartImportedCallSession?.(importResult.list.id)} className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-black px-3 py-2 rounded-lg text-xs transition-all">
+                    Start Call Session
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-800">
+        <button onClick={onClose} className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-all">
+          {importResult ? 'Close' : 'Cancel'}
+        </button>
+        {!importResult && (
           <button
             onClick={handleImport}
-            disabled={!preview || (!intoFixed && !name.trim())}
+            disabled={!preview || importing || (!intoFixed && !name.trim()) || importableCount === 0}
             className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
-              preview && (intoFixed || name.trim())
+              preview && !importing && (intoFixed || name.trim()) && importableCount > 0
                 ? 'bg-amber-500 hover:bg-amber-400 text-slate-900 shadow'
                 : 'bg-slate-700 text-slate-500 cursor-not-allowed'
             }`}
           >
-            Import {preview ? `${preview.contacts.length} Contacts` : 'List'}
+            {importing ? 'Importing...' : `Import ${importableCount || ''} Contacts`}
           </button>
-        </div>
+        )}
+      </div>
     </ModalLayout>
   );
 }
