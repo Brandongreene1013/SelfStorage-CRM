@@ -108,7 +108,7 @@ Fallback behavior:
 - `npm run lint` reports 57 problems (48 errors, 9 warnings). These are the existing project baseline categories: API `process` globals, React Compiler hook warnings, unused variables in untouched components/hooks, and existing empty blocks. No new lint category was introduced by Sprint 3.
 
 ## 15. Commit Hash
-To be filled after commit. Commit message: `Sprint 3: Consolidate next actions with universal tasks`.
+`b50197f` - `Sprint 3: Consolidate next actions with universal tasks`.
 
 ## 16. Deployment Notes
 - No Supabase schema changes.
