@@ -251,7 +251,7 @@ function DuplicateGroupCard({ group, contactById, listNameById, getOpenTaskCount
 
 export default function DuplicateReview({
   contacts, lists = [], taskApi, onMerge, onDelete, onOpenContact, onExit,
-  dismissedKeys, onDismissGroup, dismissalStorage = 'supabase',
+  dismissedKeys, onDismissGroup, onRestoreGroup, dismissals = [], dismissalStorage = 'supabase',
 }) {
   // Sprint 12 — dismissals persist via useDatabase (Supabase table, or
   // localStorage until the migration runs). Falls back to session-only state
@@ -268,12 +268,19 @@ export default function DuplicateReview({
     [contacts, taskApi]
   );
   const undismissed = groups.filter(g => !dismissed.has(g.key));
-  const visible = confidenceFilter === 'all' ? undismissed : undismissed.filter(g => g.confidence === confidenceFilter);
+  // Sprint 13 — dismissed groups that still exist in the current scan (a
+  // dismissal whose contact was deleted simply never resurfaces).
+  const dismissedGroups = groups.filter(g => dismissed.has(g.key));
+  const dismissalByKey = useMemo(() => new Map(dismissals.map(d => [d.pairKey, d])), [dismissals]);
+  const showingDismissed = confidenceFilter === 'dismissed';
+  const visible = showingDismissed
+    ? dismissedGroups
+    : confidenceFilter === 'all' ? undismissed : undismissed.filter(g => g.confidence === confidenceFilter);
   const contactById = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
   const listNameById = useMemo(() => new Map(lists.map(l => [l.id, l.name])), [lists]);
   const highCount = undismissed.filter(g => g.confidence === 'High').length;
   const mediumCount = undismissed.length - highCount;
-  const dismissedCount = groups.length - undismissed.length;
+  const dismissedCount = dismissedGroups.length;
 
   function handleDismiss(group) {
     if (onDismissGroup) onDismissGroup(group.key, group.memberIds);
@@ -331,12 +338,12 @@ export default function DuplicateReview({
           {filterButton('all', 'All', undismissed.length)}
           {filterButton('High', 'High', highCount)}
           {filterButton('Medium', 'Medium', mediumCount)}
+          {filterButton('dismissed', 'Dismissed', dismissedCount)}
           <span className="text-xs font-semibold text-slate-400 ml-1">
-            {visible.length} remaining
+            {showingDismissed ? `${visible.length} dismissed` : `${visible.length} remaining`}
             {resolvedCount ? ` · ${resolvedCount} resolved this session` : ''}
-            {dismissedCount ? ` · ${dismissedCount} dismissed` : ''}
           </span>
-          {visible.length > 1 && (
+          {!showingDismissed && visible.length > 1 && (
             <button
               onClick={scrollToNextGroup}
               className="ml-auto text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-lg transition-all"
@@ -347,21 +354,64 @@ export default function DuplicateReview({
         </div>
 
         {dismissalStorage === 'local' && (
-          <p className="text-[11px] text-slate-500">
-            Dismissals are saved on this device only — run <span className="font-mono text-slate-400">sql/duplicate_dismissals_migration.sql</span> in
-            Supabase to sync them across devices.
-          </p>
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg px-3 py-2">
+            <p className="text-xs font-semibold text-blue-300">
+              💾 Dismissals are saved on THIS DEVICE ONLY. Run{' '}
+              <span className="font-mono text-blue-200">sql/duplicate_dismissals_migration.sql</span> once in the
+              Supabase SQL Editor to make them permanent and synced across devices. Everything still works in the meantime.
+            </p>
+          </div>
         )}
       </div>
 
       {visible.length === 0 ? (
         <EmptyState
-          icon="✅"
-          title={undismissed.length === 0 ? 'No duplicates found' : `No ${confidenceFilter.toLowerCase()}-confidence groups`}
-          message={undismissed.length === 0
-            ? 'Every owner record looks unique. New duplicates will show up here after imports.'
-            : 'Switch the confidence filter to see the rest.'}
+          icon={showingDismissed ? '🗂' : '✅'}
+          title={showingDismissed
+            ? 'No dismissed groups'
+            : undismissed.length === 0 ? 'No duplicates found' : `No ${confidenceFilter.toLowerCase()}-confidence groups`}
+          message={showingDismissed
+            ? 'Groups you mark "Not a duplicate" land here and stay hidden from review.'
+            : undismissed.length === 0
+              ? 'Every owner record looks unique. New duplicates will show up here after imports.'
+              : 'Switch the confidence filter to see the rest.'}
         />
+      ) : showingDismissed ? (
+        <div className="space-y-3">
+          {visible.map(g => {
+            const record = dismissalByKey.get(g.key);
+            const names = g.memberIds
+              .map(id => contactById.get(id))
+              .filter(Boolean)
+              .map(c => c.ownerName || c.facilityName || 'Unnamed contact');
+            return (
+              <div key={g.key} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-white truncate">{names.join('  ·  ')}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                    <span className={`text-[10px] font-black border rounded px-1.5 py-0.5 ${CONFIDENCE_STYLES[g.confidence] ?? CONFIDENCE_STYLES.Low}`}>
+                      {g.confidence}
+                    </span>
+                    {g.reasons.map(r => (
+                      <span key={r} className="text-[10px] bg-slate-800 border border-slate-700 text-slate-400 rounded px-1.5 py-0.5">{r}</span>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1.5">
+                    Hidden because you marked it "Not a duplicate"
+                    {record?.createdAt ? ` on ${String(record.createdAt).slice(0, 10)}` : ''}
+                    {record?.note ? ` — "${record.note}"` : ''}.
+                  </p>
+                </div>
+                <button
+                  onClick={() => onRestoreGroup?.(g.key)}
+                  className="flex-shrink-0 text-xs font-bold bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 px-3 py-2 rounded-lg transition-all"
+                >
+                  ↩ Restore to Review
+                </button>
+              </div>
+            );
+          })}
+        </div>
       ) : (
         <div className="space-y-4">
           {visible.map(g => (

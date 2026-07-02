@@ -904,11 +904,36 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 
 // Sprint 7 — Call Mode remembers where Brandon left off in each queue, keyed
 // by queue key (Active List keyed per list id, since "position 12" in one
-// list means nothing in another). Module-level on purpose: it survives
-// Database unmounting (e.g. a Dashboard round-trip mid-session) but resets on
-// a full page reload — session-level memory only, so no stale "resume at #37"
-// carries over to the next morning's fresh queues.
-const callQueuePositions = {};
+// list means nothing in another).
+// Sprint 13 — positions and the last active session now persist to
+// localStorage, so a page reload or Vercel redeploy mid-call-block no longer
+// loses his place. The picker offers "Resume call session: 37 of 212" and
+// validates against the live queue before resuming (never forces it).
+const CALL_POSITIONS_KEY = 'storageHero.callQueuePositions';
+const CALL_SESSION_KEY = 'storageHero.callSession';
+
+function readStoredJson(key, fallback) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key));
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const callQueuePositions = readStoredJson(CALL_POSITIONS_KEY, {});
+
+function persistCallPositions() {
+  try { localStorage.setItem(CALL_POSITIONS_KEY, JSON.stringify(callQueuePositions)); } catch { /* storage blocked — session memory only */ }
+}
+
+function saveCallSession(session) {
+  try { localStorage.setItem(CALL_SESSION_KEY, JSON.stringify(session)); } catch { /* storage blocked */ }
+}
+
+function clearStoredCallSession() {
+  try { localStorage.removeItem(CALL_SESSION_KEY); } catch { /* storage blocked */ }
+}
 
 // ─── Call Mode queue builders (Sprint 6) ──────────────────────────────────────
 // Each row is a shallow contact copy carrying `queueReason` (why this contact
@@ -929,7 +954,7 @@ function buildFollowUpQueue(contacts, taskApi) {
 }
 
 // ─── Call Mode queue picker (Sprint 6) ────────────────────────────────────────
-function CallModeQueuePicker({ queues, onSelect, onExit }) {
+function CallModeQueuePicker({ queues, onSelect, onExit, resumeInfo, onResume, onClearSession }) {
   return (
     <div className="space-y-4">
       <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 flex items-start justify-between gap-4">
@@ -943,6 +968,29 @@ function CallModeQueuePicker({ queues, onSelect, onExit }) {
           Exit
         </button>
       </div>
+
+      {/* Sprint 13 — resume the interrupted call session */}
+      {resumeInfo && (
+        <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-black text-amber-300">
+              Resume call session: {resumeInfo.resumeIndex + 1} of {resumeInfo.currentTotal} contacts — {resumeInfo.label}
+            </p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Saved {new Date(resumeInfo.savedAt).toLocaleDateString()} {new Date(resumeInfo.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {resumeInfo.currentTotal !== resumeInfo.total ? ` · queue was ${resumeInfo.total} contacts when saved` : ''}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={onResume} className="text-xs font-black bg-amber-500 hover:bg-amber-400 text-slate-900 px-4 py-2 rounded-lg transition-all">
+              ▶ Resume
+            </button>
+            <button onClick={onClearSession} className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-2 transition-all">
+              Start Over
+            </button>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {queues.map(q => (
           <button
@@ -974,7 +1022,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB, logContactAction,
-    dismissedDuplicateKeys, dismissalStorage, dismissDuplicateGroup,
+    duplicateDismissals, dismissedDuplicateKeys, dismissalStorage, dismissDuplicateGroup, restoreDuplicateGroup,
   } = db;
 
   const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
@@ -1104,18 +1152,36 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
   const activeQueueDef = QUEUE_DEFS.find(q => q.key === callQueueSource) ?? null;
 
-  // Position keys for the session-level queue-position memory. The Active
-  // List queue is keyed per list so switching lists never resumes into the
-  // wrong list's position.
+  // Position keys for the queue-position memory. The Active List queue is
+  // keyed per list so switching lists never resumes into the wrong list's
+  // position. Positions + the active session persist to localStorage (Sprint 13).
   const positionKey = (key) => key === 'activeList' ? `activeList:${activeListId}` : key;
+  const [savedCallSession, setSavedCallSession] = useState(() => readStoredJson(CALL_SESSION_KEY, null));
+
+  function recordCallSession(queueKey, listIdForQueue, index, queue, label) {
+    const session = {
+      queueKey,
+      listId: queueKey === 'activeList' ? listIdForQueue : null,
+      label,
+      index,
+      total: queue.length,
+      contactId: queue[index]?.id ?? null,
+      savedAt: new Date().toISOString(),
+    };
+    saveCallSession(session);
+    setSavedCallSession(session);
+  }
 
   function selectQueue(key) {
     setCallQueueSource(key);
-    // Resume where Brandon left off in this queue earlier in the session, as
-    // long as that position still exists in the (live-recomputed) queue.
+    // Resume where Brandon left off in this queue, as long as that position
+    // still exists in the (live-recomputed) queue.
     const saved = callQueuePositions[positionKey(key)] ?? 0;
-    const len = QUEUE_DEFS.find(q => q.key === key)?.queue.length ?? 0;
-    setCallQueueIndex(saved > 0 && saved < len ? saved : 0);
+    const def = QUEUE_DEFS.find(q => q.key === key);
+    const len = def?.queue.length ?? 0;
+    const index = saved > 0 && saved < len ? saved : 0;
+    setCallQueueIndex(index);
+    recordCallSession(key, activeListId, index, def?.queue ?? [], def?.label ?? 'Call Mode');
   }
 
   // All Call Mode index changes flow through here so the per-queue position
@@ -1123,7 +1189,48 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // advance, queue shrink).
   function setQueueIndex(next) {
     setCallQueueIndex(next);
-    if (callQueueSource) callQueuePositions[positionKey(callQueueSource)] = next;
+    if (callQueueSource) {
+      callQueuePositions[positionKey(callQueueSource)] = next;
+      persistCallPositions();
+      recordCallSession(callQueueSource, activeListId, next, activeQueueDef?.queue ?? [], activeQueueDef?.label ?? 'Call Mode');
+    }
+  }
+
+  // Sprint 13 — validate the saved session against the LIVE queue before
+  // offering to resume. Returns null (no banner) when the saved list is gone,
+  // the queue is now empty, or the position adds nothing (index 0).
+  const resumeInfo = useMemo(() => {
+    const s = savedCallSession;
+    if (!s?.queueKey) return null;
+    let queue;
+    let label = s.label ?? 'Call Mode';
+    if (s.queueKey === 'activeList') {
+      if (!s.listId || !lists.some(l => l.id === s.listId)) return null;
+      queue = contacts.filter(c => c.listId === s.listId && ['fresh', 'callback', 'no_answer', 'voicemail'].includes(c.status));
+      label = lists.find(l => l.id === s.listId)?.name ?? label;
+    } else {
+      queue = QUEUE_DEFS.find(q => q.key === s.queueKey)?.queue ?? [];
+    }
+    if (queue.length === 0) return null;
+    let resumeIndex = s.contactId ? queue.findIndex(c => c.id === s.contactId) : -1;
+    if (resumeIndex < 0) resumeIndex = Math.min(s.index ?? 0, queue.length - 1);
+    if (resumeIndex <= 0) return null;
+    return { ...s, resumeIndex, currentTotal: queue.length, label };
+  }, [savedCallSession, contacts, lists, QUEUE_DEFS]);
+
+  function resumeSavedSession() {
+    if (!resumeInfo) return;
+    if (resumeInfo.queueKey === 'activeList') setActiveListId(resumeInfo.listId);
+    setCallQueueSource(resumeInfo.queueKey);
+    setCallQueueIndex(resumeInfo.resumeIndex);
+    const key = resumeInfo.queueKey === 'activeList' ? `activeList:${resumeInfo.listId}` : resumeInfo.queueKey;
+    callQueuePositions[key] = resumeInfo.resumeIndex;
+    persistCallPositions();
+  }
+
+  function clearSavedSession() {
+    clearStoredCallSession();
+    setSavedCallSession(null);
   }
 
   // Deep-link entry from the Dashboard command center ("Start Calling" /
@@ -1430,6 +1537,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             onExit={() => setSubView('contacts')}
             dismissedKeys={dismissedDuplicateKeys}
             onDismissGroup={dismissDuplicateGroup}
+            onRestoreGroup={restoreDuplicateGroup}
+            dismissals={duplicateDismissals}
             dismissalStorage={dismissalStorage}
           />
         )}
@@ -1443,6 +1552,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               queues={QUEUE_DEFS}
               onSelect={selectQueue}
               onExit={() => setSubView('contacts')}
+              resumeInfo={resumeInfo}
+              onResume={resumeSavedSession}
+              onClearSession={clearSavedSession}
             />
           ) : (
             <CallQueue

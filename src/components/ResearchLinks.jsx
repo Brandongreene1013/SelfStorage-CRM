@@ -36,6 +36,52 @@ function LinkButton({ link, compact = false }) {
   );
 }
 
+// Sprint 13 — one-click copy chips so Brandon can paste owner/facility/phone/
+// address into Reonomy, CoStar, TractIQ, or a county site without retyping.
+function copyFields(contact) {
+  return [
+    { key: 'owner', label: 'Owner', value: (contact.ownerName ?? '').trim() },
+    { key: 'facility', label: 'Facility', value: (contact.facilityName ?? '').trim() },
+    { key: 'phone', label: 'Phone', value: (contact.phone ?? '').trim() },
+    { key: 'address', label: 'Address', value: (contact.address ?? '').trim() },
+  ].filter(f => f.value);
+}
+
+export function CopyChips({ contact, compact = false }) {
+  const [copiedKey, setCopiedKey] = useState(null);
+  const fields = copyFields(contact);
+  if (fields.length === 0) return null;
+
+  async function copy(field) {
+    try {
+      await navigator.clipboard.writeText(field.value);
+      setCopiedKey(field.key);
+      setTimeout(() => setCopiedKey(k => (k === field.key ? null : k)), 1500);
+    } catch {
+      setCopiedKey(null);
+    }
+  }
+
+  return (
+    <div className={`flex flex-wrap ${compact ? 'gap-1' : 'gap-1.5'}`}>
+      {fields.map(f => (
+        <button
+          key={f.key}
+          onClick={e => { e.stopPropagation(); copy(f); }}
+          title={`Copy: ${f.value}`}
+          className={`border rounded-md font-semibold transition-all ${compact ? 'text-[10px] px-1.5 py-1' : 'text-[11px] px-2 py-1'} ${
+            copiedKey === f.key
+              ? 'bg-emerald-600/20 border-emerald-600/40 text-emerald-400'
+              : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+          }`}
+        >
+          {copiedKey === f.key ? '✓ Copied' : `⧉ ${f.label}`}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // Full panel for Contact Detail. onAddNote(line) appends a research note to
 // the contact's notes (handled by the parent so it plays nice with the
 // modal's unsaved-notes state).
@@ -69,6 +115,9 @@ export function OwnerResearchPanel({ contact, onAddNote }) {
       <div className="flex flex-wrap gap-2">
         {links.map(link => <LinkButton key={link.key} link={link} />)}
       </div>
+      <div className="mt-2.5">
+        <CopyChips contact={contact} />
+      </div>
       {onAddNote && (
         <div className="mt-3 flex items-center gap-2">
           <input
@@ -96,13 +145,17 @@ export function OwnerResearchPanel({ contact, onAddNote }) {
   );
 }
 
-// Compact strip for Call Mode: Maps · Whitepages · Google · LinkedIn · County · SOS.
+// Compact strip for Call Mode: Maps · Whitepages · Google · LinkedIn · County ·
+// SOS, plus a slim copy row underneath.
 export function ResearchStrip({ contact }) {
   const links = buildResearchStrip(contact);
-  if (links.length === 0) return null;
+  if (links.length === 0) return <CopyChips contact={contact} compact />;
   return (
-    <div className="grid grid-cols-3 gap-1.5">
-      {links.map(link => <LinkButton key={link.key} link={link} compact />)}
+    <div className="space-y-2">
+      <div className="grid grid-cols-3 gap-1.5">
+        {links.map(link => <LinkButton key={link.key} link={link} compact />)}
+      </div>
+      <CopyChips contact={contact} compact />
     </div>
   );
 }
