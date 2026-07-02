@@ -16,6 +16,14 @@ const US_STATES = {
 
 export { US_STATES };
 
+function isMissingColumnError(error, columnName) {
+  if (!error) return false;
+  const msg = error.message ?? '';
+  return error.code === '42703'
+    || error.code === 'PGRST204'
+    || new RegExp(`column .*${columnName}.* does not exist|could not find .*${columnName}.* column`, 'i').test(msg);
+}
+
 export function extractStateAndMarket(address) {
   if (!address) return { state: '', market: '' };
   const stateAbbrRegex = /\b([A-Z]{2})\b(?:\s*\d{5})?/g;
@@ -226,6 +234,7 @@ function dbToContact(row) {
     ownerName: row.owner_name ?? '',
     facilityName: row.facility_name ?? '',
     phone: row.phone ?? '',
+    alternatePhones: Array.isArray(row.alternate_phones) ? row.alternate_phones : [],
     email: row.email ?? '',
     address: row.address ?? '',
     city: row.city ?? '',
@@ -261,10 +270,15 @@ const MASTER_DB_NAME = 'Master Database';
 function dupKeys(c) {
   const keys = [];
   const phone = (c.phone || '').replace(/\D/g, '');
+  const alternatePhones = Array.isArray(c.alternatePhones) ? c.alternatePhones : [];
   const email = (c.email || '').trim().toLowerCase();
   const owner = (c.ownerName || '').trim().toLowerCase();
   const fac = (c.facilityName || '').trim().toLowerCase();
   if (phone.length >= 7) keys.push('p:' + phone.slice(-10)); // last 10 digits
+  alternatePhones.forEach(p => {
+    const altPhone = (p?.phone || '').replace(/\D/g, '');
+    if (altPhone.length >= 7) keys.push('p:' + altPhone.slice(-10));
+  });
   if (email) keys.push('e:' + email);
   if (owner && fac) keys.push('of:' + owner + '|' + fac);
   return keys;
@@ -278,6 +292,7 @@ function dupScore(c) {
   if (c.notes && c.notes.trim()) s += 2;
   if (c.nextActionType) s += 2;
   if (c.phone) s += 1;
+  if (c.alternatePhones?.length) s += 1;
   if (c.email) s += 1;
   if (c.address) s += 1;
   return s;
@@ -490,7 +505,9 @@ export function useDatabase() {
     const { error } = await supabase.from('contacts').delete().eq('id', contactId);
     if (!error) {
       setContacts(prev => prev.filter(c => c.id !== contactId));
+      return { ok: true };
     }
+    return { error: error.message };
   }, []);
 
   const updateContact = useCallback(async (contactId, fields) => {
@@ -498,6 +515,7 @@ export function useDatabase() {
     if (fields.ownerName    !== undefined) dbFields.owner_name    = fields.ownerName;
     if (fields.facilityName !== undefined) dbFields.facility_name = fields.facilityName;
     if (fields.phone        !== undefined) dbFields.phone         = fields.phone;
+    if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
     if (fields.email        !== undefined) dbFields.email         = fields.email;
     if (fields.address      !== undefined) dbFields.address       = fields.address;
     if (fields.state        !== undefined) dbFields.state         = fields.state;
@@ -513,9 +531,14 @@ export function useDatabase() {
     dbFields.updated_at = new Date().toISOString();
 
     const { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
+    if (error && isMissingColumnError(error, 'alternate_phones')) {
+      return { error: 'alternate_phones_migration_needed' };
+    }
     if (!error) {
       setContacts(prev => prev.map(c => c.id === contactId ? { ...c, ...fields } : c));
+      return { ok: true };
     }
+    return { error: error.message };
   }, []);
 
   // Replace a contact's activity log wholesale (review actions), with optional email backfill

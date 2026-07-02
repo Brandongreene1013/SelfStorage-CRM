@@ -55,6 +55,24 @@ const SOURCE_COLORS = {
   'Tractiq':     'bg-purple-600/20 text-purple-400 border-purple-600/30',
   'Other':       'bg-slate-600/40 text-slate-400 border-slate-600/30',
 };
+const PHONE_LABELS = ['Mobile', 'Office', 'Owner', 'Manager', 'Unknown'];
+
+function normalizedAlternatePhones(phones = []) {
+  return (Array.isArray(phones) ? phones : [])
+    .map((p, idx) => ({
+      id: p.id ?? `${idx}-${p.phone ?? ''}`,
+      label: PHONE_LABELS.includes(p.label) ? p.label : 'Unknown',
+      phone: p.phone ?? '',
+    }))
+    .filter(p => p.phone.trim());
+}
+
+function isTypingTarget(target) {
+  if (!target) return false;
+  if (target.closest?.('[role="dialog"]')) return true;
+  if (target.isContentEditable) return true;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
 
 // ─── Editable field ───────────────────────────────────────────────────────────
 const RESEARCH_LINK_CLASSES = {
@@ -127,6 +145,121 @@ function EditableField({ label, value, placeholder, onChange, mono, href, type =
 }
 
 // ─── Contact Detail Modal ─────────────────────────────────────────────────────
+
+function AdditionalPhonesEditor({ phones = [], onSave, compact = false }) {
+  const [draft, setDraft] = useState(() => normalizedAlternatePhones(phones));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => { setDraft(normalizedAlternatePhones(phones)); }, [phones]);
+
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(normalizedAlternatePhones(phones));
+
+  function updateRow(idx, fields) {
+    setDraft(prev => prev.map((p, i) => i === idx ? { ...p, ...fields } : p));
+  }
+
+  function addRow() {
+    setDraft(prev => [...prev, { id: `new-${Date.now()}`, label: 'Unknown', phone: '' }]);
+  }
+
+  function deleteRow(idx) {
+    setDraft(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  async function save() {
+    const clean = normalizedAlternatePhones(draft);
+    setSaving(true);
+    setError('');
+    const result = await onSave(clean);
+    setSaving(false);
+    if (result?.error === 'alternate_phones_migration_needed') {
+      setError('Run sql/contact_alternate_phones_migration.sql in Supabase, then refresh to save additional phones.');
+      return;
+    }
+    if (result?.error) setError(result.error);
+  }
+
+  return (
+    <div className={`${compact ? 'space-y-2' : 'bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-3'}`}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Additional Phones</p>
+        <button onClick={addRow} className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all">
+          + Phone
+        </button>
+      </div>
+
+      {draft.length === 0 ? (
+        <p className="text-xs text-slate-600 italic">No additional numbers saved.</p>
+      ) : (
+        <div className="space-y-2">
+          {draft.map((p, idx) => (
+            <div key={p.id ?? idx} className="grid grid-cols-[100px_minmax(0,1fr)_auto_auto] gap-2 items-center">
+              <select
+                value={p.label}
+                onChange={e => updateRow(idx, { label: e.target.value })}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+              >
+                {PHONE_LABELS.map(label => <option key={label} value={label}>{label}</option>)}
+              </select>
+              <input
+                type="tel"
+                value={p.phone}
+                onChange={e => updateRow(idx, { phone: e.target.value })}
+                placeholder="(555) 000-0000"
+                className="min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+              />
+              {p.phone?.trim() ? (
+                <a href={`tel:${p.phone}`} className="text-xs font-bold bg-green-600/15 border border-green-600/30 text-green-400 hover:bg-green-600/25 rounded-lg px-2 py-1.5 transition-all">
+                  Call
+                </a>
+              ) : (
+                <span className="text-xs text-slate-700 px-2">Call</span>
+              )}
+              <button onClick={() => deleteRow(idx)} className="text-xs text-slate-600 hover:text-red-400 px-1 py-1 transition-all" title="Remove phone">
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-3">
+        {error ? <p className="text-xs text-red-400">{error}</p> : <span />}
+        {isDirty && (
+          <button onClick={save} disabled={saving} className="text-xs font-bold bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 px-3 py-1.5 rounded-lg transition-all">
+            {saving ? 'Saving...' : 'Save Phones'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onClose }) {
+  return (
+    <ModalLayout onClose={onClose} size="sm" className="p-6 text-center">
+      <div className="text-4xl mb-3">Delete</div>
+      <h2 className="text-lg font-bold text-white mb-1">Delete Contact?</h2>
+      <p className="text-slate-400 text-sm mb-3">
+        Delete <span className="text-white font-semibold">{contactDisplayName(contact)}</span> from the database? This cannot be undone.
+      </p>
+      {openTaskCount > 0 && (
+        <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-4">
+          {openTaskCount} open related task{openTaskCount === 1 ? '' : 's'} will remain in Tasks and may need cleanup.
+        </p>
+      )}
+      <div className="flex gap-3">
+        <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white transition-all text-sm font-semibold">
+          Cancel
+        </button>
+        <button onClick={onConfirm} className="flex-1 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-sm transition-all">
+          Delete
+        </button>
+      </div>
+    </ModalLayout>
+  );
+}
 function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, onUpdate, onDelete, taskApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
@@ -134,11 +267,13 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
   // 'callback' strongly prompts (auto-opens, due date emphasized); 'conversation'
   // and 'appointment' just offer a dismissible suggestion bar.
   const [taskPrompt, setTaskPrompt] = useState(null); // 'callback' | 'suggest' | null
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Build Google search query for this facility
   const searchQuery = [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ');
   const missingInfo = !contact.phone || !contact.email || !contact.address;
   const contactName = contact.ownerName || contact.facilityName || 'Contact';
+  const openTasks = taskApi?.getRelatedTasks('contact', contact.id) ?? [];
 
   function saveNotes() { onNotesChange(contact.id, notes); }
 
@@ -242,6 +377,10 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
             <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')}
               href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
           </div>
+          <AdditionalPhonesEditor
+            phones={contact.alternatePhones}
+            onSave={(phones) => onUpdate(contact.id, { alternatePhones: phones })}
+          />
 
           {/* ── Call Notes ── */}
           <div>
@@ -322,7 +461,7 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
 
         {/* Footer */}
         <div className="flex items-center justify-between p-4 border-t border-slate-800">
-          <button onClick={() => { onDelete(contact.id); onClose(); }}
+          <button onClick={() => setConfirmDelete(true)}
             className="text-xs text-red-500 hover:text-red-400 transition-colors font-semibold">
             Delete Contact
           </button>
@@ -341,6 +480,15 @@ function ContactDetailModal({ contact, onClose, onStatusChange, onNotesChange, o
             emphasizeDueDate={taskPrompt === 'callback'}
             onSave={(fields) => taskApi?.createTask(fields)}
             onClose={() => setTaskPrompt(null)}
+          />
+        )}
+
+        {confirmDelete && (
+          <DeleteContactConfirmModal
+            contact={contact}
+            openTaskCount={openTasks.length}
+            onClose={() => setConfirmDelete(false)}
+            onConfirm={() => onDelete(contact.id)}
           />
         )}
     </ModalLayout>
@@ -1046,7 +1194,6 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     if (onCallLogged) onCallLogged(status);
     setCallNote('');
     setCallbackDate('');
-    if (callQueueIndex >= callQueue.length - 1) setQueueIndex(Math.max(0, callQueue.length - 2));
   }
 
   function handleStatusChangeFromModal(id, status, notes) {
@@ -1231,6 +1378,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               setCallbackDate={setCallbackDate}
               onOutcome={handleCallOutcome}
               onSaveNotes={updateContactNotes}
+              onUpdateContact={updateContact}
+              onDeleteContact={deleteContact}
               onPromote={onContactToClients}
               taskApi={taskApi}
               queueLabel={activeQueueDef?.label ?? 'Call Mode'}
@@ -1479,11 +1628,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 const OFFER_FOLLOWUP_STATUSES = ['voicemail', 'conversation', 'appointment'];
 const DEFAULT_COMPLETE_STATUSES = ['conversation', 'appointment', 'not_interested', 'callback'];
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOutcome, onSaveNotes, onPromote, taskApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onPromote, taskApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
   const [postOutcome, setPostOutcome] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const contactNote = current?.notes ?? '';
   const noteText = noteDraft.contactId === current?.id ? noteDraft.text : contactNote;
   const hasNoteChanges = noteText !== contactNote;
@@ -1503,6 +1653,20 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
     setIndex(Math.min(queue.length - 1, Math.max(0, index + delta)));
   }
 
+  async function deleteCurrentContact() {
+    if (!current) return;
+    if (hasNoteChanges) await saveNotes();
+    const nextIndex = Math.max(0, Math.min(index, queue.length - 2));
+    const result = await onDeleteContact?.(current.id);
+    if (result?.error) {
+      alert('Could not delete contact: ' + result.error);
+      return;
+    }
+    setConfirmDelete(false);
+    setPostOutcome(null);
+    setNoteDraft({ contactId: null, text: '' });
+    setIndex(nextIndex);
+  }
   async function handleOutcome(status) {
     if (!current) return;
     if (hasNoteChanges) await saveNotes();
@@ -1526,11 +1690,15 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
   }
 
   useEffect(() => {
+    if (queue.length > 0 && index > queue.length - 1) setIndex(queue.length - 1);
+  }, [queue.length, index, setIndex]);
+
+  useEffect(() => {
     function onKeyDown(e) {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) return;
+      if (isTypingTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
       const key = e.key.toLowerCase();
-      if (key === 'n') go(1);
-      if (key === 'b') go(-1);
+      if (key === 'n' || key === 'arrowright') { e.preventDefault(); go(1); }
+      if (key === 'b' || key === 'arrowleft') { e.preventDefault(); go(-1); }
       if (key === 'x') handleOutcome('no_answer');
       if (key === 'v') handleOutcome('voicemail');
       if (key === 'c') handleOutcome('callback');
@@ -1648,6 +1816,10 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
             </div>
           </div>
 
+          <AdditionalPhonesEditor
+            phones={current.alternatePhones}
+            onSave={(phones) => onUpdateContact?.(current.id, { alternatePhones: phones })}
+          />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {current.email && <a href={`mailto:${current.email}`} className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-blue-300 hover:text-blue-200 truncate">Email: {current.email}</a>}
             {current.address && (
@@ -1702,6 +1874,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
                   className="bg-slate-800 border border-amber-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
               </div>
               <button onClick={saveNotes} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm transition-all">Save Note</button>
+              <button onClick={() => setConfirmDelete(true)} className="text-sm text-red-500 hover:text-red-400 transition-all font-semibold px-2 py-2">Delete</button>
               <button onClick={() => go(-1)} disabled={index === 0} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
               <button onClick={() => go(1)} disabled={index >= queue.length - 1} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2">Next Contact</button>
             </div>
@@ -1794,9 +1967,17 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
               Promote to Client / Pipeline
             </button>
           )}
-          <p className="text-xs text-slate-600 px-1">Shortcuts: N next, B back, X no answer, V voicemail, C callback.</p>
+          <p className="text-xs text-slate-600 px-1">Shortcuts: &larr; / &rarr; move through queue. N next, B back, X no answer, V voicemail, C callback.</p>
         </aside>
       </div>
+      {confirmDelete && (
+        <DeleteContactConfirmModal
+          contact={current}
+          openTaskCount={openTasks.length}
+          onClose={() => setConfirmDelete(false)}
+          onConfirm={deleteCurrentContact}
+        />
+      )}
     </div>
   );
 }
