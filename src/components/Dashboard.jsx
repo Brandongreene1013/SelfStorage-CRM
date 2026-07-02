@@ -64,10 +64,14 @@ function buildAttackList(taskApi, contacts, clients) {
   return rows;
 }
 
-function buildNeedsFollowUp(taskApi, contacts, clients) {
+function buildNeedsFollowUp(taskApi, contacts, clients, masterListId) {
   if (!taskApi) return [];
   const rows = [];
   contacts.forEach(c => {
+    // Master Database is the parked/warehoused bucket, not an active working
+    // list — a lukewarm lead sitting there with an old conversation logged
+    // isn't something Brandon needs nagged about on the Dashboard.
+    if (masterListId && c.listId === masterListId) return;
     if (c.status !== 'conversation' && c.status !== 'appointment') return;
     if (taskApi.getRelatedTasks('contact', c.id).length > 0) return;
     rows.push({
@@ -244,21 +248,32 @@ function PipelineAttention({ rows, onEditClient }) {
 }
 
 // ─── Needs Follow-Up (V1) ─────────────────────────────────────────────────────
-function NeedsFollowUp({ rows, onCallContact, onEditClient }) {
+function NeedsFollowUp({ rows, onCallContact, onEditClient, onMoveToMasterDB }) {
   if (rows.length === 0) return null;
   return (
     <SectionCard title="Needs Follow-Up" subtitle="Activity logged with no open task">
       <div className="space-y-1.5">
         {rows.map(r => (
-          <button key={r.key}
-            onClick={() => r.kind === 'contact' ? onCallContact(r.contact) : onEditClient(r.client)}
-            className="w-full text-left flex items-center gap-3 px-3 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/50 hover:border-slate-600 rounded-lg transition-all">
-            <div className="flex-1 min-w-0">
+          <div key={r.key}
+            className="w-full flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/50 hover:border-slate-600 rounded-lg transition-all">
+            <button
+              onClick={() => r.kind === 'contact' ? onCallContact(r.contact) : onEditClient(r.client)}
+              className="flex-1 min-w-0 text-left"
+            >
               <p className="text-xs font-semibold text-white truncate">{r.name}</p>
               <p className="text-xs text-slate-500 truncate">{r.reason}</p>
-            </div>
+            </button>
+            {r.kind === 'contact' && onMoveToMasterDB && (
+              <button
+                onClick={() => onMoveToMasterDB(r.contact)}
+                title="Not actionable right now — park this lead in the Master Database and stop nudging me about it"
+                className="flex-shrink-0 text-xs font-semibold text-slate-500 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/40 rounded-lg px-2 py-1 transition-all"
+              >
+                Move to Master DB
+              </button>
+            )}
             <span className="text-xs text-slate-600 flex-shrink-0">{r.kind === 'contact' ? '☎' : '💼'}</span>
-          </button>
+          </div>
         ))}
       </div>
     </SectionCard>
@@ -664,7 +679,7 @@ function DashboardTasks({ taskApi }) {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard({
   clients, contacts = [], meetings = [], onNavigateCalendar,
-  onStartCallMode, onOpenContact, onEditClient, review, taskApi,
+  onStartCallMode, onOpenContact, onEditClient, onMoveToMasterDB, masterListId, review, taskApi,
 }) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
@@ -703,7 +718,7 @@ export default function Dashboard({
   ];
 
   const attackRows = useMemo(() => buildAttackList(taskApi, contacts, clients), [taskApi, contacts, clients]);
-  const followUpRows = useMemo(() => buildNeedsFollowUp(taskApi, contacts, clients), [taskApi, contacts, clients]);
+  const followUpRows = useMemo(() => buildNeedsFollowUp(taskApi, contacts, clients, masterListId), [taskApi, contacts, clients, masterListId]);
   const attentionRows = useMemo(() => buildPipelineAttention(taskApi, clients, meetings), [taskApi, clients, meetings]);
 
   const overdueCount = taskApi?.groups?.overdue?.length ?? 0;
@@ -746,7 +761,7 @@ export default function Dashboard({
         </div>
         <div className="space-y-4">
           <PipelineAttention rows={attentionRows} onEditClient={onEditClient} />
-          <NeedsFollowUp rows={followUpRows} onCallContact={onOpenContact} onEditClient={onEditClient} />
+          <NeedsFollowUp rows={followUpRows} onCallContact={onOpenContact} onEditClient={onEditClient} onMoveToMasterDB={onMoveToMasterDB} />
         </div>
       </div>
 

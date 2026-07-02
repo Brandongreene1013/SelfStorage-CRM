@@ -128,6 +128,14 @@ export default function App() {
     setView('Database');
   }, []);
 
+  // Dashboard "Move to Master DB" quick action — for a lukewarm contact that
+  // shouldn't be nudging Brandon as a follow-up anymore. Parks it in the
+  // Master Database list without leaving the Dashboard.
+  const handleMoveContactToMasterDB = useCallback((contact) => {
+    if (!contact || !db.masterListId) return;
+    db.moveContactToList(contact.id, db.masterListId);
+  }, [db]);
+
   // When a call is logged from Database, auto-increment dashboard counters
   const handleCallLogged = useCallback((outcome) => {
     incrementProgress('calls');
@@ -277,8 +285,10 @@ export default function App() {
             clients={clients}
             contacts={db.contacts}
             meetings={allMeetings}
+            masterListId={db.masterListId}
             onNavigateCalendar={() => setView('Calendar')}
             onStartCallMode={handleStartCallMode}
+            onMoveToMasterDB={handleMoveContactToMasterDB}
             onOpenContact={handleOpenContact}
             onEditClient={handleEdit}
             taskApi={taskApi}
