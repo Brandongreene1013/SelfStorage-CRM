@@ -7,7 +7,8 @@ import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
-import { ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_TEMPS, RELATIONSHIP_TYPES } from '../data/constants';
+import { ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCES, LEAD_TEMPS, PROPERTY_TYPES, RELATIONSHIP_TYPES } from '../data/constants';
+import { useOwnership } from '../hooks/useOwnership';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
 
@@ -338,7 +339,189 @@ function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onCl
     </ModalLayout>
   );
 }
-function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, taskApi }) {
+function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
+  const [message, setMessage] = useState('');
+  const groups = ownershipApi?.groups ?? [];
+  const linkedGroup = groups.find(g => g.id === contact.ownershipGroupId) ?? null;
+  const linkedProperties = linkedGroup ? (ownershipApi?.propertiesByGroup?.get(linkedGroup.id) ?? []) : [];
+  const hasOwnershipData = !ownershipApi?.loadError;
+
+  const groupSeed = {
+    displayName: contact.ownerEntity || contact.ownerName || contact.facilityName || 'New Ownership Group',
+    ownerEntity: contact.ownerEntity || '',
+    relationshipType: contact.relationshipType || DEFAULT_RELATIONSHIP_TYPE,
+    notes: '',
+  };
+
+  const propertySeed = (groupId) => ({
+    ownershipGroupId: groupId,
+    facilityName: contact.facilityName || '',
+    address: contact.address || '',
+    state: contact.state || '',
+    market: contact.market || '',
+    propertyType: 'Self-Storage',
+    source: contact.source || '',
+    notes: '',
+  });
+
+  async function linkGroup(groupId) {
+    setMessage('');
+    const result = await onUpdate(contact.id, { ownershipGroupId: groupId || null });
+    if (result?.error) setMessage(result.error);
+  }
+
+  async function createGroup() {
+    setMessage('');
+    const result = await ownershipApi?.createGroup(groupSeed);
+    if (result?.error) {
+      setMessage(result.error);
+      return;
+    }
+    if (result?.group) await linkGroup(result.group.id);
+  }
+
+  async function updateGroupFromContact() {
+    if (!linkedGroup) return;
+    setMessage('');
+    const result = await ownershipApi?.updateGroup(linkedGroup.id, {
+      ...linkedGroup,
+      ...groupSeed,
+      notes: linkedGroup.notes,
+    });
+    if (result?.error) setMessage(result.error);
+    else setMessage('Ownership group updated from this contact.');
+  }
+
+  async function createProperty() {
+    if (!linkedGroup) return;
+    setMessage('');
+    const result = await ownershipApi?.createProperty(propertySeed(linkedGroup.id));
+    if (result?.error) setMessage(result.error);
+    else setMessage('Property linked to ownership group.');
+  }
+
+  async function updatePropertyFromContact(property) {
+    setMessage('');
+    const result = await ownershipApi?.updateProperty(property.id, {
+      ...property,
+      ...propertySeed(property.ownershipGroupId),
+      propertyType: property.propertyType || 'Self-Storage',
+      notes: property.notes,
+    });
+    if (result?.error) setMessage(result.error);
+    else setMessage('Property updated from this contact.');
+  }
+
+  return (
+    <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Owner / Property Links</p>
+          <p className="text-xs text-slate-500 mt-1">Connect this person to an ownership group and its facilities.</p>
+        </div>
+        <span className="text-[11px] font-semibold text-amber-400 border border-amber-500/30 rounded-md px-2 py-1">
+          Sprint 18
+        </span>
+      </div>
+
+      {ownershipApi?.loadError && (
+        <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+          Run sql/ownership_property_foundation_migration.sql in Supabase, then refresh to use ownership links.
+        </p>
+      )}
+
+      <div>
+        <label className="block text-[11px] uppercase font-semibold text-slate-500 mb-1">Linked Ownership Group</label>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <select
+            value={contact.ownershipGroupId || ''}
+            onChange={e => linkGroup(e.target.value)}
+            disabled={!hasOwnershipData}
+            className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
+          >
+            <option value="">Not linked</option>
+            {groups.map(group => (
+              <option key={group.id} value={group.id}>{group.displayName || group.ownerEntity || 'Untitled ownership group'}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={createGroup}
+            disabled={!hasOwnershipData}
+            className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs transition-all disabled:opacity-50"
+          >
+            Create Group
+          </button>
+        </div>
+      </div>
+
+      {linkedGroup && (
+        <div className="bg-slate-800/60 border border-slate-700/70 rounded-lg px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-white truncate">{linkedGroup.displayName}</p>
+              {linkedGroup.ownerEntity && <p className="text-xs text-slate-400 truncate">{linkedGroup.ownerEntity}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={updateGroupFromContact}
+              className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
+            >
+              Update From Contact
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <p className="text-[11px] uppercase font-semibold text-slate-500">Linked Properties</p>
+          <button
+            type="button"
+            onClick={createProperty}
+            disabled={!linkedGroup}
+            className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all disabled:opacity-40"
+          >
+            + Property
+          </button>
+        </div>
+        {linkedProperties.length === 0 ? (
+          <p className="text-xs text-slate-500 italic">No properties linked yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {linkedProperties.map(property => {
+              const type = PROPERTY_TYPES.find(t => t.value === property.propertyType);
+              return (
+                <div key={property.id} className="bg-slate-800/60 border border-slate-700/70 rounded-lg px-3 py-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{property.facilityName || 'Unnamed property'}</p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {[property.address, property.market || property.state].filter(Boolean).join(' | ') || 'No location saved'}
+                      </p>
+                      {type && <p className="text-[11px] text-slate-500 mt-0.5">{type.label}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updatePropertyFromContact(property)}
+                      className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all flex-shrink-0"
+                    >
+                      Update
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {message && <p className="text-xs text-slate-400">{message}</p>}
+    </div>
+  );
+}
+
+function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, taskApi, ownershipApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -431,6 +614,19 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
                 ))}
               </select>
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Lead / Relationship Source</label>
+              <select
+                value={contact.leadSource ?? ''}
+                onChange={e => field('leadSource')(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="">No source set</option>
+                {LEAD_SOURCES.map(sourceOption => (
+                  <option key={sourceOption} value={sourceOption}>{sourceOption}</option>
+                ))}
+              </select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <EditableField label="Phone" value={contact.phone} placeholder="Click to add phone" onChange={field('phone')} mono
                 href={contact.phone ? `tel:${contact.phone}` : null} />
@@ -441,29 +637,7 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
               href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
           </div>
 
-          <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Owner / Property Links</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Ownership groups and linked properties will live here after the Sprint 17 schema is run.
-                </p>
-              </div>
-              <span className="text-[11px] font-semibold text-slate-500 border border-slate-700 rounded-md px-2 py-1">
-                Foundation
-              </span>
-            </div>
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div className="bg-slate-800/60 border border-slate-700/70 rounded-lg px-3 py-2">
-                <p className="text-[11px] uppercase font-semibold text-slate-500">Linked Ownership Group</p>
-                <p className="text-xs text-slate-400 mt-0.5">Not linked yet</p>
-              </div>
-              <div className="bg-slate-800/60 border border-slate-700/70 rounded-lg px-3 py-2">
-                <p className="text-[11px] uppercase font-semibold text-slate-500">Linked Properties</p>
-                <p className="text-xs text-slate-400 mt-0.5">No linked properties yet</p>
-              </div>
-            </div>
-          </div>
+          <OwnershipLinksPanel contact={contact} ownershipApi={ownershipApi} onUpdate={onUpdate} />
           <AdditionalPhonesEditor
             phones={contact.alternatePhones}
             onSave={(phones) => onUpdate(contact.id, { alternatePhones: phones })}
@@ -729,6 +903,11 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           Entity: <span className="text-slate-300 font-semibold">{contact.ownerEntity}</span>
         </p>
       )}
+      {contact.leadSource && (
+        <p className="mb-3 text-xs text-slate-500 truncate">
+          Lead Source: <span className="text-slate-300 font-semibold">{contact.leadSource}</span>
+        </p>
+      )}
 
       <div className="h-px bg-slate-800 mb-3" />
 
@@ -862,21 +1041,22 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
 // ─── Add Contact Modal ────────────────────────────────────────────────────────
 function AddContactModal({ listName, onSave, onClose }) {
   const [form, setForm] = useState({
-    ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, phone: '', email: '', address: '', state: '', notes: '',
+    ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', state: '', notes: '',
   });
 
   function set(key, val) { setForm(prev => ({ ...prev, [key]: val })); }
+  const blankForm = { ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', state: '', notes: '' };
 
   function handleSave() {
     if (!form.ownerName.trim() && !form.facilityName.trim()) return;
     onSave(form);
-    setForm({ ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, phone: '', email: '', address: '', state: '', notes: '' });
+    setForm(blankForm);
   }
 
   function handleSaveAndAnother() {
     if (!form.ownerName.trim() && !form.facilityName.trim()) return;
     onSave(form);
-    setForm({ ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, phone: '', email: '', address: '', state: '', notes: '' });
+    setForm(blankForm);
   }
 
   const fields = [
@@ -924,6 +1104,20 @@ function AddContactModal({ listName, onSave, onClose }) {
             >
               {RELATIONSHIP_TYPES.map(type => (
                 <option key={type.value} value={type.value}>{type.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Lead / Relationship Source</label>
+            <select
+              value={form.leadSource}
+              onChange={e => set('leadSource', e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+            >
+              <option value="">No source set</option>
+              {LEAD_SOURCES.map(sourceOption => (
+                <option key={sourceOption} value={sourceOption}>{sourceOption}</option>
               ))}
             </select>
           </div>
@@ -1169,6 +1363,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     addToMasterDB, logContactAction,
     duplicateDismissals, dismissedDuplicateKeys, dismissalStorage, dismissDuplicateGroup, restoreDuplicateGroup,
   } = db;
+  const ownershipApi = useOwnership();
 
   const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -1197,6 +1392,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [activeListId, setActiveListId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [relationshipFilter, setRelationshipFilter] = useState('all');
+  const [leadSourceFilter, setLeadSourceFilter] = useState('all');
   const [search, setSearch]         = useState('');
   const [openContact, setOpenContact] = useState(null);
 
@@ -1215,12 +1411,14 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       if (activeListId !== 'all' && c.listId !== activeListId) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
       if (relationshipFilter !== 'all' && (c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE) !== relationshipFilter) return false;
+      if (leadSourceFilter !== 'all' && (c.leadSource ?? '') !== leadSourceFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
           (c.facilityName ?? '').toLowerCase().includes(q) ||
           (c.ownerName ?? '').toLowerCase().includes(q) ||
           (c.ownerEntity ?? '').toLowerCase().includes(q) ||
+          (c.leadSource ?? '').toLowerCase().includes(q) ||
           (c.phone ?? '').includes(q) ||
           (c.email ?? '').toLowerCase().includes(q) ||
           (c.address ?? '').toLowerCase().includes(q) ||
@@ -1229,7 +1427,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       }
       return true;
     });
-  }, [contacts, activeListId, statusFilter, relationshipFilter, search]);
+  }, [contacts, activeListId, statusFilter, relationshipFilter, leadSourceFilter, search]);
 
   const callQueue = useMemo(() =>
     filtered.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
@@ -1422,7 +1620,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
   // In the Master Database view, clients are merged in (unified view, no duplicates)
   const masterView = activeListId === masterListId;
-  const clientsInView = (masterView && statusFilter === 'all' && relationshipFilter === 'all')
+  const clientsInView = (masterView && statusFilter === 'all' && relationshipFilter === 'all' && leadSourceFilter === 'all')
     ? clients.filter(cl => {
         if (!search) return true;
         const q = search.toLowerCase();
@@ -1796,6 +1994,14 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 <option value="all">All Relationships</option>
                 {RELATIONSHIP_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
               </select>
+              <select
+                value={leadSourceFilter}
+                onChange={e => setLeadSourceFilter(e.target.value)}
+                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+              >
+                <option value="all">All Lead Sources</option>
+                {LEAD_SOURCES.map(sourceOption => <option key={sourceOption} value={sourceOption}>{sourceOption}</option>)}
+              </select>
               <div className="flex flex-wrap gap-1.5">
                 {[
                   { label: 'Due Today', queue: 'today' },
@@ -1927,6 +2133,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           onUpdate={updateContact}
           onDelete={(id) => { deleteContact(id); setOpenContact(null); }}
           taskApi={taskApi}
+          ownershipApi={ownershipApi}
         />
       )}
 

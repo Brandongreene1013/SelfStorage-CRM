@@ -87,6 +87,7 @@ export const IMPORT_FIELD_OPTIONS = [
   { value: 'ownerEntity', label: 'Owner Entity / Company' },
   { value: 'facilityName', label: 'Facility / Property Name' },
   { value: 'relationshipType', label: 'Relationship Type' },
+  { value: 'leadSource', label: 'Lead / Relationship Source' },
   { value: 'primaryPhone', label: 'Primary Phone' },
   { value: 'additionalPhone', label: 'Additional Phone' },
   { value: 'email', label: 'Email' },
@@ -163,6 +164,10 @@ function detectFieldForHeader(header) {
   if (headerMatches(header, ['state', 'property state', 'mailing state', 'st'])) return 'state';
   if (headerMatches(header, ['zip', 'zipcode', 'zip code', 'postal code'])) return 'zip';
   if (headerMatches(header, ['source', 'data source', 'platform'])) return 'source';
+  if (headerMatches(header, [
+    'lead source', 'relationship source', 'found from', 'origin', 'contact source',
+    'person source', 'relationship origin',
+  ])) return 'leadSource';
   if (headerMatches(header, ['relationship type', 'contact type', 'record type', 'category', 'role'])) return 'relationshipType';
   if (headerMatches(header, ['notes', 'comments', 'remarks', 'description', 'details'])) return 'notes';
   if (headerIncludes(header, ['next action', 'follow up', 'follow-up'])) return 'nextAction';
@@ -431,6 +436,8 @@ function contactInsertRow(listId, c, meta = {}) {
     owner_entity: c.ownerEntity ?? '',
     facility_name: c.facilityName,
     relationship_type: c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
+    lead_source: c.leadSource ?? '',
+    ownership_group_id: c.ownershipGroupId ?? null,
     phone: c.phone,
     alternate_phones: c.alternatePhones ?? [],
     email: c.email,
@@ -455,6 +462,11 @@ function stripContactSourceColumns(row) {
 
 function stripContactExpansionColumns(row) {
   const { owner_entity: _ownerEntity, relationship_type: _relationshipType, ...rest } = row;
+  return rest;
+}
+
+function stripContactSprint18Columns(row) {
+  const { lead_source: _leadSource, ownership_group_id: _ownershipGroupId, ...rest } = row;
   return rest;
 }
 
@@ -505,6 +517,7 @@ function mergeImportedContact(existing, incoming, meta) {
     incoming.relationshipType &&
     incoming.relationshipType !== DEFAULT_RELATIONSHIP_TYPE
   ) updates.relationshipType = incoming.relationshipType;
+  if (!existing.leadSource && incoming.leadSource) updates.leadSource = incoming.leadSource;
   if (!existing.email && incoming.email) updates.email = incoming.email;
   if (!existing.address && incoming.address) updates.address = incoming.address;
   if (!existing.state && incoming.state) updates.state = incoming.state;
@@ -526,6 +539,8 @@ function updatePayloadFromFields(fields) {
   if (fields.ownerEntity !== undefined) dbFields.owner_entity = fields.ownerEntity;
   if (fields.facilityName !== undefined) dbFields.facility_name = fields.facilityName;
   if (fields.relationshipType !== undefined) dbFields.relationship_type = fields.relationshipType;
+  if (fields.leadSource !== undefined) dbFields.lead_source = fields.leadSource;
+  if (fields.ownershipGroupId !== undefined) dbFields.ownership_group_id = fields.ownershipGroupId || null;
   if (fields.phone !== undefined) dbFields.phone = fields.phone;
   if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
   if (fields.email !== undefined) dbFields.email = fields.email;
@@ -643,6 +658,7 @@ export function parseImportData(text, options = {}) {
       ownerName,
       ownerEntity: cols[fieldMap.ownerEntity] ?? '',
       relationshipType: normalizeRelationshipType(cols[fieldMap.relationshipType] ?? ''),
+      leadSource: cols[fieldMap.leadSource] ?? '',
       phone: primaryPhone,
       alternatePhones,
       email: cols[fieldMap.email] ?? '',
@@ -684,6 +700,8 @@ function dbToContact(row) {
     ownerEntity: row.owner_entity ?? '',
     facilityName: row.facility_name ?? '',
     relationshipType: normalizeRelationshipType(row.relationship_type ?? ''),
+    leadSource: row.lead_source ?? '',
+    ownershipGroupId: row.ownership_group_id ?? null,
     phone: row.phone ?? '',
     alternatePhones: Array.isArray(row.alternate_phones) ? row.alternate_phones : [],
     email: row.email ?? '',
@@ -861,6 +879,13 @@ export function useDatabase() {
       res = await supabase.from('contacts').insert(insertRows).select();
     }
     if (res.error && (
+      isMissingColumnError(res.error, 'lead_source')
+      || isMissingColumnError(res.error, 'ownership_group_id')
+    )) {
+      insertRows = insertRows.map(stripContactSprint18Columns);
+      res = await supabase.from('contacts').insert(insertRows).select();
+    }
+    if (res.error && (
       isMissingColumnError(res.error, 'source')
       || isMissingColumnError(res.error, 'import_filename')
       || isMissingColumnError(res.error, 'imported_at')
@@ -877,6 +902,8 @@ export function useDatabase() {
     if (res.error && (
       isMissingColumnError(res.error, 'owner_entity')
       || isMissingColumnError(res.error, 'relationship_type')
+      || isMissingColumnError(res.error, 'lead_source')
+      || isMissingColumnError(res.error, 'ownership_group_id')
       || isMissingColumnError(res.error, 'source')
       || isMissingColumnError(res.error, 'import_filename')
       || isMissingColumnError(res.error, 'imported_at')
@@ -884,6 +911,8 @@ export function useDatabase() {
       const {
         owner_entity: _ownerEntityColumn,
         relationship_type: _relationshipTypeColumn,
+        lead_source: _leadSourceColumn,
+        ownership_group_id: _ownershipGroupIdColumn,
         source: _sourceColumn,
         import_filename: _importFilenameColumn,
         imported_at: _importedAtColumn,
@@ -891,7 +920,7 @@ export function useDatabase() {
       } = dbFields;
       res = await supabase.from('contacts').update(withoutNewerColumns).eq('id', contactId);
       if (!res.error) {
-        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
+        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, leadSource: _leadSource, ownershipGroupId: _ownershipGroupId, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
         fields = appFields;
       }
     }
@@ -1089,6 +1118,7 @@ export function useDatabase() {
       owner_entity: fields.ownerEntity ?? '',
       facility_name: fields.facilityName ?? '',
       relationship_type: fields.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
+      lead_source: fields.leadSource || null,
       phone: fields.phone ?? '',
       email: fields.email ?? '',
       address: fields.address ?? '',
@@ -1103,6 +1133,15 @@ export function useDatabase() {
       isMissingColumnError(error, 'relationship_type')
     )) {
       payload = stripContactExpansionColumns(payload);
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
+    if (error && (
+      isMissingColumnError(error, 'lead_source') ||
+      isMissingColumnError(error, 'ownership_group_id')
+    )) {
+      payload = stripContactSprint18Columns(payload);
       const retry = await supabase.from('contacts').insert([payload]).select().single();
       row = retry.data;
       error = retry.error;
@@ -1132,6 +1171,8 @@ export function useDatabase() {
     if (error && (
       isMissingColumnError(error, 'owner_entity')
       || isMissingColumnError(error, 'relationship_type')
+      || isMissingColumnError(error, 'lead_source')
+      || isMissingColumnError(error, 'ownership_group_id')
       || isMissingColumnError(error, 'source')
       || isMissingColumnError(error, 'import_filename')
       || isMissingColumnError(error, 'imported_at')
@@ -1139,6 +1180,8 @@ export function useDatabase() {
       const {
         owner_entity: _ownerEntityColumn,
         relationship_type: _relationshipTypeColumn,
+        lead_source: _leadSourceColumn,
+        ownership_group_id: _ownershipGroupIdColumn,
         source: _sourceColumn,
         import_filename: _importFilenameColumn,
         imported_at: _importedAtColumn,
@@ -1147,7 +1190,7 @@ export function useDatabase() {
       const retry = await supabase.from('contacts').update(withoutNewerColumns).eq('id', contactId);
       error = retry.error;
       if (!error) {
-        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
+        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, leadSource: _leadSource, ownershipGroupId: _ownershipGroupId, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
         fields = appFields;
       }
     }
@@ -1235,6 +1278,8 @@ export function useDatabase() {
       owner_entity: contact.ownerEntity ?? '',
       facility_name: contact.facilityName ?? '',
       relationship_type: contact.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
+      lead_source: contact.leadSource || null,
+      ownership_group_id: contact.ownershipGroupId ?? null,
       phone: contact.phone ?? '',
       alternate_phones: contact.alternatePhones ?? [],
       email: contact.email ?? '',
@@ -1254,6 +1299,15 @@ export function useDatabase() {
       isMissingColumnError(error, 'relationship_type')
     )) {
       payload = stripContactExpansionColumns(payload);
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
+    if (error && (
+      isMissingColumnError(error, 'lead_source') ||
+      isMissingColumnError(error, 'ownership_group_id')
+    )) {
+      payload = stripContactSprint18Columns(payload);
       const retry = await supabase.from('contacts').insert([payload]).select().single();
       row = retry.data;
       error = retry.error;

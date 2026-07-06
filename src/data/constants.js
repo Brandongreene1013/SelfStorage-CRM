@@ -27,6 +27,24 @@ export const RELATIONSHIP_TYPES = [
   { value: 'other', label: 'Other', short: 'Other', variant: 'slate' },
 ];
 
+export const LEAD_SOURCES = [
+  'Cold Call',
+  'Facebook Marketplace',
+  'Facebook Group',
+  'LinkedIn',
+  'In Real Life',
+  'RIPCO CRM',
+  'Referral',
+  'CoStar',
+  'Reonomy',
+  'TractIQ',
+  'Crexi / LoopNet',
+  'Existing Client',
+  'Broker Referral',
+  'Owner Referral',
+  'Other',
+];
+
 export const STORAGE_CLASSES = ['Class A', 'Class B', 'Class C'];
 
 export const PROPERTY_TYPES = [
