@@ -59,7 +59,7 @@ function whitepagesUrl(contact, city, state) {
 export function buildResearchLinks(contact) {
   if (!contact) return [];
   const links = [];
-  const owner = (contact.ownerName ?? '').trim();
+  const owner = (contact.ownerEntity || contact.ownerName || '').trim();
   const facility = (contact.facilityName ?? '').trim();
   const address = (contact.address ?? '').trim();
   const phone = (contact.phone ?? '').trim();

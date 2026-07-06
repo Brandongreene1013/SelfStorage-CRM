@@ -31,17 +31,18 @@ export function dueMeta(dueDate) {
 }
 
 // Task-based callback queue (Sprint 6, shared in Sprint 7): open `call` tasks
-// on contacts, due today (`overdue: false`) or past due (`overdue: true`).
+// on contacts, due today (`overdue: false`), past due (`overdue: true`), or
+// future-dated (`upcoming: true`).
 // Used by both Call Mode's queue builder (Database) and the Dashboard's
 // callback counters so the two never disagree about who's "due". Rows are
 // shallow contact copies carrying queueReason/queueTaskId/queueTaskTitle/
 // queueDueDate so Call Mode can explain the queue and complete the
 // originating task after an outcome.
-export function buildCallbackTaskQueue(contacts, tasks = [], { overdue }) {
+export function buildCallbackTaskQueue(contacts, tasks = [], { overdue = false, upcoming = false }) {
   const today = new Date().toISOString().slice(0, 10);
   const relevant = tasks.filter(t =>
     t.status === 'open' && t.relatedType === 'contact' && t.taskType === 'call' && t.dueDate &&
-    (overdue ? t.dueDate < today : t.dueDate === today)
+    (upcoming ? t.dueDate > today : overdue ? t.dueDate < today : t.dueDate === today)
   );
   // Dedupe: if a contact somehow has more than one open call task due in this
   // window, only surface the earliest-due one.
@@ -62,6 +63,9 @@ export function buildCallbackTaskQueue(contacts, tasks = [], { overdue }) {
       queueDueDate: task.dueDate,
     });
   });
+  if (upcoming) {
+    rows.forEach(r => { r.queueReason = `Upcoming callback due ${r.queueDueDate}`; });
+  }
   rows.sort((a, b) => a.queueDueDate.localeCompare(b.queueDueDate));
   return rows;
 }

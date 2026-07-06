@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
 import { buildMergePlan } from '../lib/duplicateReview';
+import { DEFAULT_RELATIONSHIP_TYPE, RELATIONSHIP_TYPES } from '../data/constants';
 
 const US_STATES = {
   AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',
@@ -83,7 +84,9 @@ function tokenizeDelimited(text, delimiter) {
 export const IMPORT_FIELD_OPTIONS = [
   { value: 'ignore', label: 'Ignore' },
   { value: 'ownerName', label: 'Owner / Contact Name' },
+  { value: 'ownerEntity', label: 'Owner Entity / Company' },
   { value: 'facilityName', label: 'Facility / Property Name' },
+  { value: 'relationshipType', label: 'Relationship Type' },
   { value: 'primaryPhone', label: 'Primary Phone' },
   { value: 'additionalPhone', label: 'Additional Phone' },
   { value: 'email', label: 'Email' },
@@ -134,6 +137,10 @@ function detectFieldForHeader(header) {
     'full name', 'primary contact', 'name',
   ])) return 'ownerName';
   if (headerMatches(header, [
+    'owner entity', 'ownership entity', 'owning entity', 'legal owner', 'owner llc',
+    'company name', 'entity', 'business entity', 'holding company', 'ownership group',
+  ])) return 'ownerEntity';
+  if (headerMatches(header, [
     'facility', 'facility name', 'property', 'property name', 'asset name',
     'location name', 'site name', 'business name', 'storage name', 'self storage',
   ])) return 'facilityName';
@@ -156,6 +163,7 @@ function detectFieldForHeader(header) {
   if (headerMatches(header, ['state', 'property state', 'mailing state', 'st'])) return 'state';
   if (headerMatches(header, ['zip', 'zipcode', 'zip code', 'postal code'])) return 'zip';
   if (headerMatches(header, ['source', 'data source', 'platform'])) return 'source';
+  if (headerMatches(header, ['relationship type', 'contact type', 'record type', 'category', 'role'])) return 'relationshipType';
   if (headerMatches(header, ['notes', 'comments', 'remarks', 'description', 'details'])) return 'notes';
   if (headerIncludes(header, ['next action', 'follow up', 'follow-up'])) return 'nextAction';
   if (headerIncludes(header, ['conversation', 'spoke', 'talked'])) return 'notes';
@@ -196,6 +204,26 @@ function mappingsToFieldMap(headers, mappings) {
     }
   }
   return fieldMap;
+}
+
+function normalizeRelationshipType(value) {
+  const raw = (value ?? '').trim();
+  if (!raw) return DEFAULT_RELATIONSHIP_TYPE;
+  const normalized = raw.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim();
+  const compact = normalized.replace(/\s+/g, '_');
+  const direct = RELATIONSHIP_TYPES.find(t =>
+    t.value === raw || t.value === compact || t.label.toLowerCase() === raw.toLowerCase()
+  );
+  if (direct) return direct.value;
+  if (/seller|owner|storage/.test(normalized)) return 'storage_owner_seller';
+  if (/buyer|acquisition/.test(normalized)) return 'buyer';
+  if (/institution|reit|private equity|fund/.test(normalized)) return 'institution';
+  if (/developer|development/.test(normalized)) return 'developer';
+  if (/broker|agent/.test(normalized)) return 'broker';
+  if (/vendor|contractor|supplier/.test(normalized)) return 'vendor';
+  if (/lender|bank|debt|finance/.test(normalized)) return 'lender';
+  if (/attorney|lawyer|consultant|advisor|cpa|accountant/.test(normalized)) return 'attorney_consultant';
+  return 'other';
 }
 
 function normalizePhoneReadable(phone) {
@@ -400,7 +428,9 @@ function contactInsertRow(listId, c, meta = {}) {
   return {
     list_id: listId,
     owner_name: c.ownerName,
+    owner_entity: c.ownerEntity ?? '',
     facility_name: c.facilityName,
+    relationship_type: c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
     phone: c.phone,
     alternate_phones: c.alternatePhones ?? [],
     email: c.email,
@@ -420,6 +450,11 @@ function contactInsertRow(listId, c, meta = {}) {
 
 function stripContactSourceColumns(row) {
   const { source: _source, import_filename: _importFilename, imported_at: _importedAt, ...rest } = row;
+  return rest;
+}
+
+function stripContactExpansionColumns(row) {
+  const { owner_entity: _ownerEntity, relationship_type: _relationshipType, ...rest } = row;
   return rest;
 }
 
@@ -463,7 +498,13 @@ function mergeImportedContact(existing, incoming, meta) {
 
   if (nextAlt.length !== (existing.alternatePhones?.length ?? 0)) updates.alternatePhones = nextAlt;
   if (!existing.ownerName && incoming.ownerName) updates.ownerName = incoming.ownerName;
+  if (!existing.ownerEntity && incoming.ownerEntity) updates.ownerEntity = incoming.ownerEntity;
   if (!existing.facilityName && incoming.facilityName) updates.facilityName = incoming.facilityName;
+  if (
+    (!existing.relationshipType || existing.relationshipType === DEFAULT_RELATIONSHIP_TYPE) &&
+    incoming.relationshipType &&
+    incoming.relationshipType !== DEFAULT_RELATIONSHIP_TYPE
+  ) updates.relationshipType = incoming.relationshipType;
   if (!existing.email && incoming.email) updates.email = incoming.email;
   if (!existing.address && incoming.address) updates.address = incoming.address;
   if (!existing.state && incoming.state) updates.state = incoming.state;
@@ -482,7 +523,9 @@ function mergeImportedContact(existing, incoming, meta) {
 function updatePayloadFromFields(fields) {
   const dbFields = {};
   if (fields.ownerName !== undefined) dbFields.owner_name = fields.ownerName;
+  if (fields.ownerEntity !== undefined) dbFields.owner_entity = fields.ownerEntity;
   if (fields.facilityName !== undefined) dbFields.facility_name = fields.facilityName;
+  if (fields.relationshipType !== undefined) dbFields.relationship_type = fields.relationshipType;
   if (fields.phone !== undefined) dbFields.phone = fields.phone;
   if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
   if (fields.email !== undefined) dbFields.email = fields.email;
@@ -598,6 +641,8 @@ export function parseImportData(text, options = {}) {
     const contact = {
       facilityName: cols[fieldMap.facilityName] ?? '',
       ownerName,
+      ownerEntity: cols[fieldMap.ownerEntity] ?? '',
+      relationshipType: normalizeRelationshipType(cols[fieldMap.relationshipType] ?? ''),
       phone: primaryPhone,
       alternatePhones,
       email: cols[fieldMap.email] ?? '',
@@ -636,7 +681,9 @@ function dbToContact(row) {
     id: row.id,
     listId: row.list_id,
     ownerName: row.owner_name ?? '',
+    ownerEntity: row.owner_entity ?? '',
     facilityName: row.facility_name ?? '',
+    relationshipType: normalizeRelationshipType(row.relationship_type ?? ''),
     phone: row.phone ?? '',
     alternatePhones: Array.isArray(row.alternate_phones) ? row.alternate_phones : [],
     email: row.email ?? '',
@@ -804,13 +851,22 @@ export function useDatabase() {
   }
 
   async function insertContactsWithFallback(rows) {
-    let res = await supabase.from('contacts').insert(rows).select();
+    let insertRows = rows;
+    let res = await supabase.from('contacts').insert(insertRows).select();
+    if (res.error && (
+      isMissingColumnError(res.error, 'owner_entity')
+      || isMissingColumnError(res.error, 'relationship_type')
+    )) {
+      insertRows = insertRows.map(stripContactExpansionColumns);
+      res = await supabase.from('contacts').insert(insertRows).select();
+    }
     if (res.error && (
       isMissingColumnError(res.error, 'source')
       || isMissingColumnError(res.error, 'import_filename')
       || isMissingColumnError(res.error, 'imported_at')
     )) {
-      res = await supabase.from('contacts').insert(rows.map(stripContactSourceColumns)).select();
+      insertRows = insertRows.map(stripContactSourceColumns);
+      res = await supabase.from('contacts').insert(insertRows).select();
     }
     return res;
   }
@@ -818,6 +874,27 @@ export function useDatabase() {
   const updateContactWithFallback = useCallback(async (contactId, fields) => {
     let dbFields = updatePayloadFromFields(fields);
     let res = await supabase.from('contacts').update(dbFields).eq('id', contactId);
+    if (res.error && (
+      isMissingColumnError(res.error, 'owner_entity')
+      || isMissingColumnError(res.error, 'relationship_type')
+      || isMissingColumnError(res.error, 'source')
+      || isMissingColumnError(res.error, 'import_filename')
+      || isMissingColumnError(res.error, 'imported_at')
+    )) {
+      const {
+        owner_entity: _ownerEntityColumn,
+        relationship_type: _relationshipTypeColumn,
+        source: _sourceColumn,
+        import_filename: _importFilenameColumn,
+        imported_at: _importedAtColumn,
+        ...withoutNewerColumns
+      } = dbFields;
+      res = await supabase.from('contacts').update(withoutNewerColumns).eq('id', contactId);
+      if (!res.error) {
+        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
+        fields = appFields;
+      }
+    }
     if (res.error && (
       isMissingColumnError(res.error, 'source')
       || isMissingColumnError(res.error, 'import_filename')
@@ -1006,22 +1083,30 @@ export function useDatabase() {
 
   const addContact = useCallback(async (listId, fields) => {
     const { state } = extractStateAndMarket(fields.address ?? '');
-    const { data: row, error } = await supabase
-      .from('contacts')
-      .insert([{
-        list_id: listId,
-        owner_name: fields.ownerName ?? '',
-        facility_name: fields.facilityName ?? '',
-        phone: fields.phone ?? '',
-        email: fields.email ?? '',
-        address: fields.address ?? '',
-        state: fields.state ?? state,
-        status: 'fresh',
-        call_history: [],
-        notes: '',
-      }])
-      .select()
-      .single();
+    let payload = {
+      list_id: listId,
+      owner_name: fields.ownerName ?? '',
+      owner_entity: fields.ownerEntity ?? '',
+      facility_name: fields.facilityName ?? '',
+      relationship_type: fields.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
+      phone: fields.phone ?? '',
+      email: fields.email ?? '',
+      address: fields.address ?? '',
+      state: fields.state ?? state,
+      status: 'fresh',
+      call_history: [],
+      notes: fields.notes ?? '',
+    };
+    let { data: row, error } = await supabase.from('contacts').insert([payload]).select().single();
+    if (error && (
+      isMissingColumnError(error, 'owner_entity') ||
+      isMissingColumnError(error, 'relationship_type')
+    )) {
+      payload = stripContactExpansionColumns(payload);
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
     if (!error && row) {
       const contact = dbToContact(row);
       setContacts(prev => [...prev, contact]);
@@ -1043,6 +1128,28 @@ export function useDatabase() {
     let { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
     if (error && isMissingColumnError(error, 'alternate_phones')) {
       return { error: 'alternate_phones_migration_needed' };
+    }
+    if (error && (
+      isMissingColumnError(error, 'owner_entity')
+      || isMissingColumnError(error, 'relationship_type')
+      || isMissingColumnError(error, 'source')
+      || isMissingColumnError(error, 'import_filename')
+      || isMissingColumnError(error, 'imported_at')
+    )) {
+      const {
+        owner_entity: _ownerEntityColumn,
+        relationship_type: _relationshipTypeColumn,
+        source: _sourceColumn,
+        import_filename: _importFilenameColumn,
+        imported_at: _importedAtColumn,
+        ...withoutNewerColumns
+      } = dbFields;
+      const retry = await supabase.from('contacts').update(withoutNewerColumns).eq('id', contactId);
+      error = retry.error;
+      if (!error) {
+        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
+        fields = appFields;
+      }
     }
     if (error && (
       isMissingColumnError(error, 'source')
@@ -1090,8 +1197,8 @@ export function useDatabase() {
     if (!error) setContacts(prev => prev.map(c => c.id === contactId ? { ...c, listId } : c));
   }, []);
 
-  const updateContactStatus = useCallback(async (contactId, status, callNote) => {
-    const now = new Date().toISOString().slice(0, 10);
+  const updateContactStatus = useCallback(async (contactId, status, callNote, activityDate) => {
+    const now = activityDate || new Date().toISOString().slice(0, 10);
     const contact = contacts.find(c => c.id === contactId);
     if (!contact) return;
     const newHistory = [...(contact.callHistory ?? []), { date: now, outcome: status, notes: callNote ?? '' }];
@@ -1122,27 +1229,35 @@ export function useDatabase() {
     );
     if (alreadyExists) return 'exists';
 
-    const { data: row, error } = await supabase
-      .from('contacts')
-      .insert([{
-        list_id: masterListId,
-        owner_name: contact.ownerName ?? '',
-        facility_name: contact.facilityName ?? '',
-        phone: contact.phone ?? '',
-        alternate_phones: contact.alternatePhones ?? [],
-        email: contact.email ?? '',
-        address: contact.address ?? '',
-        state: contact.state ?? '',
-        notes: contact.notes ?? '',
-        status: contact.status === 'fresh' ? 'conversation' : (contact.status ?? 'conversation'),
-        call_history: contact.callHistory ?? [],
-        next_action_type: contact.nextActionType ?? '',
-        next_action_date: contact.nextActionDate ?? '',
-        next_action_note: contact.nextActionNote ?? '',
-        lead_temp: contact.leadTemp ?? '',
-      }])
-      .select()
-      .single();
+    let payload = {
+      list_id: masterListId,
+      owner_name: contact.ownerName ?? '',
+      owner_entity: contact.ownerEntity ?? '',
+      facility_name: contact.facilityName ?? '',
+      relationship_type: contact.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
+      phone: contact.phone ?? '',
+      alternate_phones: contact.alternatePhones ?? [],
+      email: contact.email ?? '',
+      address: contact.address ?? '',
+      state: contact.state ?? '',
+      notes: contact.notes ?? '',
+      status: contact.status === 'fresh' ? 'conversation' : (contact.status ?? 'conversation'),
+      call_history: contact.callHistory ?? [],
+      next_action_type: contact.nextActionType ?? '',
+      next_action_date: contact.nextActionDate ?? '',
+      next_action_note: contact.nextActionNote ?? '',
+      lead_temp: contact.leadTemp ?? '',
+    };
+    let { data: row, error } = await supabase.from('contacts').insert([payload]).select().single();
+    if (error && (
+      isMissingColumnError(error, 'owner_entity') ||
+      isMissingColumnError(error, 'relationship_type')
+    )) {
+      payload = stripContactExpansionColumns(payload);
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
     if (!error && row) {
       const newContact = dbToContact(row);
       setContacts(prev => [...prev, newContact]);

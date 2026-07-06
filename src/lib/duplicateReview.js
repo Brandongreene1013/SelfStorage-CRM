@@ -343,7 +343,14 @@ export function buildMergePlan(master, weaker) {
   const fillIfBlank = (field) => {
     if (!(master[field] ?? '').trim() && (weaker[field] ?? '').trim()) updates[field] = weaker[field];
   };
-  ['ownerName', 'facilityName', 'email', 'address', 'state'].forEach(fillIfBlank);
+  ['ownerName', 'ownerEntity', 'facilityName', 'email', 'address', 'state'].forEach(fillIfBlank);
+  if (
+    (!(master.relationshipType ?? '').trim() || master.relationshipType === 'storage_owner_seller') &&
+    (weaker.relationshipType ?? '').trim() &&
+    weaker.relationshipType !== 'storage_owner_seller'
+  ) {
+    updates.relationshipType = weaker.relationshipType;
+  }
 
   const noteParts = [];
   const weakerNotes = (weaker.notes ?? '').trim();

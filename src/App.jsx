@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useCRM } from './hooks/useCRM';
 import { useDatabase } from './hooks/useDatabase';
 import { useMeetings } from './hooks/useMeetings';
@@ -32,15 +32,16 @@ export default function App() {
   const allMeetings = [...meetings, ...calendarEvents];
 
   // ── Email "needs review" matches: build the flagged list + confirm/reassign/dismiss ──
-  const reviewRecords = [
+  const reviewRecords = useMemo(() => [
     ...clients.map(c => ({ table: 'clients', id: c.id, name: c.name, facility: c.facilityName, email: c.email, actionLog: c.actionLog ?? [] })),
     ...db.contacts.map(c => ({ table: 'contacts', id: c.id, name: c.ownerName, facility: c.facilityName, email: c.email, actionLog: c.actionLog ?? [] })),
-  ];
+  ], [clients, db.contacts]);
   const reviewItems = reviewRecords.flatMap(r =>
     (r.actionLog || []).filter(e => e.needsReview).map(entry => ({ host: r, entry })));
 
-  const mutateLog = (table, id, payload) =>
-    table === 'clients' ? mutateClientLog(id, payload) : db.mutateContactLog(id, payload);
+  const mutateLog = useCallback((table, id, payload) =>
+    table === 'clients' ? mutateClientLog(id, payload) : db.mutateContactLog(id, payload),
+    [mutateClientLog, db]);
 
   const handleReviewConfirm = useCallback(({ host, entry }) => {
     const rec = reviewRecords.find(r => r.table === host.table && r.id === host.id);
@@ -48,14 +49,14 @@ export default function App() {
     const log = (rec.actionLog || []).map(e => e.messageId === entry.messageId ? { ...e, needsReview: false } : e);
     const email = (!rec.email || !rec.email.trim()) && entry.email ? entry.email : undefined;
     mutateLog(host.table, host.id, { log, email });
-  }, [reviewRecords]);
+  }, [reviewRecords, mutateLog]);
 
   const handleReviewDismiss = useCallback(({ host, entry }) => {
     const rec = reviewRecords.find(r => r.table === host.table && r.id === host.id);
     if (!rec) return;
     const log = (rec.actionLog || []).filter(e => e.messageId !== entry.messageId);
     mutateLog(host.table, host.id, { log });
-  }, [reviewRecords]);
+  }, [reviewRecords, mutateLog]);
 
   const handleReviewReassign = useCallback(({ host, entry }, target) => {
     const src = reviewRecords.find(r => r.table === host.table && r.id === host.id);
@@ -67,7 +68,7 @@ export default function App() {
     const cleaned = { ...entry, needsReview: false };
     const email = (!dst.email || !dst.email.trim()) && entry.email ? entry.email : undefined;
     mutateLog(target.table, target.id, { log: [...(dst.actionLog || []), cleaned], email });
-  }, [reviewRecords]);
+  }, [reviewRecords, mutateLog]);
 
   // ── Move a Database contact → Clients/Pipeline (drag onto the Clients target) ──
   const handleContactToClients = useCallback((contact) => {
@@ -113,12 +114,26 @@ export default function App() {
   // actions navigate into Database and tell it what to open. Consumed once
   // by Database, then cleared here so the same action can fire again.
   const [dbEntryRequest, setDbEntryRequest] = useState(null);
+  const [view, setView] = useState('Dashboard');
+  const [filter, setFilter] = useState('All');
+  const [search, setSearch] = useState('');
+  const [stageFilter, setStageFilter] = useState(0);
 
   const handleStartCallMode = useCallback(() => {
     // Opens Database's Call Mode queue picker (Sprint 6) rather than jumping
     // straight into an ambiguous All Contacts session — Brandon chooses which
     // queue to work from there.
     setDbEntryRequest({ subView: 'callQueue' });
+    setView('Database');
+  }, []);
+
+  const handleOpenCallQueue = useCallback((queueKey) => {
+    setDbEntryRequest({ subView: 'callQueue', queueKey });
+    setView('Database');
+  }, []);
+
+  const handleOpenDatabaseFilter = useCallback((statusFilter = 'all') => {
+    setDbEntryRequest({ subView: 'contacts', listId: 'all', statusFilter });
     setView('Database');
   }, []);
 
@@ -146,11 +161,6 @@ export default function App() {
       incrementProgress('facilities');
     }
   }, [incrementProgress]);
-
-  const [view, setView] = useState('Dashboard');
-  const [filter, setFilter] = useState('All');
-  const [search, setSearch] = useState('');
-  const [stageFilter, setStageFilter] = useState(0);
 
   const [editingClient, setEditingClient] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -288,9 +298,12 @@ export default function App() {
             masterListId={db.masterListId}
             onNavigateCalendar={() => setView('Calendar')}
             onStartCallMode={handleStartCallMode}
+            onOpenCallQueue={handleOpenCallQueue}
+            onOpenDatabaseFilter={handleOpenDatabaseFilter}
             onMoveToMasterDB={handleMoveContactToMasterDB}
             onOpenContact={handleOpenContact}
             onEditClient={handleEdit}
+            onLogClientAction={logClientAction}
             taskApi={taskApi}
             review={{
               items: reviewItems,

@@ -41,6 +41,7 @@ function LinkButton({ link, compact = false }) {
 function copyFields(contact) {
   return [
     { key: 'owner', label: 'Owner', value: (contact.ownerName ?? '').trim() },
+    { key: 'ownerEntity', label: 'Entity', value: (contact.ownerEntity ?? '').trim() },
     { key: 'facility', label: 'Facility', value: (contact.facilityName ?? '').trim() },
     { key: 'phone', label: 'Phone', value: (contact.phone ?? '').trim() },
     { key: 'address', label: 'Address', value: (contact.address ?? '').trim() },
@@ -90,7 +91,7 @@ export function OwnerResearchPanel({ contact, onAddNote }) {
   const [savedFlash, setSavedFlash] = useState(false);
   const links = buildResearchLinks(contact);
   if (links.length === 0) return null;
-  const entity = isEntityName(contact.ownerName);
+  const entity = isEntityName(contact.ownerEntity || contact.ownerName);
 
   function addNote() {
     const text = noteDraft.trim();

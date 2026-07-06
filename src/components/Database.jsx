@@ -7,7 +7,7 @@ import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
-import { ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
+import { ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_TEMPS, RELATIONSHIP_TYPES } from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
 
@@ -62,6 +62,12 @@ const SOURCE_COLORS = {
   'Manual Excel': 'bg-slate-600/40 text-slate-300 border-slate-600/30',
   'Other':       'bg-slate-600/40 text-slate-400 border-slate-600/30',
 };
+
+const RELATIONSHIP_TYPE_MAP = Object.fromEntries(RELATIONSHIP_TYPES.map(t => [t.value, t]));
+
+function relationshipMeta(value) {
+  return RELATIONSHIP_TYPE_MAP[value] ?? RELATIONSHIP_TYPE_MAP[DEFAULT_RELATIONSHIP_TYPE];
+}
 
 function contactSource(contact, lists = []) {
   return contact.source || lists.find(l => l.id === contact.listId)?.source || '';
@@ -244,6 +250,70 @@ function AdditionalPhonesEditor({ phones = [], onSave, compact = false }) {
   );
 }
 
+function PrimaryPhoneEditor({ phone = '', onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(phone ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function commit() {
+    const next = draft.trim();
+    if (next === (phone ?? '')) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    const result = await onSave(next);
+    setSaving(false);
+    if (result?.error) {
+      alert('Could not save phone: ' + result.error);
+      return;
+    }
+    setEditing(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1400);
+  }
+
+  return (
+    <div className="bg-green-600/10 border border-green-600/30 rounded-xl p-4 min-w-[260px]">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-green-400/70 font-semibold uppercase">Phone</p>
+        <button
+          onClick={() => setEditing(v => !v)}
+          className="text-xs font-bold text-green-300 hover:text-green-200"
+        >
+          {editing ? 'Cancel' : phone ? 'Edit' : 'Add'}
+        </button>
+      </div>
+      {editing ? (
+        <div className="mt-2 flex gap-2">
+          <input
+            autoFocus
+            type="tel"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(phone ?? ''); setEditing(false); } }}
+            className="min-w-0 flex-1 bg-slate-900 border border-green-500/50 rounded-lg px-3 py-2 text-lg text-green-300 font-mono focus:outline-none focus:border-green-400"
+            placeholder="(555) 000-0000"
+          />
+          <button
+            onClick={commit}
+            disabled={saving}
+            className="bg-green-500 hover:bg-green-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-950 font-black px-3 py-2 rounded-lg text-xs"
+          >
+            {saving ? 'Saving' : 'Save'}
+          </button>
+        </div>
+      ) : phone ? (
+        <a href={`tel:${phone}`} className="block text-2xl font-black text-green-400 font-mono hover:text-green-300">{phone}</a>
+      ) : (
+        <p className="text-2xl font-black text-slate-600">No phone</p>
+      )}
+      {saved && <p className="text-xs text-green-300 mt-1">Saved</p>}
+    </div>
+  );
+}
+
 function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onClose }) {
   return (
     <ModalLayout onClose={onClose} size="sm" className="p-6 text-center">
@@ -271,6 +341,7 @@ function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onCl
 function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, taskApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
+  const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
   // Sprint 2: after logging certain outcomes, offer/require a follow-up task.
   // 'callback' strongly prompts (auto-opens, due date emphasized); 'conversation'
   // and 'appointment' just offer a dismissible suggestion bar.
@@ -280,6 +351,7 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
   const contactName = contact.ownerName || contact.facilityName || 'Contact';
   const openTasks = taskApi?.getRelatedTasks('contact', contact.id) ?? [];
   const source = contactSource(contact, lists);
+  const rel = relationshipMeta(contact.relationshipType);
 
   function saveNotes() { onNotesChange(contact.id, notes); }
 
@@ -292,7 +364,7 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
   }
 
   function handleOutcome(status) {
-    onStatusChange(contact.id, status, notes);
+    onStatusChange(contact.id, status, notes, activityDate);
     onNotesChange(contact.id, notes);
     if (status === 'callback') {
       if (callbackDate) onUpdate(contact.id, { callbackDate });
@@ -314,6 +386,9 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <StatusBadge variant={STATUS_VARIANT[contact.status] ?? 'slate'} pill={false} className="font-bold">
                 {STATUS_LABELS[contact.status] ?? 'Fresh'}
+              </StatusBadge>
+              <StatusBadge variant={rel.variant} pill={false} className="font-bold">
+                {rel.short}
               </StatusBadge>
               {contact.market && (
                 <span className="text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
@@ -342,11 +417,26 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <EditableField label="Owner Name" value={contact.ownerName} placeholder="Click to add owner name" onChange={field('ownerName')} />
+              <EditableField label="Owner Entity" value={contact.ownerEntity} placeholder="ABC Storage LLC / owns personally" onChange={field('ownerEntity')} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Relationship Type</label>
+              <select
+                value={contact.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE}
+                onChange={e => field('relationshipType')(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+              >
+                {RELATIONSHIP_TYPES.map(type => (
+                  <option key={type.value} value={type.value}>{type.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <EditableField label="Phone" value={contact.phone} placeholder="Click to add phone" onChange={field('phone')} mono
                 href={contact.phone ? `tel:${contact.phone}` : null} />
+              <EditableField label="Email" value={contact.email} placeholder="Click to add email" onChange={field('email')}
+                href={contact.email ? `mailto:${contact.email}` : null} />
             </div>
-            <EditableField label="Email" value={contact.email} placeholder="Click to add email" onChange={field('email')}
-              href={contact.email ? `mailto:${contact.email}` : null} />
             <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')}
               href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
           </div>
@@ -385,10 +475,17 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
           </div>
 
           {/* ── Callback date ── */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Callback Date</label>
-            <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)}
-              className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Activity Date</label>
+              <input type="date" value={activityDate} onInput={e => setActivityDate(e.target.value)} onChange={e => setActivityDate(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Callback Date</label>
+              <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+            </div>
           </div>
 
           {/* ── Follow-up task suggestion (after Conversation / Appt Set) ── */}
@@ -483,6 +580,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
   const actionType = ACTION_TYPES.find(a => a.value === contact.nextActionType);
   const fallbackDue = dueMeta(contact.nextActionDate);
   const source = contactSource(contact, lists);
+  const rel = relationshipMeta(contact.relationshipType);
   const modalDefaults = nextTask
     ? {}
     : legacyActionDefaults(contact.nextActionType, contact.nextActionDate, contact.nextActionNote);
@@ -514,6 +612,9 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <StatusBadge variant={STATUS_VARIANT[contact.status] ?? 'slate'} pill={false} className="font-bold">
             {STATUS_LABELS[contact.status] ?? 'Fresh'}
+          </StatusBadge>
+          <StatusBadge variant={rel.variant} pill={false} className="font-bold">
+            {rel.short}
           </StatusBadge>
           {(() => {
             const temp = LEAD_TEMPS.find(t => t.value === contact.leadTemp);
@@ -598,6 +699,12 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           {contact.ownerName || <span className="text-slate-500 italic text-sm font-semibold">Unknown Owner</span>}
         </h3>
       </button>
+
+      {contact.ownerEntity && (
+        <p className="mb-3 text-xs text-slate-500 truncate">
+          Entity: <span className="text-slate-300 font-semibold">{contact.ownerEntity}</span>
+        </p>
+      )}
 
       <div className="h-px bg-slate-800 mb-3" />
 
@@ -731,7 +838,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
 // ─── Add Contact Modal ────────────────────────────────────────────────────────
 function AddContactModal({ listName, onSave, onClose }) {
   const [form, setForm] = useState({
-    ownerName: '', facilityName: '', phone: '', email: '', address: '', state: '', notes: '',
+    ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, phone: '', email: '', address: '', state: '', notes: '',
   });
 
   function set(key, val) { setForm(prev => ({ ...prev, [key]: val })); }
@@ -739,17 +846,18 @@ function AddContactModal({ listName, onSave, onClose }) {
   function handleSave() {
     if (!form.ownerName.trim() && !form.facilityName.trim()) return;
     onSave(form);
-    setForm({ ownerName: '', facilityName: '', phone: '', email: '', address: '', state: '', notes: '' });
+    setForm({ ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, phone: '', email: '', address: '', state: '', notes: '' });
   }
 
   function handleSaveAndAnother() {
     if (!form.ownerName.trim() && !form.facilityName.trim()) return;
     onSave(form);
-    setForm({ ownerName: '', facilityName: '', phone: '', email: '', address: '', state: '', notes: '' });
+    setForm({ ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, phone: '', email: '', address: '', state: '', notes: '' });
   }
 
   const fields = [
     { key: 'ownerName',    label: 'Owner Name *',    placeholder: 'John Smith',             type: 'text' },
+    { key: 'ownerEntity',  label: 'Owner Entity',    placeholder: 'ABC Storage LLC',        type: 'text' },
     { key: 'facilityName', label: 'Facility Name',   placeholder: 'ABC Self Storage',        type: 'text' },
     { key: 'phone',        label: 'Phone',           placeholder: '(555) 000-0000',          type: 'tel'  },
     { key: 'email',        label: 'Email',           placeholder: 'john@abcstorage.com',     type: 'email'},
@@ -782,6 +890,19 @@ function AddContactModal({ listName, onSave, onClose }) {
               />
             </div>
           ))}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Relationship Type</label>
+            <select
+              value={form.relationshipType}
+              onChange={e => set('relationshipType', e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+            >
+              {RELATIONSHIP_TYPES.map(type => (
+                <option key={type.value} value={type.value}>{type.label}</option>
+              ))}
+            </select>
+          </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Notes</label>
@@ -1051,6 +1172,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // Default to no list selected — clean empty state on open
   const [activeListId, setActiveListId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [relationshipFilter, setRelationshipFilter] = useState('all');
   const [search, setSearch]         = useState('');
   const [openContact, setOpenContact] = useState(null);
 
@@ -1058,6 +1180,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [callQueueIndex, setCallQueueIndex] = useState(0);
   const [callNote, setCallNote]       = useState('');
   const [callbackDate, setCallbackDate] = useState('');
+  const [callActivityDate, setCallActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
   // null = show the queue picker; otherwise one of QUEUE_DEFS' keys below
   const [callQueueSource, setCallQueueSource] = useState(null);
 
@@ -1067,11 +1190,13 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     return contacts.filter(c => {
       if (activeListId !== 'all' && c.listId !== activeListId) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
+      if (relationshipFilter !== 'all' && (c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE) !== relationshipFilter) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
           (c.facilityName ?? '').toLowerCase().includes(q) ||
           (c.ownerName ?? '').toLowerCase().includes(q) ||
+          (c.ownerEntity ?? '').toLowerCase().includes(q) ||
           (c.phone ?? '').includes(q) ||
           (c.email ?? '').toLowerCase().includes(q) ||
           (c.address ?? '').toLowerCase().includes(q) ||
@@ -1080,7 +1205,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       }
       return true;
     });
-  }, [contacts, activeListId, statusFilter, search]);
+  }, [contacts, activeListId, statusFilter, relationshipFilter, search]);
 
   const callQueue = useMemo(() =>
     filtered.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
@@ -1092,6 +1217,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // "who owes a callback today" is a cross-list question.
   const todayCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }), [contacts, taskApi]);
   const overdueCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }), [contacts, taskApi]);
+  const upcomingCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true }), [contacts, taskApi]);
   const followUpQueue = useMemo(() => buildFollowUpQueue(contacts, taskApi), [contacts, taskApi]);
   const allContactsQueue = useMemo(() =>
     contacts.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
@@ -1137,6 +1263,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       queue: overdueCallbackQueue,
     },
     {
+      key: 'upcoming',
+      label: 'Upcoming Callbacks',
+      reason: 'Future callback tasks already scheduled.',
+      queue: upcomingCallbackQueue,
+    },
+    {
       key: 'followup',
       label: 'Follow-Up Needed',
       reason: 'Conversations or appointments logged with no follow-up task — set the next step.',
@@ -1148,7 +1280,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       reason: 'Broad calling mode — every callable owner across all of your lists.',
       queue: allContactsQueue,
     },
-  ], [activeListLabel, activeListId, callQueue, todayCallbackQueue, overdueCallbackQueue, followUpQueue, allContactsQueue]);
+  ], [activeListLabel, activeListId, callQueue, todayCallbackQueue, overdueCallbackQueue, upcomingCallbackQueue, followUpQueue, allContactsQueue]);
 
   const activeQueueDef = QUEUE_DEFS.find(q => q.key === callQueueSource) ?? null;
 
@@ -1243,18 +1375,30 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       const c = contacts.find(x => x.id === entryRequest.openContactId);
       if (c) setOpenContact(c);
     } else {
-      if (entryRequest.listId) setActiveListId(entryRequest.listId);
+      if (entryRequest.listId !== undefined) setActiveListId(entryRequest.listId);
+      if (entryRequest.statusFilter) setStatusFilter(entryRequest.statusFilter);
+      if (entryRequest.search !== undefined) setSearch(entryRequest.search);
       if (entryRequest.subView) {
         setSubView(entryRequest.subView);
-        if (entryRequest.subView === 'callQueue') { setCallQueueIndex(0); setCallQueueSource(null); }
+        if (entryRequest.subView === 'callQueue') {
+          setCallQueueIndex(0);
+          setCallQueueSource(entryRequest.queueKey ?? null);
+          if (entryRequest.queueKey) {
+            const key = entryRequest.queueKey === 'activeList'
+              ? `activeList:${entryRequest.listId ?? activeListId}`
+              : entryRequest.queueKey;
+            callQueuePositions[key] = 0;
+            persistCallPositions();
+          }
+        }
       }
     }
     onEntryConsumed?.();
-  }, [entryRequest, contacts, onEntryConsumed]);
+  }, [entryRequest, contacts, activeListId, onEntryConsumed]);
 
   // In the Master Database view, clients are merged in (unified view, no duplicates)
   const masterView = activeListId === masterListId;
-  const clientsInView = (masterView && statusFilter === 'all')
+  const clientsInView = (masterView && statusFilter === 'all' && relationshipFilter === 'all')
     ? clients.filter(cl => {
         if (!search) return true;
         const q = search.toLowerCase();
@@ -1266,13 +1410,13 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       })
     : [];
 
-  async function handleCallOutcome(contact, status, noteOverride) {
+  async function handleCallOutcome(contact, status, noteOverride, activityDate) {
     const note = noteOverride ?? callNote;
     if (status === 'callback' && !callbackDate) {
       alert('Pick a callback date before logging Call Back.');
       return;
     }
-    await updateContactStatus(contact.id, status, note);
+    await updateContactStatus(contact.id, status, note, activityDate);
     if (status === 'callback' && callbackDate) updateContactCallback(contact.id, callbackDate);
     if (status === 'callback') {
       taskApi?.createTask({
@@ -1292,11 +1436,11 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     setCallbackDate('');
   }
 
-  function handleStatusChangeFromModal(id, status, notes) {
-    updateContactStatus(id, status, notes);
+  function handleStatusChangeFromModal(id, status, notes, activityDate) {
+    updateContactStatus(id, status, notes, activityDate);
     if (onCallLogged) onCallLogged(status);
     // refresh open contact
-    setOpenContact(prev => prev?.id === id ? { ...prev, status, lastCalled: new Date().toISOString().slice(0,10) } : prev);
+    setOpenContact(prev => prev?.id === id ? { ...prev, status, lastCalled: activityDate || new Date().toISOString().slice(0,10) } : prev);
   }
 
   async function handleImport(name, source, rawText, options) {
@@ -1462,7 +1606,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             Views
           </p>
           {[
-            { key: 'callQueue',  label: 'Call Mode', badge: todayCallbackQueue.length + overdueCallbackQueue.length },
+            { key: 'callQueue',  label: 'Call Mode', badge: todayCallbackQueue.length + overdueCallbackQueue.length + upcomingCallbackQueue.length },
             { key: 'duplicates', label: '🧹 Duplicate Review', badge: duplicateGroupCount, badgeTone: 'amber' },
             { key: 'markets',    label: '🗺 Markets',    badge: null },
           ].map(t => (
@@ -1563,6 +1707,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               setIndex={setQueueIndex}
               callbackDate={callbackDate}
               setCallbackDate={setCallbackDate}
+              activityDate={callActivityDate}
+              setActivityDate={setCallActivityDate}
               onOutcome={handleCallOutcome}
               onSaveNotes={updateContactNotes}
               onUpdateContact={updateContact}
@@ -1618,6 +1764,36 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 <option value="all">All Statuses</option>
                 {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
+              <select
+                value={relationshipFilter}
+                onChange={e => setRelationshipFilter(e.target.value)}
+                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+              >
+                <option value="all">All Relationships</option>
+                {RELATIONSHIP_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+              </select>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: 'Due Today', queue: 'today' },
+                  { label: 'Overdue', queue: 'overdue' },
+                  { label: 'Upcoming', queue: 'upcoming' },
+                  { label: 'Call Back', status: 'callback' },
+                  { label: 'Conversation', status: 'conversation' },
+                  { label: 'Appt Set', status: 'appointment' },
+                  { label: 'Untouched', status: 'fresh' },
+                ].map(f => (
+                  <button
+                    key={f.label}
+                    onClick={() => {
+                      if (f.queue) { setSubView('callQueue'); selectQueue(f.queue); }
+                      else { setStatusFilter(f.status); setActiveListId(activeListId ?? 'all'); }
+                    }}
+                    className="text-xs font-semibold bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-slate-400 hover:text-amber-400 rounded-lg px-2.5 py-2 transition-all"
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
               <span className="text-xs text-slate-600">{filtered.length + clientsInView.length} contacts</span>
               {activeListId !== null && (
                 <button
@@ -1822,8 +1998,21 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 // ─── Call Queue ────────────────────────────────────────────────────────────────
 const OFFER_FOLLOWUP_STATUSES = ['voicemail', 'conversation', 'appointment'];
 const DEFAULT_COMPLETE_STATUSES = ['conversation', 'appointment', 'not_interested', 'callback'];
+const CALLBACK_PRESETS = [
+  { label: 'Tomorrow', days: 1 },
+  { label: '2 days', days: 2 },
+  { label: 'Next week', days: 7 },
+  { label: '2 weeks', days: 14 },
+  { label: '30 days', days: 30 },
+];
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onPromote, taskApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
+function datePlusDays(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onPromote, taskApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
@@ -1869,7 +2058,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
       alert('Pick a callback date before logging Call Back.');
       return;
     }
-    await onOutcome(current, status, noteText);
+    await onOutcome(current, status, noteText, activityDate);
     const offerFollowUp = OFFER_FOLLOWUP_STATUSES.includes(status);
     const hasQueueTask = !!current.queueTaskId;
     if (offerFollowUp || hasQueueTask) {
@@ -1994,14 +2183,11 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
                 <p className="text-xs text-amber-400/80 mt-1.5 font-semibold">Why they're up: {current.queueReason}</p>
               )}
             </div>
-            <div className="bg-green-600/10 border border-green-600/30 rounded-xl p-4 min-w-[260px]">
-              <p className="text-xs text-green-400/70 font-semibold uppercase">Phone</p>
-              {current.phone ? (
-                <a href={`tel:${current.phone}`} className="block text-2xl font-black text-green-400 font-mono hover:text-green-300">{current.phone}</a>
-              ) : (
-                <p className="text-2xl font-black text-slate-600">No phone</p>
-              )}
-            </div>
+            <PrimaryPhoneEditor
+              key={current.id}
+              phone={current.phone}
+              onSave={(phone) => onUpdateContact?.(current.id, { phone })}
+            />
           </div>
 
           <AdditionalPhonesEditor
@@ -2057,6 +2243,11 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
             </div>
             <div className="mt-3 flex flex-col sm:flex-row sm:items-end gap-3">
               <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Activity Date</label>
+                <input type="date" value={activityDate} onInput={e => setActivityDate(e.target.value)} onChange={e => setActivityDate(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+              </div>
+              <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Callback Date</label>
                 <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)}
                   className="bg-slate-800 border border-amber-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
@@ -2065,6 +2256,18 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, onOu
               <button onClick={() => setConfirmDelete(true)} className="text-sm text-red-500 hover:text-red-400 transition-all font-semibold px-2 py-2">Delete</button>
               <button onClick={() => go(-1)} disabled={index === 0} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
               <button onClick={() => go(1)} disabled={index >= queue.length - 1} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2">Next Contact</button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-slate-600 mr-1">Callback:</span>
+              {CALLBACK_PRESETS.map(p => (
+                <button
+                  key={p.label}
+                  onClick={() => setCallbackDate(datePlusDays(p.days))}
+                  className="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-700 text-slate-400 hover:border-purple-500/40 hover:text-purple-300 transition-all"
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
             {activePostOutcome && (
               <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 space-y-3">

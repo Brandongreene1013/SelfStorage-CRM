@@ -3,6 +3,7 @@ import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
 import RecentActivity from './RecentActivity';
 import NeedsReview from './NeedsReview';
+import { LogActionModal } from './ActionLog';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
@@ -231,7 +232,35 @@ function AttackList({ rows, onCallContact, onEditClient, onOpenDatabase }) {
 }
 
 // ─── Pipeline Attention ───────────────────────────────────────────────────────
-function PipelineAttention({ rows, onEditClient }) {
+function CallbackCommandCenter({ todayCallbacks, overdueCallbacks, upcomingCallbacks, followUpCount, appointmentFollowUps, onOpenQueue, onOpenDatabaseFilter }) {
+  const cards = [
+    { key: 'today', label: "Today's Callbacks", value: todayCallbacks, tone: 'text-amber-400', bg: 'hover:border-amber-500/50', onClick: () => onOpenQueue?.('today') },
+    { key: 'overdue', label: 'Overdue Callbacks', value: overdueCallbacks, tone: 'text-red-400', bg: 'hover:border-red-500/50', onClick: () => onOpenQueue?.('overdue') },
+    { key: 'upcoming', label: 'Upcoming', value: upcomingCallbacks, tone: 'text-purple-400', bg: 'hover:border-purple-500/50', onClick: () => onOpenQueue?.('upcoming') },
+    { key: 'followup', label: 'Recent Conversations', value: followUpCount, tone: 'text-green-400', bg: 'hover:border-green-500/50', onClick: () => onOpenQueue?.('followup') },
+    { key: 'appointment', label: 'Appt / BOV Follow-Up', value: appointmentFollowUps, tone: 'text-cyan-400', bg: 'hover:border-cyan-500/50', onClick: () => onOpenDatabaseFilter?.('appointment') },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+      {cards.map(card => (
+        <button
+          key={card.key}
+          onClick={card.onClick}
+          className={`text-left bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 transition-all ${card.bg}`}
+        >
+          <p className={`text-3xl font-black leading-none ${card.value > 0 ? card.tone : 'text-slate-700'}`}>{card.value}</p>
+          <p className="text-xs font-bold text-slate-300 mt-2">{card.label}</p>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PipelineAttentionActions({ rows, onEditClient, onLogClientAction, taskApi }) {
+  const [loggingClient, setLoggingClient] = useState(null);
+  const [taskClient, setTaskClient] = useState(null);
+
   return (
     <SectionCard title="Pipeline Attention" subtitle="Deals that need a push">
       {rows.length === 0 ? (
@@ -244,21 +273,52 @@ function PipelineAttention({ rows, onEditClient }) {
               : r.reason === 'Task due today' ? 'text-amber-400'
               : r.reason === 'No next action' ? 'text-slate-400'
               : 'text-cyan-400';
+            const meetingText = r.meeting ? ` | Meeting ${r.meeting.date === todayStr() ? 'today' : r.meeting.date}` : '';
             return (
-              <button key={r.key} onClick={() => onEditClient(r.client)}
-                className="w-full text-left flex items-center gap-3 px-3 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/50 hover:border-slate-600 rounded-lg transition-all">
+              <div key={r.key}
+                className="w-full flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-750 border border-slate-700/50 hover:border-slate-600 rounded-lg transition-all">
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: stage?.hex ?? '#475569' }} />
-                <div className="flex-1 min-w-0">
+                <button onClick={() => onEditClient(r.client)} className="flex-1 min-w-0 text-left">
                   <p className="text-xs font-semibold text-white truncate">{r.client.name}</p>
-                  <p className={`text-xs truncate ${tone}`}>{r.reason}{r.meeting ? ` · Meeting ${r.meeting.date === todayStr() ? 'today' : r.meeting.date}` : ''}</p>
-                </div>
+                  <p className={`text-xs truncate ${tone}`}>{r.reason}{meetingText}</p>
+                </button>
                 <span className={`text-xs font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${stage?.text ?? 'text-slate-400'}`} style={{ fontSize: '9px' }}>
                   {stage?.short}
                 </span>
-              </button>
+                {r.client.phone && (
+                  <a href={`tel:${r.client.phone}`} className="text-xs font-bold bg-green-600/15 border border-green-600/30 text-green-400 hover:bg-green-600/25 px-2 py-1 rounded-lg">
+                    Call
+                  </a>
+                )}
+                <button onClick={() => setLoggingClient(r.client)} className="text-xs font-bold bg-slate-700/70 border border-slate-600 text-slate-300 hover:text-white px-2 py-1 rounded-lg">
+                  Log
+                </button>
+                <button onClick={() => setTaskClient(r.client)} className="text-xs font-bold bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 px-2 py-1 rounded-lg">
+                  Task
+                </button>
+              </div>
             );
           })}
         </div>
+      )}
+
+      {loggingClient && (
+        <LogActionModal
+          name={loggingClient.name}
+          subtitle={loggingClient.facilityName}
+          actionLog={loggingClient.actionLog}
+          onSave={(entry) => onLogClientAction?.(loggingClient.id, entry)}
+          onClose={() => setLoggingClient(null)}
+        />
+      )}
+
+      {taskClient && (
+        <TaskModal
+          context={{ relatedType: 'client', relatedId: taskClient.id, relatedName: taskClient.name, source: 'dashboard' }}
+          defaults={{ title: '', taskType: 'follow_up' }}
+          onSave={taskApi?.createTask}
+          onClose={() => setTaskClient(null)}
+        />
       )}
     </SectionCard>
   );
@@ -696,7 +756,7 @@ function DashboardTasks({ taskApi }) {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard({
   clients, contacts = [], meetings = [], onNavigateCalendar,
-  onStartCallMode, onOpenContact, onEditClient, onMoveToMasterDB, masterListId, review, taskApi,
+  onStartCallMode, onOpenCallQueue, onOpenDatabaseFilter, onOpenContact, onEditClient, onLogClientAction, onMoveToMasterDB, masterListId, review, taskApi,
 }) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
@@ -752,7 +812,11 @@ export default function Dashboard({
     buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }).length, [contacts, taskApi]);
   const overdueCallbacks = useMemo(() =>
     buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }).length, [contacts, taskApi]);
+  const upcomingCallbacks = useMemo(() =>
+    buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true }).length, [contacts, taskApi]);
   const completedTodayCount = taskApi?.groups?.completedToday?.length ?? 0;
+  const appointmentFollowUps = followUpRows.filter(r => r.kind === 'contact' && r.contact?.status === 'appointment').length
+    + (taskApi?.tasks ?? []).filter(t => t.status === 'open' && (t.taskType === 'bov' || t.taskType === 'meeting')).length;
   const callbacksCreatedToday = useMemo(() => {
     const today = todayStr();
     return (taskApi?.tasks ?? []).filter(t =>
@@ -775,21 +839,40 @@ export default function Dashboard({
         onStartCallMode={onStartCallMode}
       />
 
+      <CallbackCommandCenter
+        todayCallbacks={todayCallbacks}
+        overdueCallbacks={overdueCallbacks}
+        upcomingCallbacks={upcomingCallbacks}
+        followUpCount={followUpRows.length}
+        appointmentFollowUps={appointmentFollowUps}
+        onOpenQueue={onOpenCallQueue}
+        onOpenDatabaseFilter={onOpenDatabaseFilter}
+      />
+
       {/* ── Attack List + Pipeline Attention ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <AttackList
-            rows={attackRows}
-            onCallContact={onOpenContact}
-            onEditClient={onEditClient}
-            onOpenDatabase={onStartCallMode}
-          />
+      {attackRows.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            <AttackList
+              rows={attackRows}
+              onCallContact={onOpenContact}
+              onEditClient={onEditClient}
+              onOpenDatabase={onStartCallMode}
+            />
+          </div>
+          <div className="space-y-4">
+            <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} taskApi={taskApi} />
+            <NeedsFollowUp rows={followUpRows} onCallContact={onOpenContact} onEditClient={onEditClient} onMoveToMasterDB={onMoveToMasterDB} />
+          </div>
         </div>
-        <div className="space-y-4">
-          <PipelineAttention rows={attentionRows} onEditClient={onEditClient} />
+      ) : followUpRows.length > 0 ? (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} taskApi={taskApi} />
           <NeedsFollowUp rows={followUpRows} onCallContact={onOpenContact} onEditClient={onEditClient} onMoveToMasterDB={onMoveToMasterDB} />
         </div>
-      </div>
+      ) : (
+        <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} taskApi={taskApi} />
+      )}
 
       {/* ── KPI Strip ── */}
       <MetricCardGrid metrics={kpiStats} />

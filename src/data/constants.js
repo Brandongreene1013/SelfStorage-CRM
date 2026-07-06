@@ -13,6 +13,20 @@ export const PIPELINE_STAGES = [
 
 export const CLIENT_TYPES = ['Buyer', 'Seller'];
 
+export const DEFAULT_RELATIONSHIP_TYPE = 'storage_owner_seller';
+
+export const RELATIONSHIP_TYPES = [
+  { value: 'storage_owner_seller', label: 'Storage Owner / Seller', short: 'Owner / Seller', variant: 'amber' },
+  { value: 'buyer', label: 'Buyer', short: 'Buyer', variant: 'blue' },
+  { value: 'institution', label: 'Institution', short: 'Institution', variant: 'purple' },
+  { value: 'developer', label: 'Developer', short: 'Developer', variant: 'green' },
+  { value: 'broker', label: 'Broker', short: 'Broker', variant: 'slate' },
+  { value: 'vendor', label: 'Vendor', short: 'Vendor', variant: 'emerald' },
+  { value: 'lender', label: 'Lender', short: 'Lender', variant: 'yellow' },
+  { value: 'attorney_consultant', label: 'Attorney / Consultant', short: 'Attorney / Consultant', variant: 'red' },
+  { value: 'other', label: 'Other', short: 'Other', variant: 'slate' },
+];
+
 export const STORAGE_CLASSES = ['Class A', 'Class B', 'Class C'];
 
 export const PROPERTY_TYPES = [
