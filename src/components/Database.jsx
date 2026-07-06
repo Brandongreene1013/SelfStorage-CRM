@@ -341,7 +341,7 @@ function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onCl
 }
 function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
   const [message, setMessage] = useState('');
-  const groups = ownershipApi?.groups ?? [];
+  const groups = useMemo(() => ownershipApi?.groups ?? [], [ownershipApi?.groups]);
   const linkedGroup = groups.find(g => g.id === contact.ownershipGroupId) ?? null;
   const linkedProperties = linkedGroup ? (ownershipApi?.propertiesByGroup?.get(linkedGroup.id) ?? []) : [];
   const hasOwnershipData = !ownershipApi?.loadError;
@@ -517,6 +517,286 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
       </div>
 
       {message && <p className="text-xs text-slate-400">{message}</p>}
+    </div>
+  );
+}
+
+function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
+  const [selectedId, setSelectedId] = useState(null);
+  const [groupDrafts, setGroupDrafts] = useState({});
+  const [propertyDrafts, setPropertyDrafts] = useState({});
+  const [newPropertyDrafts, setNewPropertyDrafts] = useState({});
+  const [message, setMessage] = useState('');
+
+  const groups = ownershipApi?.groups ?? [];
+  const propertiesByGroup = ownershipApi?.propertiesByGroup ?? new Map();
+  const selectedGroup = groups.find(g => g.id === selectedId) ?? groups[0] ?? null;
+  const selectedProperties = selectedGroup ? (propertiesByGroup.get(selectedGroup.id) ?? []) : [];
+  const linkedContacts = selectedGroup ? contacts.filter(c => c.ownershipGroupId === selectedGroup.id) : [];
+
+  function groupDraft(group) {
+    return groupDrafts[group.id] ?? {
+      displayName: group.displayName,
+      ownerEntity: group.ownerEntity,
+      relationshipType: group.relationshipType,
+      notes: group.notes,
+    };
+  }
+
+  function setGroupDraft(groupId, fields) {
+    setGroupDrafts(prev => ({ ...prev, [groupId]: { ...(prev[groupId] ?? groupDraft(groups.find(g => g.id === groupId))), ...fields } }));
+  }
+
+  function propertyDraft(property) {
+    return propertyDrafts[property.id] ?? {
+      facilityName: property.facilityName,
+      address: property.address,
+      city: property.city,
+      state: property.state,
+      market: property.market,
+      propertyType: property.propertyType,
+      source: property.source,
+      notes: property.notes,
+    };
+  }
+
+  function setPropertyDraft(propertyId, fields) {
+    const property = ownershipApi.properties.find(p => p.id === propertyId);
+    setPropertyDrafts(prev => ({ ...prev, [propertyId]: { ...(prev[propertyId] ?? propertyDraft(property)), ...fields } }));
+  }
+
+  function newPropertyDraft(groupId) {
+    return newPropertyDrafts[groupId] ?? {
+      facilityName: '',
+      address: '',
+      city: '',
+      state: '',
+      market: '',
+      propertyType: 'Self-Storage',
+      source: '',
+      notes: '',
+    };
+  }
+
+  function setNewPropertyDraft(groupId, fields) {
+    setNewPropertyDrafts(prev => ({ ...prev, [groupId]: { ...newPropertyDraft(groupId), ...fields } }));
+  }
+
+  async function saveGroup(group) {
+    setMessage('');
+    const draft = groupDraft(group);
+    const result = await ownershipApi.updateGroup(group.id, draft);
+    if (result?.error) {
+      setMessage(result.error);
+      return;
+    }
+    setGroupDrafts(prev => {
+      const next = { ...prev };
+      delete next[group.id];
+      return next;
+    });
+    setMessage('Ownership group saved.');
+  }
+
+  async function saveProperty(property) {
+    setMessage('');
+    const draft = propertyDraft(property);
+    const result = await ownershipApi.updateProperty(property.id, { ...property, ...draft });
+    if (result?.error) {
+      setMessage(result.error);
+      return;
+    }
+    setPropertyDrafts(prev => {
+      const next = { ...prev };
+      delete next[property.id];
+      return next;
+    });
+    setMessage('Property saved.');
+  }
+
+  async function addProperty(groupId) {
+    const draft = newPropertyDraft(groupId);
+    if (!draft.facilityName.trim() && !draft.address.trim()) return;
+    setMessage('');
+    const result = await ownershipApi.createProperty({ ...draft, ownershipGroupId: groupId });
+    if (result?.error) {
+      setMessage(result.error);
+      return;
+    }
+    setNewPropertyDrafts(prev => {
+      const next = { ...prev };
+      delete next[groupId];
+      return next;
+    });
+    setMessage('Property added.');
+  }
+
+  if (ownershipApi?.loadError) {
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center">
+        <h2 className="text-lg font-black text-white">Owners / Properties unavailable</h2>
+        <p className="text-sm text-amber-400 mt-2">{ownershipApi.loadError}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-black text-white">Owners / Properties</h2>
+          <p className="text-xs text-slate-500 mt-1">Manage ownership groups, linked contacts, and facilities without leaving Database.</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-slate-300">{groups.length} groups</span>
+          <span className="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-slate-300">{ownershipApi.properties.length} properties</span>
+        </div>
+      </div>
+
+      {groups.length === 0 ? (
+        <EmptyState icon="OWN" title="No ownership groups yet" message="Open a contact and create an ownership group from the Owner / Property Links panel." />
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-4 py-3 border-b border-slate-800">Ownership Groups</p>
+            <div className="divide-y divide-slate-800/70 max-h-[42rem] overflow-y-auto">
+              {groups.map(group => {
+                const properties = propertiesByGroup.get(group.id) ?? [];
+                const contactCount = contacts.filter(c => c.ownershipGroupId === group.id).length;
+                const rel = relationshipMeta(group.relationshipType);
+                return (
+                  <button
+                    key={group.id}
+                    onClick={() => setSelectedId(group.id)}
+                    className={`w-full text-left px-4 py-3 transition-all ${selectedGroup?.id === group.id ? 'bg-amber-500/10' : 'hover:bg-slate-800/70'}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-white truncate">{group.displayName || 'Untitled ownership group'}</p>
+                        {group.ownerEntity && <p className="text-xs text-slate-500 truncate mt-0.5">{group.ownerEntity}</p>}
+                      </div>
+                      <StatusBadge variant={rel.variant} pill={false} className="font-bold flex-shrink-0">
+                        {rel.short}
+                      </StatusBadge>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-2">{properties.length} propert{properties.length === 1 ? 'y' : 'ies'} | {contactCount} contact{contactCount === 1 ? '' : 's'}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {selectedGroup && (
+            <div className="space-y-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Ownership Group Details</p>
+                  <button onClick={() => saveGroup(selectedGroup)} className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs transition-all">
+                    Save Group
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Display Name</span>
+                    <input value={groupDraft(selectedGroup).displayName} onChange={e => setGroupDraft(selectedGroup.id, { displayName: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Owner Entity</span>
+                    <input value={groupDraft(selectedGroup).ownerEntity} onChange={e => setGroupDraft(selectedGroup.id, { ownerEntity: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </label>
+                  <label className="block">
+                    <span className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Relationship</span>
+                    <select value={groupDraft(selectedGroup).relationshipType} onChange={e => setGroupDraft(selectedGroup.id, { relationshipType: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                      {RELATIONSHIP_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="block text-[11px] text-slate-500 uppercase font-semibold mb-1">Notes</span>
+                    <input value={groupDraft(selectedGroup).notes} onChange={e => setGroupDraft(selectedGroup.id, { notes: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+                  </label>
+                </div>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Linked Contacts</p>
+                {linkedContacts.length === 0 ? (
+                  <p className="text-xs text-slate-600 italic">No contacts linked to this group yet.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {linkedContacts.map(contact => (
+                      <button key={contact.id} onClick={() => onOpenContact(contact)}
+                        className="text-left bg-slate-800/70 hover:bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 transition-all">
+                        <p className="text-sm font-semibold text-white truncate">{contact.ownerName || contact.facilityName || 'Unknown contact'}</p>
+                        <p className="text-xs text-slate-500 truncate">{contact.facilityName || contact.phone || 'No facility saved'}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Linked Properties</p>
+                {selectedProperties.length === 0 ? (
+                  <p className="text-xs text-slate-600 italic">No properties linked yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedProperties.map(property => {
+                      const draft = propertyDraft(property);
+                      return (
+                        <div key={property.id} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 space-y-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <input value={draft.facilityName} onChange={e => setPropertyDraft(property.id, { facilityName: e.target.value })} placeholder="Facility name"
+                              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500" />
+                            <select value={draft.propertyType} onChange={e => setPropertyDraft(property.id, { propertyType: e.target.value })}
+                              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                              {PROPERTY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                            </select>
+                            <input value={draft.address} onChange={e => setPropertyDraft(property.id, { address: e.target.value })} placeholder="Address"
+                              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500" />
+                            <input value={draft.market} onChange={e => setPropertyDraft(property.id, { market: e.target.value })} placeholder="Market"
+                              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500" />
+                          </div>
+                          <div className="flex justify-end">
+                            <button onClick={() => saveProperty(property)} className="text-xs font-bold bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 px-3 py-1.5 rounded-lg transition-all">
+                              Save Property
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="border-t border-slate-800 pt-3 space-y-2">
+                  <p className="text-[11px] uppercase font-semibold text-slate-500">Add Property</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <input value={newPropertyDraft(selectedGroup.id).facilityName} onChange={e => setNewPropertyDraft(selectedGroup.id, { facilityName: e.target.value })} placeholder="Facility name"
+                      className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500" />
+                    <select value={newPropertyDraft(selectedGroup.id).propertyType} onChange={e => setNewPropertyDraft(selectedGroup.id, { propertyType: e.target.value })}
+                      className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                      {PROPERTY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                    </select>
+                    <input value={newPropertyDraft(selectedGroup.id).address} onChange={e => setNewPropertyDraft(selectedGroup.id, { address: e.target.value })} placeholder="Address"
+                      className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500" />
+                    <input value={newPropertyDraft(selectedGroup.id).market} onChange={e => setNewPropertyDraft(selectedGroup.id, { market: e.target.value })} placeholder="Market"
+                      className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500" />
+                  </div>
+                  <button onClick={() => addProperty(selectedGroup.id)}
+                    className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs transition-all">
+                    + Add Property
+                  </button>
+                </div>
+              </div>
+
+              {message && <p className="text-xs text-slate-400">{message}</p>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1440,6 +1720,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const todayCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }), [contacts, taskApi]);
   const overdueCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }), [contacts, taskApi]);
   const upcomingCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true, windowDays: 30 }), [contacts, taskApi]);
+  const allFutureCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true }), [contacts, taskApi]);
   const followUpQueue = useMemo(() => buildFollowUpQueue(contacts, taskApi), [contacts, taskApi]);
   const allContactsQueue = useMemo(() =>
     contacts.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
@@ -1491,6 +1772,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       queue: upcomingCallbackQueue,
     },
     {
+      key: 'future',
+      label: 'All Future Callbacks',
+      reason: 'Every future callback task after today, including callbacks more than 30 days out.',
+      queue: allFutureCallbackQueue,
+    },
+    {
       key: 'followup',
       label: 'Follow-Up Needed',
       reason: 'Conversations or appointments logged with no follow-up task — set the next step.',
@@ -1502,7 +1789,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       reason: 'Broad calling mode — every callable owner across all of your lists.',
       queue: allContactsQueue,
     },
-  ], [activeListLabel, activeListId, callQueue, todayCallbackQueue, overdueCallbackQueue, upcomingCallbackQueue, followUpQueue, allContactsQueue]);
+  ], [activeListLabel, activeListId, callQueue, todayCallbackQueue, overdueCallbackQueue, upcomingCallbackQueue, allFutureCallbackQueue, followUpQueue, allContactsQueue]);
 
   const activeQueueDef = QUEUE_DEFS.find(q => q.key === callQueueSource) ?? null;
 
@@ -1828,7 +2115,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             Views
           </p>
           {[
-            { key: 'callQueue',  label: 'Call Mode', badge: todayCallbackQueue.length + overdueCallbackQueue.length + upcomingCallbackQueue.length },
+            { key: 'callQueue',  label: 'Call Mode', badge: todayCallbackQueue.length + overdueCallbackQueue.length + allFutureCallbackQueue.length },
+            { key: 'ownership',  label: 'Owners / Properties', badge: ownershipApi.groups.length },
             { key: 'duplicates', label: '🧹 Duplicate Review', badge: duplicateGroupCount, badgeTone: 'amber' },
             { key: 'markets',    label: '🗺 Markets',    badge: null },
           ].map(t => (
@@ -1882,7 +2170,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
       {/* ── RIGHT: Main Content ── */}
       <div className="flex-1 min-w-0 space-y-4">
-        {activeListId === null && subView !== 'callQueue' && subView !== 'duplicates' && (
+        {activeListId === null && subView !== 'callQueue' && subView !== 'duplicates' && subView !== 'ownership' && (
           <EmptyState
             icon="📂"
             title="No list selected"
@@ -1912,6 +2200,14 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         {/* ── Call Queue — independent of activeListId, so Dashboard-launched
              queues (Today's Callbacks / Overdue / Follow-Up / All Contacts)
              work even when no list is selected in the sidebar. ── */}
+        {subView === 'ownership' && (
+          <OwnershipManager
+            ownershipApi={ownershipApi}
+            contacts={contacts}
+            onOpenContact={(contact) => setOpenContact(contact)}
+          />
+        )}
+
         {subView === 'callQueue' && (
           callQueueSource === null ? (
             <CallModeQueuePicker
@@ -1945,7 +2241,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           )
         )}
 
-        {activeListId !== null && subView !== 'callQueue' && subView !== 'duplicates' && (<>
+        {activeListId !== null && subView !== 'callQueue' && subView !== 'duplicates' && subView !== 'ownership' && (<>
 
         {/* Stats bar */}
         <div className="grid grid-cols-4 gap-3">
@@ -2007,6 +2303,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                   { label: 'Due Today', queue: 'today' },
                   { label: 'Overdue', queue: 'overdue' },
                   { label: 'Upcoming', queue: 'upcoming' },
+                  { label: 'All Future Callbacks', queue: 'future' },
                   { label: 'Call Back', status: 'callback' },
                   { label: 'Conversation', status: 'conversation' },
                   { label: 'Appt Set', status: 'appointment' },
