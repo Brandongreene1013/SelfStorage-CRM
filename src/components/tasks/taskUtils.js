@@ -38,11 +38,22 @@ export function dueMeta(dueDate) {
 // shallow contact copies carrying queueReason/queueTaskId/queueTaskTitle/
 // queueDueDate so Call Mode can explain the queue and complete the
 // originating task after an outcome.
-export function buildCallbackTaskQueue(contacts, tasks = [], { overdue = false, upcoming = false }) {
+export function buildCallbackTaskQueue(contacts, tasks = [], { overdue = false, upcoming = false, windowDays = null }) {
   const today = new Date().toISOString().slice(0, 10);
+  // Sprint 17 — optional bounded upcoming window (Brandon's pick: 30 days for
+  // the Dashboard "Upcoming" card + queue, so a callback parked 6 months out
+  // doesn't inflate today's numbers). windowDays only applies to `upcoming`.
+  let windowEnd = null;
+  if (upcoming && windowDays) {
+    const d = new Date();
+    d.setDate(d.getDate() + windowDays);
+    windowEnd = d.toISOString().slice(0, 10);
+  }
   const relevant = tasks.filter(t =>
     t.status === 'open' && t.relatedType === 'contact' && t.taskType === 'call' && t.dueDate &&
-    (upcoming ? t.dueDate > today : overdue ? t.dueDate < today : t.dueDate === today)
+    (upcoming
+      ? t.dueDate > today && (!windowEnd || t.dueDate <= windowEnd)
+      : overdue ? t.dueDate < today : t.dueDate === today)
   );
   // Dedupe: if a contact somehow has more than one open call task due in this
   // window, only surface the earliest-due one.

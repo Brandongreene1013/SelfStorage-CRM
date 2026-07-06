@@ -440,6 +440,30 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
             <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')}
               href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
           </div>
+
+          <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Owner / Property Links</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Ownership groups and linked properties will live here after the Sprint 17 schema is run.
+                </p>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-500 border border-slate-700 rounded-md px-2 py-1">
+                Foundation
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="bg-slate-800/60 border border-slate-700/70 rounded-lg px-3 py-2">
+                <p className="text-[11px] uppercase font-semibold text-slate-500">Linked Ownership Group</p>
+                <p className="text-xs text-slate-400 mt-0.5">Not linked yet</p>
+              </div>
+              <div className="bg-slate-800/60 border border-slate-700/70 rounded-lg px-3 py-2">
+                <p className="text-[11px] uppercase font-semibold text-slate-500">Linked Properties</p>
+                <p className="text-xs text-slate-400 mt-0.5">No linked properties yet</p>
+              </div>
+            </div>
+          </div>
           <AdditionalPhonesEditor
             phones={contact.alternatePhones}
             onSave={(phones) => onUpdate(contact.id, { alternatePhones: phones })}
@@ -1217,7 +1241,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // "who owes a callback today" is a cross-list question.
   const todayCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }), [contacts, taskApi]);
   const overdueCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }), [contacts, taskApi]);
-  const upcomingCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true }), [contacts, taskApi]);
+  const upcomingCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true, windowDays: 30 }), [contacts, taskApi]);
   const followUpQueue = useMemo(() => buildFollowUpQueue(contacts, taskApi), [contacts, taskApi]);
   const allContactsQueue = useMemo(() =>
     contacts.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
@@ -1265,7 +1289,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     {
       key: 'upcoming',
       label: 'Upcoming Callbacks',
-      reason: 'Future callback tasks already scheduled.',
+      reason: 'Future callback tasks scheduled in the next 30 days.',
       queue: upcomingCallbackQueue,
     },
     {

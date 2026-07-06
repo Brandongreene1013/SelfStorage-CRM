@@ -812,8 +812,11 @@ export default function Dashboard({
     buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }).length, [contacts, taskApi]);
   const overdueCallbacks = useMemo(() =>
     buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }).length, [contacts, taskApi]);
+  // Sprint 17 — Dashboard "Upcoming" is bounded to the next 30 days so a
+  // callback parked months out doesn't inflate today's attention numbers.
+  // The Database queue this card routes into uses the same 30-day window.
   const upcomingCallbacks = useMemo(() =>
-    buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true }).length, [contacts, taskApi]);
+    buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true, windowDays: 30 }).length, [contacts, taskApi]);
   const completedTodayCount = taskApi?.groups?.completedToday?.length ?? 0;
   const appointmentFollowUps = followUpRows.filter(r => r.kind === 'contact' && r.contact?.status === 'appointment').length
     + (taskApi?.tasks ?? []).filter(t => t.status === 'open' && (t.taskType === 'bov' || t.taskType === 'meeting')).length;
