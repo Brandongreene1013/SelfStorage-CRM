@@ -1351,8 +1351,8 @@ function AddContactModal({ listName, onSave, onClose }) {
   const canSave = form.ownerName.trim() || form.facilityName.trim();
 
   return (
-    <ModalLayout onClose={onClose}>
-        <div className="flex items-center justify-between p-5 border-b border-slate-800">
+    <ModalLayout onClose={onClose} className="flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-slate-800 flex-shrink-0">
           <div>
             <h2 className="text-base font-black text-white">Add Contact</h2>
             <p className="text-xs text-slate-500 mt-0.5">Adding to: <span className="text-amber-400">{listName}</span></p>
@@ -1360,7 +1360,7 @@ function AddContactModal({ listName, onSave, onClose }) {
           <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
         </div>
 
-        <div className="p-5 space-y-3">
+        <div className="p-5 space-y-3 flex-1 overflow-y-auto min-h-0">
           {fields.map(f => (
             <div key={f.key}>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">{f.label}</label>
@@ -1414,7 +1414,7 @@ function AddContactModal({ listName, onSave, onClose }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between p-5 border-t border-slate-800 gap-3">
+        <div className="flex items-center justify-between p-5 border-t border-slate-800 gap-3 flex-shrink-0">
           <button onClick={onClose} className="text-sm text-slate-400 hover:text-white transition-colors">Cancel</button>
           <div className="flex gap-2">
             <button
