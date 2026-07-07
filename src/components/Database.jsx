@@ -2232,6 +2232,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               onUpdateContact={updateContact}
               onDeleteContact={deleteContact}
               onPromote={onContactToClients}
+              onMoveToMaster={(contact) => moveContactToList(contact.id, masterListId)}
+              masterListId={masterListId}
               taskApi={taskApi}
               ownershipApi={ownershipApi}
               queueLabel={activeQueueDef?.label ?? 'Call Mode'}
@@ -2640,7 +2642,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi }) {
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onPromote, taskApi, ownershipApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
@@ -2664,6 +2666,12 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     if (!current) return;
     if (hasNoteChanges) await saveNotes();
     setIndex(Math.min(queue.length - 1, Math.max(0, index + delta)));
+  }
+
+  async function moveCurrentToMaster() {
+    if (!current || !onMoveToMaster || !masterListId) return;
+    if (current.listId === masterListId) return;
+    await onMoveToMaster(current);
   }
 
   async function deleteCurrentContact() {
@@ -2716,6 +2724,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
       if (key === 'v') handleOutcome('voicemail');
       if (key === 'c') handleOutcome('callback');
       if (key === 'e') { e.preventDefault(); setShowDetails(v => !v); }
+      if (key === 'm') { e.preventDefault(); moveCurrentToMaster(); }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -3008,13 +3017,25 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             )}
           </div>
 
+          {masterListId && (
+            current.listId === masterListId ? (
+              <div className="w-full bg-amber-500/10 border border-amber-500/30 text-amber-400/80 font-black px-4 py-3 rounded-2xl text-sm text-center">
+                ⭐ In Master Database
+              </div>
+            ) : (
+              <button onClick={moveCurrentToMaster}
+                className="w-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 font-black px-4 py-3 rounded-2xl text-sm transition-all">
+                ⭐ Move to Master Database
+              </button>
+            )
+          )}
           {onPromote && (
             <button onClick={() => onPromote(current)}
               className="w-full bg-blue-600/20 hover:bg-blue-600/30 border border-blue-600/40 text-blue-300 font-black px-4 py-3 rounded-2xl text-sm transition-all">
               Promote to Client / Pipeline
             </button>
           )}
-          <p className="text-xs text-slate-600 px-1">Shortcuts: &larr; / &rarr; move through queue. N next, B back, X no answer, V voicemail, C callback, E edit details.</p>
+          <p className="text-xs text-slate-600 px-1">Shortcuts: &larr; / &rarr; move through queue. N next, B back, X no answer, V voicemail, C callback, E edit details, M move to Master DB.</p>
         </aside>
       </div>
       {confirmDelete && (
