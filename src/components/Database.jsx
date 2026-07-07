@@ -2233,6 +2233,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               onDeleteContact={deleteContact}
               onPromote={onContactToClients}
               taskApi={taskApi}
+              ownershipApi={ownershipApi}
               queueLabel={activeQueueDef?.label ?? 'Call Mode'}
               queueReasonText={activeQueueDef?.reason ?? ''}
               onExit={() => { setSubView('contacts'); setCallQueueSource(null); }}
@@ -2540,12 +2541,65 @@ function datePlusDays(days) {
   return d.toISOString().slice(0, 10);
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onPromote, taskApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
+// Sprint 20 — full contact editing without leaving Call Mode. Reuses the same
+// editors as ContactDetailModal (EditableField, relationship/lead-source
+// selects, OwnershipLinksPanel) so behavior stays identical in both surfaces.
+function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi }) {
+  function field(key) {
+    return (val) => onUpdateContact?.(contact.id, { [key]: val });
+  }
+  return (
+    <div className="bg-slate-800/50 border border-slate-700 rounded-2xl p-4 space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <EditableField label="Owner Name" value={contact.ownerName} placeholder="Click to add owner name" onChange={field('ownerName')} />
+        <EditableField label="Owner Entity" value={contact.ownerEntity} placeholder="ABC Storage LLC / owns personally" onChange={field('ownerEntity')} />
+        <EditableField label="Facility Name" value={contact.facilityName} placeholder="Click to add facility name" onChange={field('facilityName')} />
+        <EditableField label="Email" value={contact.email} placeholder="Click to add email" onChange={field('email')}
+          href={contact.email ? `mailto:${contact.email}` : null} />
+        <EditableField label="Market" value={contact.market} placeholder="Click to add market" onChange={field('market')} />
+        <EditableField label="State" value={contact.state} placeholder="Click to add state" onChange={field('state')} />
+      </div>
+      <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')}
+        href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Relationship Type</label>
+          <select
+            value={contact.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE}
+            onChange={e => field('relationshipType')(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+          >
+            {RELATIONSHIP_TYPES.map(type => (
+              <option key={type.value} value={type.value}>{type.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Lead / Relationship Source</label>
+          <select
+            value={contact.leadSource ?? ''}
+            onChange={e => field('leadSource')(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+          >
+            <option value="">No source set</option>
+            {LEAD_SOURCES.map(sourceOption => (
+              <option key={sourceOption} value={sourceOption}>{sourceOption}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <OwnershipLinksPanel contact={contact} ownershipApi={ownershipApi} onUpdate={onUpdateContact} />
+    </div>
+  );
+}
+
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onPromote, taskApi, ownershipApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
   const [postOutcome, setPostOutcome] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
   const contactNote = current?.notes ?? '';
   const noteText = noteDraft.contactId === current?.id ? noteDraft.text : contactNote;
   const hasNoteChanges = noteText !== contactNote;
@@ -2614,6 +2668,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
       if (key === 'x') handleOutcome('no_answer');
       if (key === 'v') handleOutcome('voicemail');
       if (key === 'c') handleOutcome('callback');
+      if (key === 'e') { e.preventDefault(); setShowDetails(v => !v); }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -2705,11 +2760,27 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 {current.market && <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md font-semibold">{current.market}</span>}
                 <SourceBadge source={current.source} />
               </div>
-              <h3 className="text-3xl font-black text-white leading-tight">{contactDisplayName(current)}</h3>
-              <p className="text-base text-slate-400 mt-1">{current.facilityName || 'Facility unknown'}</p>
+              <button
+                type="button"
+                onClick={() => setShowDetails(v => !v)}
+                title="Edit contact details (E)"
+                className="block text-left group/name"
+              >
+                <h3 className="text-3xl font-black text-white leading-tight group-hover/name:text-amber-400 transition-colors">{contactDisplayName(current)}</h3>
+                <p className="text-base text-slate-400 mt-1 group-hover/name:text-slate-300 transition-colors">{current.facilityName || 'Facility unknown'}</p>
+              </button>
               {current.queueReason && (
                 <p className="text-xs text-amber-400/80 mt-1.5 font-semibold">Why they're up: {current.queueReason}</p>
               )}
+              <button
+                type="button"
+                onClick={() => setShowDetails(v => !v)}
+                className={`mt-2 text-xs font-bold rounded-lg px-3 py-1.5 border transition-all ${showDetails
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
+                  : 'border-slate-700 text-slate-400 hover:text-amber-400 hover:border-amber-500/40'}`}
+              >
+                {showDetails ? 'Hide Details' : 'Edit Details'}
+              </button>
             </div>
             <PrimaryPhoneEditor
               key={current.id}
@@ -2717,6 +2788,15 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               onSave={(phone) => onUpdateContact?.(current.id, { phone })}
             />
           </div>
+
+          {showDetails && (
+            <CallModeDetailsPanel
+              key={current.id}
+              contact={current}
+              onUpdateContact={onUpdateContact}
+              ownershipApi={ownershipApi}
+            />
+          )}
 
           <AdditionalPhonesEditor
             phones={current.alternatePhones}
@@ -2880,7 +2960,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               Promote to Client / Pipeline
             </button>
           )}
-          <p className="text-xs text-slate-600 px-1">Shortcuts: &larr; / &rarr; move through queue. N next, B back, X no answer, V voicemail, C callback.</p>
+          <p className="text-xs text-slate-600 px-1">Shortcuts: &larr; / &rarr; move through queue. N next, B back, X no answer, V voicemail, C callback, E edit details.</p>
         </aside>
       </div>
       {confirmDelete && (
