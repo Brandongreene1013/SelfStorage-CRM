@@ -2541,6 +2541,53 @@ function datePlusDays(days) {
   return d.toISOString().slice(0, 10);
 }
 
+// Sprint 20 — click-to-edit for the big header fields (owner name / facility)
+// in Call Mode. Same commit rules as EditableField but sized for the header.
+function HeaderInlineField({ value, placeholder, onSave, textClassName, inputClassName }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? '');
+
+  function startEdit() {
+    setDraft(value ?? '');
+    setEditing(true);
+  }
+
+  function commit() {
+    setEditing(false);
+    const next = draft.trim();
+    if (next !== (value ?? '')) onSave(next);
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="text"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(value ?? ''); setEditing(false); } }}
+        placeholder={placeholder}
+        className={`w-full bg-slate-800 border border-amber-500 rounded-lg px-2 py-1 focus:outline-none placeholder:text-slate-600 ${inputClassName}`}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={startEdit}
+      title="Click to edit"
+      className="group/hf block w-full text-left rounded-lg -mx-1 px-1 hover:bg-slate-800/60 transition-all"
+    >
+      <span className={textClassName}>
+        {value || <span className="text-slate-600 italic font-semibold">{placeholder}</span>}
+        <span className="opacity-0 group-hover/hf:opacity-100 text-slate-500 text-sm ml-2 font-normal transition-opacity">✏️</span>
+      </span>
+    </button>
+  );
+}
+
 // Sprint 20 — full contact editing without leaving Call Mode. Reuses the same
 // editors as ContactDetailModal (EditableField, relationship/lead-source
 // selects, OwnershipLinksPanel) so behavior stays identical in both surfaces.
@@ -2760,15 +2807,22 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 {current.market && <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md font-semibold">{current.market}</span>}
                 <SourceBadge source={current.source} />
               </div>
-              <button
-                type="button"
-                onClick={() => setShowDetails(v => !v)}
-                title="Edit contact details (E)"
-                className="block text-left group/name"
-              >
-                <h3 className="text-3xl font-black text-white leading-tight group-hover/name:text-amber-400 transition-colors">{contactDisplayName(current)}</h3>
-                <p className="text-base text-slate-400 mt-1 group-hover/name:text-slate-300 transition-colors">{current.facilityName || 'Facility unknown'}</p>
-              </button>
+              <HeaderInlineField
+                key={`owner-${current.id}`}
+                value={current.ownerName}
+                placeholder="Click to add owner name"
+                onSave={(v) => onUpdateContact?.(current.id, { ownerName: v })}
+                textClassName="text-3xl font-black text-white leading-tight"
+                inputClassName="text-3xl font-black text-white"
+              />
+              <HeaderInlineField
+                key={`facility-${current.id}`}
+                value={current.facilityName}
+                placeholder="Click to add facility name"
+                onSave={(v) => onUpdateContact?.(current.id, { facilityName: v })}
+                textClassName="text-base text-slate-400"
+                inputClassName="text-base text-slate-200 mt-1"
+              />
               {current.queueReason && (
                 <p className="text-xs text-amber-400/80 mt-1.5 font-semibold">Why they're up: {current.queueReason}</p>
               )}
