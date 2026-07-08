@@ -103,6 +103,21 @@ function isTypingTarget(target) {
 }
 
 // ─── Editable field ───────────────────────────────────────────────────────────
+function formatDateForLog(value) {
+  if (!value) return '';
+  const [year, month, day] = value.split('-');
+  if (year && month && day) return `${month}/${day}/${year}`;
+  return value;
+}
+
+function appendDateToLogNote(note, label, value) {
+  if (!value) return note ?? '';
+  const line = `${label}: ${formatDateForLog(value)}`;
+  const text = (note ?? '').trim();
+  if (text.includes(line)) return text;
+  return [text, line].filter(Boolean).join('\n');
+}
+
 function contactDisplayName(contact) {
   return contact?.facilityName || contact?.ownerName || contact?.address || 'Unknown Property';
 }
@@ -958,8 +973,12 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
   }
 
   function handleOutcome(status) {
-    onStatusChange(contact.id, status, notes, activityDate);
-    onNotesChange(contact.id, notes);
+    const loggedNotes = status === 'callback'
+      ? appendDateToLogNote(notes, 'Callback date', callbackDate)
+      : notes;
+    onStatusChange(contact.id, status, loggedNotes, activityDate);
+    onNotesChange(contact.id, loggedNotes);
+    if (loggedNotes !== notes) setNotes(loggedNotes);
     if (status === 'callback') {
       if (callbackDate) onUpdate(contact.id, { callbackDate });
       setTaskPrompt('callback');
@@ -2056,12 +2075,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       alert('Pick a callback date before logging Call Back.');
       return;
     }
-    await updateContactStatus(contact.id, status, note, activityDate);
+    const loggedNote = status === 'callback'
+      ? appendDateToLogNote(note, 'Callback date', callbackDate)
+      : note;
+    await updateContactStatus(contact.id, status, loggedNote, activityDate);
     if (status === 'callback' && callbackDate) updateContactCallback(contact.id, callbackDate);
     if (status === 'callback') {
       taskApi?.createTask({
         title: 'Call back',
-        description: note.trim(),
+        description: loggedNote.trim(),
         taskType: 'call',
         priority: 'normal',
         dueDate: callbackDate,
