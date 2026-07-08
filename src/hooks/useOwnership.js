@@ -112,6 +112,36 @@ export function useOwnership() {
     return { ok: true, property };
   }, []);
 
+  const deleteProperty = useCallback(async (id) => {
+    const { error } = await supabase.from('properties').delete().eq('id', id);
+    if (error) return { error: error.message };
+    setProperties(prev => prev.filter(p => p.id !== id));
+    return { ok: true };
+  }, []);
+
+  // Sprint 21b: cleanup for accidentally-created groups. Deletes the group
+  // and its properties only if no contact/client links to it anymore; the
+  // caller unlinks its own record first.
+  const removeGroupIfOrphaned = useCallback(async (id) => {
+    const { data: linked, error: linkErr } = await supabase
+      .from('contacts').select('id').eq('ownership_group_id', id).limit(1);
+    if (linkErr) return { error: linkErr.message };
+    if ((linked ?? []).length > 0) return { ok: true, deleted: false };
+    const { data: linkedClients, error: clientLinkErr } = await supabase
+      .from('clients').select('id').eq('ownership_group_id', id).limit(1);
+    if (clientLinkErr && !(clientLinkErr.code === 'PGRST204' || `${clientLinkErr.message ?? ''} ${clientLinkErr.details ?? ''}`.includes('ownership_group_id'))) {
+      return { error: clientLinkErr.message };
+    }
+    if ((linkedClients ?? []).length > 0) return { ok: true, deleted: false };
+    const { error: propErr } = await supabase.from('properties').delete().eq('ownership_group_id', id);
+    if (propErr) return { error: propErr.message };
+    const { error: groupErr } = await supabase.from('ownership_groups').delete().eq('id', id);
+    if (groupErr) return { error: groupErr.message };
+    setProperties(prev => prev.filter(p => p.ownershipGroupId !== id));
+    setGroups(prev => prev.filter(g => g.id !== id));
+    return { ok: true, deleted: true };
+  }, []);
+
   const propertiesByGroup = useMemo(() => {
     const map = new Map();
     properties.forEach(property => {
@@ -132,5 +162,7 @@ export function useOwnership() {
     updateGroup,
     createProperty,
     updateProperty,
+    deleteProperty,
+    removeGroupIfOrphaned,
   };
 }

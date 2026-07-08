@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { useFileStorage } from '../hooks/useFileStorage';
 import { LogActionModal, LastActionLine } from './ActionLog';
+import OwnershipLinksPanel from './OwnershipLinksPanel';
 import { StatusBadge } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
-export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, compact = false, taskApi }) {
+export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, compact = false, taskApi, ownershipApi }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
   const { openFile } = useFileStorage();
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
@@ -262,6 +263,15 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         source="client"
         excludeTaskIds={nextTask ? [nextTask.id] : []}
       />
+
+      {!compact && ownershipApi && (
+        <OwnershipLinksPanel
+          record={client}
+          ownershipApi={ownershipApi}
+          onUpdate={(id, fields) => onSetAction?.(id, fields)}
+          compact
+        />
+      )}
 
       {/* Stage selector (mini) */}
       {!compact && (

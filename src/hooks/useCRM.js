@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
+function isMissingColumnError(error, columnName) {
+  if (!error) return false;
+  const text = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`;
+  return text.includes(columnName) || error.code === 'PGRST204' || error.code === '42703';
+}
+
 export function useCRM() {
   const [clients, setClients] = useState([]);
 
@@ -40,6 +46,7 @@ export function useCRM() {
       nextActionNote: row.next_action_note ?? '',
       leadTemp: row.lead_temp ?? '',
       actionLog: row.action_log ?? [],
+      ownershipGroupId: row.ownership_group_id ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -62,6 +69,7 @@ export function useCRM() {
       storage_class: data.storageClass,
       documents: data.documents ?? [],
     };
+    if (data.ownershipGroupId !== undefined) db.ownership_group_id = data.ownershipGroupId || null;
     if (data.nextActionType !== undefined) db.next_action_type = data.nextActionType;
     if (data.nextActionDate !== undefined) db.next_action_date = data.nextActionDate;
     if (data.nextActionNote !== undefined) db.next_action_note = data.nextActionNote;
@@ -71,11 +79,17 @@ export function useCRM() {
   }
 
   const addClient = useCallback(async (data) => {
-    const { data: row, error } = await supabase
+    let dbRow = clientToDb(data);
+    let { data: row, error } = await supabase
       .from('clients')
-      .insert([clientToDb(data)])
+      .insert([dbRow])
       .select()
       .single();
+    if (error && isMissingColumnError(error, 'ownership_group_id')) {
+      const { ownership_group_id: _ownershipGroupId, ...withoutOwnership } = dbRow;
+      dbRow = withoutOwnership;
+      ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
+    }
     if (!error && row) {
       setClients(prev => [...prev, dbToClient(row)]);
     }
@@ -116,12 +130,27 @@ export function useCRM() {
     if (actionFields.nextActionDate !== undefined) db.next_action_date = actionFields.nextActionDate;
     if (actionFields.nextActionNote !== undefined) db.next_action_note = actionFields.nextActionNote;
     if (actionFields.leadTemp       !== undefined) db.lead_temp        = actionFields.leadTemp;
+    if (actionFields.ownershipGroupId !== undefined) db.ownership_group_id = actionFields.ownershipGroupId || null;
     db.updated_at = new Date().toISOString();
 
-    const { error } = await supabase.from('clients').update(db).eq('id', id);
-    if (!error) {
-      setClients(prev => prev.map(c => c.id === id ? { ...c, ...actionFields } : c));
+    let fieldsToApply = actionFields;
+    let { error } = await supabase.from('clients').update(db).eq('id', id);
+    if (error && isMissingColumnError(error, 'ownership_group_id')) {
+      if (actionFields.ownershipGroupId !== undefined) {
+        return { error: 'Run sql/client_ownership_group_link_migration.sql in Supabase, then refresh to save multiple property addresses on clients.' };
+      }
+      const { ownership_group_id: _ownershipGroupId, ...withoutOwnership } = db;
+      ({ error } = await supabase.from('clients').update(withoutOwnership).eq('id', id));
+      if (!error) {
+        const { ownershipGroupId: _appOwnershipGroupId, ...withoutAppOwnership } = actionFields;
+        fieldsToApply = withoutAppOwnership;
+      }
     }
+    if (!error) {
+      setClients(prev => prev.map(c => c.id === id ? { ...c, ...fieldsToApply } : c));
+      return { ok: true };
+    }
+    return { error: error.message };
   }, []);
 
   // Replace a client's activity log wholesale (review actions), with optional email backfill

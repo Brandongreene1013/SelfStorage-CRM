@@ -125,7 +125,7 @@ export default function ImportListModal({
 
       const parsed = buildPreview(tsv);
       if (parsed.contacts.length === 0) {
-        setError('No contacts found. Make sure row 1 has column headers.');
+        setError('No rows found. Make sure the file has facility names, addresses, or column headers.');
       }
     } catch (err) {
       setError('Failed to read file: ' + err.message);
@@ -265,8 +265,8 @@ export default function ImportListModal({
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {metric('Total rows', preview.summary.total)}
-              {metric('Ready to call', preview.summary.readyToCall, 'green')}
-              {metric('Missing phone', preview.summary.missingPhone, preview.summary.missingPhone ? 'red' : 'slate')}
+              {metric('Ready to work', preview.summary.readyToCall, 'green')}
+              {metric('Needs phone', preview.summary.missingPhone, preview.summary.missingPhone ? 'amber' : 'slate')}
               {metric('Possible duplicates', preview.summary.possibleDuplicates, preview.summary.possibleDuplicates ? 'amber' : 'slate')}
               {metric('Missing owner', preview.summary.missingOwner, preview.summary.missingOwner ? 'amber' : 'slate')}
               {metric('Missing address', preview.summary.missingAddress, preview.summary.missingAddress ? 'amber' : 'slate')}
@@ -342,7 +342,7 @@ export default function ImportListModal({
                           <div className="flex flex-wrap gap-1">
                             {row.flags.map(flag => (
                               <span key={flag} className={`rounded px-1.5 py-0.5 border ${
-                                flag === 'Ready to call' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                flag === 'Ready to call' || flag === 'Ready to work' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                                   : flag === 'Possible duplicate' ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
                                     : flag === 'Multiple phones found' ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
                                       : 'bg-red-500/10 border-red-500/30 text-red-300'
@@ -382,8 +382,8 @@ export default function ImportListModal({
               {metric('Rows skipped', importResult.skipped ?? 0, (importResult.skipped ?? 0) ? 'amber' : 'slate')}
               {metric('Duplicates skipped', importResult.skippedDuplicates ?? 0, (importResult.skippedDuplicates ?? 0) ? 'amber' : 'slate')}
               {metric('Duplicates appended', importResult.mergedDuplicates ?? 0, (importResult.mergedDuplicates ?? 0) ? 'blue' : 'slate')}
-              {metric('Missing phone', importResult.missingPhoneCount ?? 0, (importResult.missingPhoneCount ?? 0) ? 'red' : 'slate')}
-              {metric('Ready to call', importResult.readyToCallCount ?? 0, 'green')}
+              {metric('Needs phone', importResult.missingPhoneCount ?? 0, (importResult.missingPhoneCount ?? 0) ? 'amber' : 'slate')}
+              {metric('Ready to work', importResult.readyToCallCount ?? 0, 'green')}
               {metric('Extra phones imported', importResult.additionalPhonesImported ?? 0, (importResult.additionalPhonesImported ?? 0) ? 'blue' : 'slate')}
             </div>
             <p className="mt-3 text-xs text-slate-400">Source applied: <span className="font-semibold text-emerald-300">{importResult.sourceApplied ?? importResult.source}</span></p>
@@ -440,7 +440,7 @@ export default function ImportListModal({
           >
             {importing ? 'Importing...' : duplicateMode === 'append'
               ? `Import/Append ${actionableCount || ''} Rows`
-              : `Import ${importableCount || ''} Contacts`}
+              : `Import ${importableCount || ''} Rows`}
           </button>
         )}
       </div>

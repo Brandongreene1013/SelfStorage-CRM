@@ -5,6 +5,7 @@ import { useMeetings } from './hooks/useMeetings';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useDailyProgress } from './hooks/useDailyProgress';
 import { useTasks } from './hooks/useTasks';
+import { useOwnership } from './hooks/useOwnership';
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import PipelineBoard from './components/PipelineBoard';
@@ -27,6 +28,7 @@ export default function App() {
   const { calendarEvents } = useCalendarEvents();
   const { increment: incrementProgress } = useDailyProgress();
   const taskApi = useTasks(); // universal task/next-action engine (Sprint 2)
+  const ownershipApi = useOwnership();
 
   // CRM meetings + synced Outlook calendar events, for the dashboard widget
   const allMeetings = [...meetings, ...calendarEvents];
@@ -87,6 +89,7 @@ export default function App() {
       nextActionType: contact.nextActionType ?? '',
       nextActionDate: contact.nextActionDate ?? '',
       nextActionNote: contact.nextActionNote ?? '',
+      ownershipGroupId: contact.ownershipGroupId ?? null,
     });
     db.deleteContact(contact.id);
   }, [addClient, db]);
@@ -106,6 +109,7 @@ export default function App() {
       nextActionType: client.nextActionType ?? '',
       nextActionDate: client.nextActionDate ?? '',
       nextActionNote: client.nextActionNote ?? '',
+      ownershipGroupId: client.ownershipGroupId ?? null,
     });
     deleteClient(client.id);
   }, [db, deleteClient]);
@@ -358,6 +362,7 @@ export default function App() {
                     onMoveToDatabase={handleClientToDatabase}
                     onLogAction={logClientAction}
                     taskApi={taskApi}
+                    ownershipApi={ownershipApi}
                   />
                 ))}
               </div>

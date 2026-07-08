@@ -104,7 +104,7 @@ function isTypingTarget(target) {
 
 // ─── Editable field ───────────────────────────────────────────────────────────
 function contactDisplayName(contact) {
-  return contact?.ownerName || contact?.facilityName || 'Unknown Owner';
+  return contact?.facilityName || contact?.ownerName || contact?.address || 'Unknown Property';
 }
 
 function EditableField({ label, value, placeholder, onChange, mono, href, type = 'text' }) {
@@ -339,12 +339,18 @@ function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onCl
     </ModalLayout>
   );
 }
-const BLANK_PROPERTY_DRAFT = { facilityName: '', address: '', market: '', state: '', propertyType: 'Self-Storage' };
+const BLANK_PROPERTY_DRAFT = { facilityName: '', address: '' };
 
+// Sprint 21b — simplified to "a list of addresses this owner has". The
+// ownership group is managed automatically behind the scenes (created on
+// first address, offered for removal when unlinked), and everything added
+// by accident can be deleted right here with a two-step confirm.
 function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
   const [message, setMessage] = useState('');
   const [showAddProperty, setShowAddProperty] = useState(false);
   const [propertyDraft, setPropertyDraft] = useState(BLANK_PROPERTY_DRAFT);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [confirmRemoveGroup, setConfirmRemoveGroup] = useState(false);
   const groups = useMemo(() => ownershipApi?.groups ?? [], [ownershipApi?.groups]);
   const linkedGroup = groups.find(g => g.id === contact.ownershipGroupId) ?? null;
   const linkedProperties = linkedGroup ? (ownershipApi?.propertiesByGroup?.get(linkedGroup.id) ?? []) : [];
@@ -357,53 +363,17 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
     notes: '',
   };
 
-  const propertySeed = (groupId) => ({
-    ownershipGroupId: groupId,
-    facilityName: contact.facilityName || '',
-    address: contact.address || '',
-    state: contact.state || '',
-    market: contact.market || '',
-    propertyType: 'Self-Storage',
-    source: contact.source || '',
-    notes: '',
-  });
-
   async function linkGroup(groupId) {
     setMessage('');
     const result = await onUpdate(contact.id, { ownershipGroupId: groupId || null });
     if (result?.error) setMessage(result.error);
   }
 
-  async function createGroup() {
-    setMessage('');
-    const result = await ownershipApi?.createGroup(groupSeed);
-    if (result?.error) {
-      setMessage(result.error);
-      return;
-    }
-    if (result?.group) await linkGroup(result.group.id);
-  }
-
-  async function updateGroupFromContact() {
-    if (!linkedGroup) return;
-    setMessage('');
-    const result = await ownershipApi?.updateGroup(linkedGroup.id, {
-      ...linkedGroup,
-      ...groupSeed,
-      notes: linkedGroup.notes,
-    });
-    if (result?.error) setMessage(result.error);
-    else setMessage('Ownership group updated from this contact.');
-  }
-
-  // Sprint 20 — adding a property no longer requires a pre-linked group:
-  // if the contact has none, one is created from the contact and linked first,
-  // so "they also own one on Main St" is a single flow during a call.
   async function ensureGroup() {
     if (linkedGroup) return linkedGroup;
     const result = await ownershipApi?.createGroup(groupSeed);
     if (result?.error || !result?.group) {
-      setMessage(result?.error || 'Could not create ownership group.');
+      setMessage(result?.error || 'Could not save.');
       return null;
     }
     await linkGroup(result.group.id);
@@ -412,7 +382,7 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
 
   async function saveNewProperty() {
     if (!propertyDraft.facilityName.trim() && !propertyDraft.address.trim()) {
-      setMessage('Enter at least a facility name or an address.');
+      setMessage('Type a facility name or an address first.');
       return;
     }
     setMessage('');
@@ -422,9 +392,9 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
       ownershipGroupId: group.id,
       facilityName: propertyDraft.facilityName.trim(),
       address: propertyDraft.address.trim(),
-      state: propertyDraft.state.trim(),
-      market: propertyDraft.market.trim(),
-      propertyType: propertyDraft.propertyType || 'Self-Storage',
+      state: contact.state || '',
+      market: contact.market || '',
+      propertyType: 'Self-Storage',
       source: contact.source || '',
       notes: '',
     });
@@ -432,9 +402,9 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
       setMessage(result.error);
       return;
     }
+    // Form stays open with cleared fields so multiple addresses go in fast.
     setPropertyDraft(BLANK_PROPERTY_DRAFT);
-    setShowAddProperty(false);
-    setMessage('Property added.');
+    setMessage('Added — type the next one or hit Done.');
   }
 
   async function savePropertyField(property, fields) {
@@ -443,28 +413,46 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
     if (result?.error) setMessage(result.error);
   }
 
-  async function updatePropertyFromContact(property) {
+  async function deleteProperty(propertyId) {
     setMessage('');
-    const result = await ownershipApi?.updateProperty(property.id, {
-      ...property,
-      ...propertySeed(property.ownershipGroupId),
-      propertyType: property.propertyType || 'Self-Storage',
-      notes: property.notes,
-    });
+    const result = await ownershipApi?.deleteProperty(propertyId);
+    setConfirmDeleteId(null);
     if (result?.error) setMessage(result.error);
-    else setMessage('Property updated from this contact.');
+  }
+
+  // Unlinks this contact; if nobody else uses the group, the group and any
+  // leftover addresses are deleted too — the undo for an accidental add.
+  async function removeGroup() {
+    if (!linkedGroup) return;
+    setMessage('');
+    const groupId = linkedGroup.id;
+    const unlink = await onUpdate(contact.id, { ownershipGroupId: null });
+    setConfirmRemoveGroup(false);
+    if (unlink?.error) {
+      setMessage(unlink.error);
+      return;
+    }
+    const result = await ownershipApi?.removeGroupIfOrphaned(groupId);
+    if (result?.error) setMessage(result.error);
+    else setMessage(result?.deleted ? 'Removed.' : 'Unlinked — group kept because other contacts still use it.');
   }
 
   return (
     <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Owner / Property Links</p>
-          <p className="text-xs text-slate-500 mt-1">Connect this person to an ownership group and its facilities.</p>
-        </div>
-        <span className="text-[11px] font-semibold text-amber-400 border border-amber-500/30 rounded-md px-2 py-1">
-          Sprint 18
-        </span>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">
+          Properties They Own{linkedProperties.length > 0 ? ` (${linkedProperties.length})` : ''}
+        </p>
+        <button
+          type="button"
+          onClick={() => { setShowAddProperty(v => !v); setMessage(''); setPropertyDraft(BLANK_PROPERTY_DRAFT); }}
+          disabled={!hasOwnershipData}
+          className={`text-xs font-bold rounded-lg px-3 py-1.5 transition-all disabled:opacity-40 ${showAddProperty
+            ? 'text-slate-300 border border-slate-600 hover:text-white'
+            : 'bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400'}`}
+        >
+          {showAddProperty ? 'Done' : '+ Add Address'}
+        </button>
       </div>
 
       {ownershipApi?.loadError && (
@@ -473,174 +461,146 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
         </p>
       )}
 
-      <div>
-        <label className="block text-[11px] uppercase font-semibold text-slate-500 mb-1">Linked Ownership Group</label>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <select
-            value={contact.ownershipGroupId || ''}
-            onChange={e => linkGroup(e.target.value)}
-            disabled={!hasOwnershipData}
-            className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 disabled:opacity-50"
-          >
-            <option value="">Not linked</option>
-            {groups.map(group => (
-              <option key={group.id} value={group.id}>{group.displayName || group.ownerEntity || 'Untitled ownership group'}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={createGroup}
-            disabled={!hasOwnershipData}
-            className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs transition-all disabled:opacity-50"
-          >
-            Create Group
-          </button>
-        </div>
-      </div>
-
-      {linkedGroup && (
-        <div className="bg-slate-800/60 border border-slate-700/70 rounded-lg px-3 py-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-white truncate">{linkedGroup.displayName}</p>
-              {linkedGroup.ownerEntity && <p className="text-xs text-slate-400 truncate">{linkedGroup.ownerEntity}</p>}
-            </div>
+      {showAddProperty && (
+        <div className="bg-slate-800/60 border border-amber-500/30 rounded-lg p-3 space-y-2">
+          <input
+            type="text"
+            autoFocus
+            value={propertyDraft.facilityName}
+            onChange={e => setPropertyDraft(d => ({ ...d, facilityName: e.target.value }))}
+            onKeyDown={e => { if (e.key === 'Enter') saveNewProperty(); }}
+            placeholder="Facility name (optional)"
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+          />
+          <input
+            type="text"
+            value={propertyDraft.address}
+            onChange={e => setPropertyDraft(d => ({ ...d, address: e.target.value }))}
+            onKeyDown={e => { if (e.key === 'Enter') saveNewProperty(); }}
+            placeholder="Address (e.g. 123 Main St, Cleburne TX)"
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+          />
+          <div className="flex items-center justify-end">
             <button
               type="button"
-              onClick={updateGroupFromContact}
-              className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
+              onClick={saveNewProperty}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-1.5 rounded-lg text-xs transition-all"
             >
-              Update From Contact
+              Add
             </button>
           </div>
         </div>
       )}
 
-      <div>
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <p className="text-[11px] uppercase font-semibold text-slate-500">
-            Linked Properties{linkedProperties.length > 0 ? ` (${linkedProperties.length})` : ''}
-          </p>
-          <button
-            type="button"
-            onClick={() => { setShowAddProperty(v => !v); setMessage(''); }}
-            disabled={!hasOwnershipData}
-            className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all disabled:opacity-40"
-          >
-            {showAddProperty ? 'Cancel' : '+ Add Property'}
-          </button>
-        </div>
-
-        {showAddProperty && (
-          <div className="bg-slate-800/60 border border-amber-500/30 rounded-lg p-3 mb-2 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-bold text-amber-400">New property under this owner</p>
-              <button
-                type="button"
-                onClick={() => setPropertyDraft({
-                  facilityName: contact.facilityName || '',
-                  address: contact.address || '',
-                  market: contact.market || '',
-                  state: contact.state || '',
-                  propertyType: 'Self-Storage',
-                })}
-                className="text-[11px] font-semibold text-slate-400 hover:text-amber-400 transition-all"
-              >
-                Prefill from contact
-              </button>
-            </div>
-            <input
-              type="text"
-              value={propertyDraft.facilityName}
-              onChange={e => setPropertyDraft(d => ({ ...d, facilityName: e.target.value }))}
-              placeholder="Facility name (e.g. Main St Self Storage)"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-            />
-            <input
-              type="text"
-              value={propertyDraft.address}
-              onChange={e => setPropertyDraft(d => ({ ...d, address: e.target.value }))}
-              placeholder="Address"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-            />
-            <div className="grid grid-cols-3 gap-2">
-              <input
-                type="text"
-                value={propertyDraft.market}
-                onChange={e => setPropertyDraft(d => ({ ...d, market: e.target.value }))}
-                placeholder="Market"
-                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-              />
-              <input
-                type="text"
-                value={propertyDraft.state}
-                onChange={e => setPropertyDraft(d => ({ ...d, state: e.target.value }))}
-                placeholder="State"
-                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-              />
-              <select
-                value={propertyDraft.propertyType}
-                onChange={e => setPropertyDraft(d => ({ ...d, propertyType: e.target.value }))}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
-              >
-                {PROPERTY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={saveNewProperty}
-                className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-1.5 rounded-lg text-xs transition-all"
-              >
-                {linkedGroup ? 'Save Property' : 'Create Group + Save Property'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {linkedProperties.length === 0 && !showAddProperty ? (
-          <p className="text-xs text-slate-500 italic">No properties linked yet. Use + Add Property to log everything they own.</p>
-        ) : (
-          <div className="space-y-2">
-            {linkedProperties.map(property => {
-              const type = PROPERTY_TYPES.find(t => t.value === property.propertyType);
-              return (
-                <div key={property.id} className="bg-slate-800/60 border border-slate-700/70 rounded-lg px-3 py-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <HeaderInlineField
-                        value={property.facilityName}
-                        placeholder="Add facility name"
-                        onSave={(v) => savePropertyField(property, { facilityName: v })}
-                        textClassName="text-sm font-semibold text-white"
-                        inputClassName="text-sm font-semibold text-white"
-                      />
-                      <HeaderInlineField
-                        value={property.address}
-                        placeholder="Add address"
-                        onSave={(v) => savePropertyField(property, { address: v })}
-                        textClassName="text-xs text-slate-500"
-                        inputClassName="text-xs text-slate-300"
-                      />
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        {[property.market || property.state, type?.label].filter(Boolean).join(' | ')}
-                      </p>
-                    </div>
+      {linkedProperties.length === 0 && !showAddProperty ? (
+        <p className="text-xs text-slate-500 italic">Nothing logged yet — hit + Add Address to list everything they own.</p>
+      ) : (
+        <div className="space-y-2">
+          {linkedProperties.map(property => (
+            <div key={property.id} className="bg-slate-800/60 border border-slate-700/70 rounded-lg px-3 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <HeaderInlineField
+                    value={property.facilityName}
+                    placeholder="Add facility name"
+                    onSave={(v) => savePropertyField(property, { facilityName: v })}
+                    textClassName="text-sm font-semibold text-white"
+                    inputClassName="text-sm font-semibold text-white"
+                  />
+                  <HeaderInlineField
+                    value={property.address}
+                    placeholder="Add address"
+                    onSave={(v) => savePropertyField(property, { address: v })}
+                    textClassName="text-xs text-slate-500"
+                    inputClassName="text-xs text-slate-300"
+                  />
+                </div>
+                {confirmDeleteId === property.id ? (
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
                     <button
                       type="button"
-                      onClick={() => updatePropertyFromContact(property)}
-                      title="Overwrite this property with the contact's facility name / address"
-                      className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all flex-shrink-0"
+                      onClick={() => deleteProperty(property.id)}
+                      className="text-xs font-bold bg-red-600 hover:bg-red-500 text-white rounded-lg px-2 py-1 transition-all"
                     >
-                      Update
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(null)}
+                      className="text-xs text-slate-400 hover:text-white px-1 py-1"
+                    >
+                      Cancel
                     </button>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteId(property.id)}
+                    title="Delete this property"
+                    className="text-xs text-slate-600 hover:text-red-400 px-1.5 py-1 transition-all flex-shrink-0"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {linkedGroup && (
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
+          <p className="text-[11px] text-slate-500 truncate">
+            Owner group: <span className="text-slate-400 font-semibold">{linkedGroup.displayName || 'Untitled'}</span>
+          </p>
+          {confirmRemoveGroup ? (
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <span className="text-[11px] text-red-400 font-semibold">
+                Remove{linkedProperties.length > 0 ? ` + ${linkedProperties.length} address${linkedProperties.length === 1 ? '' : 'es'}` : ''}?
+              </span>
+              <button
+                type="button"
+                onClick={removeGroup}
+                className="text-[11px] font-bold bg-red-600 hover:bg-red-500 text-white rounded-lg px-2 py-1 transition-all"
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmRemoveGroup(false)}
+                className="text-[11px] text-slate-400 hover:text-white px-1"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmRemoveGroup(true)}
+              className="text-[11px] text-slate-600 hover:text-red-400 transition-all flex-shrink-0"
+            >
+              Remove group
+            </button>
+          )}
+        </div>
+      )}
+
+      {!linkedGroup && groups.length > 0 && (
+        <div className="flex items-center gap-2 pt-1">
+          <label className="text-[11px] text-slate-600 flex-shrink-0">Same owner as an existing group?</label>
+          <select
+            value=""
+            onChange={e => { if (e.target.value) linkGroup(e.target.value); }}
+            disabled={!hasOwnershipData}
+            className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500 disabled:opacity-50"
+          >
+            <option value="">Link to existing…</option>
+            {groups.map(group => (
+              <option key={group.id} value={group.id}>{group.displayName || group.ownerEntity || 'Untitled ownership group'}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {message && <p className="text-xs text-slate-400">{message}</p>}
     </div>
@@ -2204,7 +2164,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                         {l.importedAt && <span className="text-[11px] text-slate-600">{l.importedAt}</span>}
                       </div>
                       <p className="mt-1 text-[11px] text-slate-500">
-                        {count} imported &middot; {ready} callable
+                        {count} imported &middot; {ready} workable
                         {l.duplicateSkippedCount ? ` | ${l.duplicateSkippedCount} skipped` : ''}
                         {l.mergedDuplicateCount ? ` | ${l.mergedDuplicateCount} appended` : ''}
                       </p>
@@ -2521,6 +2481,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     onMoveToList={moveContactToList}
                     onToClients={onContactToClients}
                     taskApi={taskApi}
+                    ownershipApi={ownershipApi}
                   />
                 ))}
                 {/* Clients merged into the Master Database view (unified, no duplicates) */}
@@ -2534,6 +2495,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     onSetAction={clientHandlers.onSetAction}
                     onLogAction={clientHandlers.onLogAction}
                     taskApi={taskApi}
+                    ownershipApi={ownershipApi}
                   />
                 ))}
               </div>
