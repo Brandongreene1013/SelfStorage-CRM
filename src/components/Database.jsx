@@ -339,8 +339,12 @@ function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onCl
     </ModalLayout>
   );
 }
+const BLANK_PROPERTY_DRAFT = { facilityName: '', address: '', market: '', state: '', propertyType: 'Self-Storage' };
+
 function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
   const [message, setMessage] = useState('');
+  const [showAddProperty, setShowAddProperty] = useState(false);
+  const [propertyDraft, setPropertyDraft] = useState(BLANK_PROPERTY_DRAFT);
   const groups = useMemo(() => ownershipApi?.groups ?? [], [ownershipApi?.groups]);
   const linkedGroup = groups.find(g => g.id === contact.ownershipGroupId) ?? null;
   const linkedProperties = linkedGroup ? (ownershipApi?.propertiesByGroup?.get(linkedGroup.id) ?? []) : [];
@@ -392,12 +396,51 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
     else setMessage('Ownership group updated from this contact.');
   }
 
-  async function createProperty() {
-    if (!linkedGroup) return;
+  // Sprint 20 — adding a property no longer requires a pre-linked group:
+  // if the contact has none, one is created from the contact and linked first,
+  // so "they also own one on Main St" is a single flow during a call.
+  async function ensureGroup() {
+    if (linkedGroup) return linkedGroup;
+    const result = await ownershipApi?.createGroup(groupSeed);
+    if (result?.error || !result?.group) {
+      setMessage(result?.error || 'Could not create ownership group.');
+      return null;
+    }
+    await linkGroup(result.group.id);
+    return result.group;
+  }
+
+  async function saveNewProperty() {
+    if (!propertyDraft.facilityName.trim() && !propertyDraft.address.trim()) {
+      setMessage('Enter at least a facility name or an address.');
+      return;
+    }
     setMessage('');
-    const result = await ownershipApi?.createProperty(propertySeed(linkedGroup.id));
+    const group = await ensureGroup();
+    if (!group) return;
+    const result = await ownershipApi?.createProperty({
+      ownershipGroupId: group.id,
+      facilityName: propertyDraft.facilityName.trim(),
+      address: propertyDraft.address.trim(),
+      state: propertyDraft.state.trim(),
+      market: propertyDraft.market.trim(),
+      propertyType: propertyDraft.propertyType || 'Self-Storage',
+      source: contact.source || '',
+      notes: '',
+    });
+    if (result?.error) {
+      setMessage(result.error);
+      return;
+    }
+    setPropertyDraft(BLANK_PROPERTY_DRAFT);
+    setShowAddProperty(false);
+    setMessage('Property added.');
+  }
+
+  async function savePropertyField(property, fields) {
+    setMessage('');
+    const result = await ownershipApi?.updateProperty(property.id, { ...property, ...fields });
     if (result?.error) setMessage(result.error);
-    else setMessage('Property linked to ownership group.');
   }
 
   async function updatePropertyFromContact(property) {
@@ -475,18 +518,88 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
 
       <div>
         <div className="flex items-center justify-between gap-3 mb-2">
-          <p className="text-[11px] uppercase font-semibold text-slate-500">Linked Properties</p>
+          <p className="text-[11px] uppercase font-semibold text-slate-500">
+            Linked Properties{linkedProperties.length > 0 ? ` (${linkedProperties.length})` : ''}
+          </p>
           <button
             type="button"
-            onClick={createProperty}
-            disabled={!linkedGroup}
+            onClick={() => { setShowAddProperty(v => !v); setMessage(''); }}
+            disabled={!hasOwnershipData}
             className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all disabled:opacity-40"
           >
-            + Property
+            {showAddProperty ? 'Cancel' : '+ Add Property'}
           </button>
         </div>
-        {linkedProperties.length === 0 ? (
-          <p className="text-xs text-slate-500 italic">No properties linked yet.</p>
+
+        {showAddProperty && (
+          <div className="bg-slate-800/60 border border-amber-500/30 rounded-lg p-3 mb-2 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold text-amber-400">New property under this owner</p>
+              <button
+                type="button"
+                onClick={() => setPropertyDraft({
+                  facilityName: contact.facilityName || '',
+                  address: contact.address || '',
+                  market: contact.market || '',
+                  state: contact.state || '',
+                  propertyType: 'Self-Storage',
+                })}
+                className="text-[11px] font-semibold text-slate-400 hover:text-amber-400 transition-all"
+              >
+                Prefill from contact
+              </button>
+            </div>
+            <input
+              type="text"
+              value={propertyDraft.facilityName}
+              onChange={e => setPropertyDraft(d => ({ ...d, facilityName: e.target.value }))}
+              placeholder="Facility name (e.g. Main St Self Storage)"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+            />
+            <input
+              type="text"
+              value={propertyDraft.address}
+              onChange={e => setPropertyDraft(d => ({ ...d, address: e.target.value }))}
+              placeholder="Address"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+            />
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                type="text"
+                value={propertyDraft.market}
+                onChange={e => setPropertyDraft(d => ({ ...d, market: e.target.value }))}
+                placeholder="Market"
+                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+              />
+              <input
+                type="text"
+                value={propertyDraft.state}
+                onChange={e => setPropertyDraft(d => ({ ...d, state: e.target.value }))}
+                placeholder="State"
+                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+              />
+              <select
+                value={propertyDraft.propertyType}
+                onChange={e => setPropertyDraft(d => ({ ...d, propertyType: e.target.value }))}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+              >
+                {PROPERTY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={saveNewProperty}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-1.5 rounded-lg text-xs transition-all"
+              >
+                {linkedGroup ? 'Save Property' : 'Create Group + Save Property'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {linkedProperties.length === 0 && !showAddProperty ? (
+          <p className="text-xs text-slate-500 italic">No properties linked yet. Use + Add Property to log everything they own.</p>
         ) : (
           <div className="space-y-2">
             {linkedProperties.map(property => {
@@ -494,16 +607,29 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
               return (
                 <div key={property.id} className="bg-slate-800/60 border border-slate-700/70 rounded-lg px-3 py-2">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{property.facilityName || 'Unnamed property'}</p>
-                      <p className="text-xs text-slate-500 truncate">
-                        {[property.address, property.market || property.state].filter(Boolean).join(' | ') || 'No location saved'}
+                    <div className="min-w-0 flex-1">
+                      <HeaderInlineField
+                        value={property.facilityName}
+                        placeholder="Add facility name"
+                        onSave={(v) => savePropertyField(property, { facilityName: v })}
+                        textClassName="text-sm font-semibold text-white"
+                        inputClassName="text-sm font-semibold text-white"
+                      />
+                      <HeaderInlineField
+                        value={property.address}
+                        placeholder="Add address"
+                        onSave={(v) => savePropertyField(property, { address: v })}
+                        textClassName="text-xs text-slate-500"
+                        inputClassName="text-xs text-slate-300"
+                      />
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {[property.market || property.state, type?.label].filter(Boolean).join(' | ')}
                       </p>
-                      {type && <p className="text-[11px] text-slate-500 mt-0.5">{type.label}</p>}
                     </div>
                     <button
                       type="button"
                       onClick={() => updatePropertyFromContact(property)}
+                      title="Overwrite this property with the contact's facility name / address"
                       className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all flex-shrink-0"
                     >
                       Update
