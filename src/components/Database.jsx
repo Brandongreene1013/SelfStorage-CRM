@@ -294,7 +294,7 @@ function PrimaryPhoneEditor({ phone = '', onSave }) {
   }
 
   return (
-    <div className="bg-green-600/10 border border-green-600/30 rounded-xl p-4 min-w-[260px]">
+    <div className="bg-green-600/10 border border-green-600/30 rounded-xl p-4 min-w-[min(260px,100%)] max-w-full">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-green-400/70 font-semibold uppercase">Phone</p>
         <button
@@ -1758,6 +1758,10 @@ function LocationSortControl({ anchor, onSet, onClear, geoData, geoError, onOpen
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [notFound, setNotFound] = useState(false);
+  // 'left' | 'right' — which edge of the button the popover hangs from. Chosen
+  // at open time so it never clips off the window edge (the installed PWA
+  // often runs at narrow widths where left-aligned always overflowed).
+  const [alignRight, setAlignRight] = useState(false);
   const boxRef = useRef(null);
 
   useEffect(() => {
@@ -1771,8 +1775,15 @@ function LocationSortControl({ anchor, onSet, onClear, geoData, geoError, onOpen
 
   function toggle() {
     const next = !open;
+    if (next) {
+      // Hang the popover (w-72 = 288px) from whichever button edge keeps it
+      // on screen; prefer left-aligned when both fit.
+      const rect = boxRef.current?.getBoundingClientRect();
+      if (rect) setAlignRight(rect.left + 288 > document.documentElement.clientWidth - 12);
+      setNotFound(false);
+      onOpen?.();
+    }
     setOpen(next);
-    if (next) { setNotFound(false); onOpen?.(); }
   }
 
   function applyQuery() {
@@ -1802,7 +1813,7 @@ function LocationSortControl({ anchor, onSet, onClear, geoData, geoError, onOpen
         {anchor ? `📍 Near ${anchor.label}` : '📍 Location'}
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1.5 z-30 w-72 bg-slate-900 border border-slate-700 rounded-xl p-3 shadow-xl shadow-black/50 space-y-2.5">
+        <div className={`absolute top-full ${alignRight ? 'right-0' : 'left-0'} mt-1.5 z-30 w-72 max-w-[calc(100vw-24px)] bg-slate-900 border border-slate-700 rounded-xl p-3 shadow-xl shadow-black/50 space-y-2.5`}>
           <p className="text-xs font-semibold text-slate-400 uppercase">Sort by distance to</p>
           <div className="flex flex-wrap gap-1.5">
             {PRESET_ANCHORS.map(p => (
@@ -2330,10 +2341,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveDrag(null)}
     >
-    <div className="flex gap-5 min-h-0">
+    {/* Stacks at narrow widths (installed PWA) — a fixed side-by-side layout
+        squeezed the content pane to ~230px and clipped everything inside. */}
+    <div className="flex flex-col md:flex-row gap-5 min-h-0">
 
       {/* ── LEFT: List Organizer Sidebar ── */}
-      <div className="flex-shrink-0 w-56 space-y-2">
+      <div className="md:flex-shrink-0 w-full md:w-56 space-y-2">
         <div className="flex gap-1.5">
         <button
           onClick={() => setShowImport(true)}
