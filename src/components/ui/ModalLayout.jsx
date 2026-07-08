@@ -8,14 +8,22 @@ const SIZES = {
   '2xl': 'max-w-4xl',
 };
 
+// Sprint 21a — background scroll lock with a counter instead of save/restore.
+// Modals nest (delete-confirm inside Contact Detail, TaskModal inside Call
+// Mode), and save/restore of body overflow depends on effect cleanup ORDER:
+// if the parent's cleanup ran before the child's, the child restored the
+// parent's 'hidden' and the page stayed unscrollable after all modals closed.
+// A counter is order-independent: lock on first modal in, unlock on last out.
+let openModalCount = 0;
+
 export default function ModalLayout({ onClose, size = 'md', className = '', children }) {
-  // Sprint 20 — lock background scroll while a modal is open. Without this,
-  // wheel/trackpad scrolling over a tall modal scrolled the page behind it,
-  // leaving footer buttons (e.g. Add Contact's Save) unreachable.
   useEffect(() => {
-    const prev = document.body.style.overflow;
+    openModalCount += 1;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    return () => {
+      openModalCount = Math.max(0, openModalCount - 1);
+      if (openModalCount === 0) document.body.style.overflow = '';
+    };
   }, []);
 
   return (
