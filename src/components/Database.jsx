@@ -11,6 +11,7 @@ import { ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCES, LEAD_TEMPS, PROP
 import { useOwnership } from '../hooks/useOwnership';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
+import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -1255,6 +1256,11 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           <StatusBadge variant={rel.variant} pill={false} className="font-bold">
             {rel.short}
           </StatusBadge>
+          {contact._distanceMiles != null && (
+            <span className="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2 py-0.5 rounded-md whitespace-nowrap">
+              📍 {Math.round(contact._distanceMiles)} mi
+            </span>
+          )}
           {(() => {
             const temp = LEAD_TEMPS.find(t => t.value === contact.leadTemp);
             const order = ['', 'hot', 'warm', 'cold'];
@@ -1692,6 +1698,8 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
 // validates against the live queue before resuming (never forces it).
 const CALL_POSITIONS_KEY = 'storageHero.callQueuePositions';
 const CALL_SESSION_KEY = 'storageHero.callSession';
+// Sprint 22 — per-list location-sort anchors: { [listId]: { label, coords: [lat, lng] } }
+const LOCATION_ANCHORS_KEY = 'storageHero.locationAnchors';
 
 function readStoredJson(key, fallback) {
   try {
@@ -1714,6 +1722,105 @@ function saveCallSession(session) {
 
 function clearStoredCallSession() {
   try { localStorage.removeItem(CALL_SESSION_KEY); } catch { /* storage blocked */ }
+}
+
+// ─── Location sort control (Sprint 22) ───────────────────────────────────────
+// Filter-bar chip that sorts the active list by distance to an anchor point:
+// preset metro chips plus a free-typed city or ZIP. The chosen anchor is
+// remembered per list (see LOCATION_ANCHORS_KEY).
+function LocationSortControl({ anchor, onSet, onClear, geoData, geoError, onOpen }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [notFound, setNotFound] = useState(false);
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e) {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next) { setNotFound(false); onOpen?.(); }
+  }
+
+  function applyQuery() {
+    if (!query.trim() || !geoData) return;
+    const resolved = resolveAnchor(query, geoData);
+    if (resolved) {
+      onSet(resolved);
+      setQuery('');
+      setNotFound(false);
+      setOpen(false);
+    } else {
+      setNotFound(true);
+    }
+  }
+
+  return (
+    <div ref={boxRef} className="relative">
+      <button
+        onClick={toggle}
+        className={`text-xs font-semibold rounded-lg px-2.5 py-2 border transition-all whitespace-nowrap ${
+          anchor
+            ? 'bg-sky-500/15 border-sky-500/40 text-sky-300 hover:bg-sky-500/25'
+            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-sky-300 hover:border-sky-500/40'
+        }`}
+        title="Sort this list by distance to a city or ZIP"
+      >
+        {anchor ? `📍 Near ${anchor.label}` : '📍 Location'}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1.5 z-30 w-72 bg-slate-900 border border-slate-700 rounded-xl p-3 shadow-xl shadow-black/50 space-y-2.5">
+          <p className="text-xs font-semibold text-slate-400 uppercase">Sort by distance to</p>
+          <div className="flex flex-wrap gap-1.5">
+            {PRESET_ANCHORS.map(p => (
+              <button
+                key={p.label}
+                onClick={() => { onSet({ label: p.label, coords: p.coords }); setOpen(false); }}
+                className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-all ${
+                  anchor?.label === p.label
+                    ? 'bg-sky-500/20 border-sky-500/50 text-sky-300'
+                    : 'border-slate-700 text-slate-300 hover:border-sky-500/40 hover:text-sky-300'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            <input
+              value={query}
+              onChange={e => { setQuery(e.target.value); setNotFound(false); }}
+              onKeyDown={e => { if (e.key === 'Enter') applyQuery(); }}
+              placeholder={geoData ? 'City or ZIP (e.g. Cleburne, 76033)' : 'Loading location data…'}
+              disabled={!geoData && !geoError}
+              className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-sky-500"
+            />
+            <button
+              onClick={applyQuery}
+              disabled={!geoData || !query.trim()}
+              className="text-xs font-bold px-3 py-1.5 rounded-lg bg-sky-500/15 border border-sky-500/40 text-sky-300 hover:bg-sky-500/25 disabled:opacity-40 transition-all"
+            >
+              Set
+            </button>
+          </div>
+          {notFound && <p className="text-xs text-red-400">Couldn't find that city — try "City, ST" or a ZIP code.</p>}
+          {geoError && <p className="text-xs text-red-400">{geoError}</p>}
+          {anchor && (
+            <button onClick={() => { onClear(); setOpen(false); }} className="text-xs font-semibold text-slate-500 hover:text-red-400 transition-all">
+              ✕ Clear location sort
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Call Mode queue builders (Sprint 6) ──────────────────────────────────────
@@ -1836,6 +1943,37 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [relationshipFilter, setRelationshipFilter] = useState('all');
   const [leadSourceFilter, setLeadSourceFilter] = useState('all');
   const [search, setSearch]         = useState('');
+
+  // Sprint 22 — location sort. Each list remembers its own anchor ("sort the
+  // car wash list around DFW") in localStorage, mirroring how Call Mode
+  // remembers queue positions. Distances come from static ZIP-centroid data
+  // (src/lib/geo.js) loaded lazily the first time an anchor is set.
+  const [locationAnchors, setLocationAnchors] = useState(() => readStoredJson(LOCATION_ANCHORS_KEY, {}));
+  const [geoData, setGeoData] = useState(null);
+  const [geoError, setGeoError] = useState(null);
+  // Also load geo data as soon as the picker opens, so typing "Cleburne"
+  // resolves immediately instead of waiting until after an anchor is set.
+  const [geoWanted, setGeoWanted] = useState(false);
+  const locationAnchor = activeListId != null ? (locationAnchors[activeListId] ?? null) : null;
+
+  function setLocationAnchor(anchor) {
+    if (activeListId == null) return;
+    setLocationAnchors(prev => {
+      const next = { ...prev };
+      if (anchor) next[activeListId] = anchor; else delete next[activeListId];
+      try { localStorage.setItem(LOCATION_ANCHORS_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    if ((!locationAnchor && !geoWanted) || geoData) return;
+    let cancelled = false;
+    loadGeoData()
+      .then(d => { if (!cancelled) { setGeoData(d); setGeoError(null); } })
+      .catch(() => { if (!cancelled) setGeoError('Location data failed to load — check your connection.'); });
+    return () => { cancelled = true; };
+  }, [locationAnchor, geoWanted, geoData]);
   const [openContact, setOpenContact] = useState(null);
 
   // Call queue state
@@ -1849,7 +1987,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // Filtered contacts
   const filtered = useMemo(() => {
     if (activeListId === null) return [];
-    return contacts.filter(c => {
+    const result = contacts.filter(c => {
       if (activeListId !== 'all' && c.listId !== activeListId) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
       if (relationshipFilter !== 'all' && (c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE) !== relationshipFilter) return false;
@@ -1869,7 +2007,16 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       }
       return true;
     });
-  }, [contacts, activeListId, statusFilter, relationshipFilter, leadSourceFilter, search]);
+    // Location sort: nearest first, contacts without a usable ZIP sink to the
+    // bottom in their original order. Each row carries _distanceMiles for the
+    // card badge and Call Mode.
+    if (locationAnchor && geoData) {
+      return result
+        .map(c => ({ ...c, _distanceMiles: contactDistanceMiles(c, locationAnchor.coords, geoData.zips) }))
+        .sort((a, b) => (a._distanceMiles ?? Infinity) - (b._distanceMiles ?? Infinity));
+    }
+    return result;
+  }, [contacts, activeListId, statusFilter, relationshipFilter, leadSourceFilter, search, locationAnchor, geoData]);
 
   const callQueue = useMemo(() =>
     filtered.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
@@ -2405,6 +2552,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               ownershipApi={ownershipApi}
               queueLabel={activeQueueDef?.label ?? 'Call Mode'}
               queueReasonText={activeQueueDef?.reason ?? ''}
+              locationLabel={callQueueSource === 'activeList' ? locationAnchor?.label : null}
               onExit={() => { setSubView('contacts'); setCallQueueSource(null); }}
               onBackToPicker={() => setCallQueueSource(null)}
             />
@@ -2468,6 +2616,14 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 <option value="all">All Lead Sources</option>
                 {LEAD_SOURCES.map(sourceOption => <option key={sourceOption} value={sourceOption}>{sourceOption}</option>)}
               </select>
+              <LocationSortControl
+                anchor={locationAnchor}
+                onSet={setLocationAnchor}
+                onClear={() => setLocationAnchor(null)}
+                geoData={geoData}
+                geoError={geoError}
+                onOpen={() => setGeoWanted(true)}
+              />
               <div className="flex flex-wrap gap-1.5">
                 {[
                   { label: 'Due Today', queue: 'today' },
@@ -2815,7 +2971,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi }) {
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker }) {
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
@@ -2990,6 +3146,11 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   {STATUS_LABELS[current.status] ?? 'Fresh'}
                 </StatusBadge>
                 {current.market && <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md font-semibold">{current.market}</span>}
+                {current._distanceMiles != null && (
+                  <span className="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2 py-0.5 rounded-md whitespace-nowrap">
+                    📍 {Math.round(current._distanceMiles)} mi{locationLabel ? ` from ${locationLabel}` : ''}
+                  </span>
+                )}
                 <SourceBadge source={current.source} />
               </div>
               <HeaderInlineField
