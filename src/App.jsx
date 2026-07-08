@@ -22,7 +22,7 @@ const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Analyst', 'Calen
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
-  const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, mutateClientLog } = useCRM();
+  const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog } = useCRM();
   const db = useDatabase(); // shared Database state (lifted so contacts can move to/from Clients)
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { calendarEvents } = useCalendarEvents();
@@ -308,6 +308,7 @@ export default function App() {
             onOpenContact={handleOpenContact}
             onEditClient={handleEdit}
             onLogClientAction={logClientAction}
+            onDeleteClientAction={deleteClientAction}
             taskApi={taskApi}
             review={{
               items: reviewItems,
@@ -327,6 +328,7 @@ export default function App() {
               onEdit={handleEdit}
               onStageChange={moveClientToStage}
               onLogAction={logClientAction}
+              onDeleteAction={deleteClientAction}
               onMoveToDatabase={handleClientToDatabase}
               filter={filter}
               taskApi={taskApi}
@@ -361,6 +363,7 @@ export default function App() {
                     onSetAction={setClientAction}
                     onMoveToDatabase={handleClientToDatabase}
                     onLogAction={logClientAction}
+                    onDeleteAction={deleteClientAction}
                     taskApi={taskApi}
                     ownershipApi={ownershipApi}
                   />
@@ -382,6 +385,7 @@ export default function App() {
               onStageChange: moveClientToStage,
               onSetAction: setClientAction,
               onLogAction: logClientAction,
+              onDeleteAction: deleteClientAction,
             }}
             taskApi={taskApi}
             entryRequest={dbEntryRequest}

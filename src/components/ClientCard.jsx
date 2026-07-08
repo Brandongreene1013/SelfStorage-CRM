@@ -6,7 +6,7 @@ import OwnershipLinksPanel from './OwnershipLinksPanel';
 import { StatusBadge } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
-export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, compact = false, taskApi, ownershipApi }) {
+export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, onDeleteAction, compact = false, taskApi, ownershipApi }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
   const { openFile } = useFileStorage();
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
@@ -318,6 +318,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         subtitle={client.facilityName}
         actionLog={client.actionLog}
         onSave={(entry) => onLogAction(client.id, entry)}
+        onDelete={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
         onClose={() => setShowLogModal(false)}
       />
     )}

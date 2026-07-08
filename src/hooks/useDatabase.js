@@ -1317,6 +1317,31 @@ export function useDatabase() {
     });
   }, []);
 
+  const deleteContactAction = useCallback((contactId, actionIndex) => {
+    setContacts(prev => {
+      const c = prev.find(x => x.id === contactId);
+      if (!c) return prev;
+      const nextLog = (c.actionLog ?? []).filter((_, idx) => idx !== actionIndex);
+      supabase.from('contacts').update({ action_log: nextLog, updated_at: new Date().toISOString() }).eq('id', contactId).then(() => {});
+      return prev.map(x => x.id === contactId ? { ...x, actionLog: nextLog } : x);
+    });
+  }, []);
+
+  const deleteContactCallHistory = useCallback((contactId, historyIndex) => {
+    setContacts(prev => {
+      const c = prev.find(x => x.id === contactId);
+      if (!c) return prev;
+      const nextHistory = (c.callHistory ?? []).filter((_, idx) => idx !== historyIndex);
+      const lastCall = nextHistory[nextHistory.length - 1];
+      supabase.from('contacts').update({
+        call_history: nextHistory,
+        last_called: lastCall?.date ?? null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', contactId).then(() => {});
+      return prev.map(x => x.id === contactId ? { ...x, callHistory: nextHistory, lastCalled: lastCall?.date ?? null } : x);
+    });
+  }, []);
+
   // Move a contact into a different list (drag-and-drop between Database lists)
   const moveContactToList = useCallback(async (contactId, listId) => {
     const { error } = await supabase
@@ -1428,6 +1453,8 @@ export function useDatabase() {
     deleteContact,
     addToMasterDB,
     logContactAction,
+    deleteContactAction,
+    deleteContactCallHistory,
     mutateContactLog,
   };
 }

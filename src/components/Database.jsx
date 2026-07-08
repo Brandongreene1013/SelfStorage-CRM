@@ -947,7 +947,7 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
   );
 }
 
-function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, taskApi, ownershipApi }) {
+function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteAction, onDeleteCallHistory, taskApi, ownershipApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1143,13 +1143,24 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Call History</p>
               <div className="space-y-1.5">
-                {[...contact.callHistory].reverse().map((h, i) => (
-                  <div key={i} className="flex items-start gap-3 text-xs bg-slate-800 rounded-lg px-3 py-2">
+                {contact.callHistory.map((h, index) => ({ h, index })).reverse().map(({ h, index }) => (
+                  <div key={index} className="flex items-start gap-3 text-xs bg-slate-800 rounded-lg px-3 py-2">
                     <span className="text-slate-500 flex-shrink-0">{h.date}</span>
                     <span className={`font-semibold flex-shrink-0 ${STATUS_COLORS[h.outcome]?.split(' ').find(c => c.startsWith('text-')) ?? 'text-slate-400'}`}>
                       {STATUS_LABELS[h.outcome] ?? h.outcome}
                     </span>
                     {h.notes && <span className="text-slate-400 italic truncate">{h.notes}</span>}
+                    {onDeleteCallHistory && (
+                      <button
+                        onClick={() => {
+                          if (confirm('Delete this logged call?')) onDeleteCallHistory(contact.id, index);
+                        }}
+                        className="ml-auto text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
+                        title="Delete logged call"
+                      >
+                        x
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1194,7 +1205,7 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, isMasterDB, lists = [], onMoveToList, onToClients, taskApi }) {
+function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, lists = [], onMoveToList, onToClients, taskApi }) {
   const [added, setAdded] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -1437,6 +1448,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           subtitle={contact.facilityName}
           actionLog={contact.actionLog}
           onSave={(entry) => onLogAction(contact.id, entry)}
+          onDelete={onDeleteAction ? (index) => onDeleteAction(contact.id, index) : undefined}
           onClose={() => setShowLog(false)}
         />
       )}
@@ -1790,7 +1802,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     importList, importIntoList, mergeDuplicateContact, moveContactToList, createList, addContact,
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
-    addToMasterDB, logContactAction,
+    addToMasterDB, logContactAction, deleteContactAction, deleteContactCallHistory,
     duplicateDismissals, dismissedDuplicateKeys, dismissalStorage, dismissDuplicateGroup, restoreDuplicateGroup,
   } = db;
   const ownershipApi = useOwnership();
@@ -2384,6 +2396,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               onSaveNotes={updateContactNotes}
               onUpdateContact={updateContact}
               onDeleteContact={deleteContact}
+              onDeleteAction={deleteContactAction}
+              onDeleteCallHistory={deleteContactCallHistory}
               onPromote={onContactToClients}
               onMoveToMaster={(contact) => moveContactToList(contact.id, masterListId)}
               masterListId={masterListId}
@@ -2543,6 +2557,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     onAddToMasterDB={addToMasterDB}
                     onSetAction={(id, fields) => updateContact(id, fields)}
                     onLogAction={logContactAction}
+                    onDeleteAction={deleteContactAction}
                     isMasterDB={masterView}
                     lists={lists}
                     onMoveToList={moveContactToList}
@@ -2561,6 +2576,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     onStageChange={clientHandlers.onStageChange}
                     onSetAction={clientHandlers.onSetAction}
                     onLogAction={clientHandlers.onLogAction}
+                    onDeleteAction={clientHandlers.onDeleteAction}
                     taskApi={taskApi}
                     ownershipApi={ownershipApi}
                   />
@@ -2587,6 +2603,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           onNotesChange={updateContactNotes}
           onUpdate={updateContact}
           onDelete={(id) => { deleteContact(id); setOpenContact(null); }}
+          onDeleteAction={deleteContactAction}
+          onDeleteCallHistory={deleteContactCallHistory}
           taskApi={taskApi}
           ownershipApi={ownershipApi}
         />
@@ -2797,7 +2815,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi }) {
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, queueLabel, queueReasonText, onExit, onBackToPicker }) {
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
@@ -2910,7 +2928,10 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const nextTask = getNextOpenTask(openTasks);
   const due = dueMeta(nextTask?.dueDate);
   const latestCall = [...(current.callHistory ?? [])].reverse()[0];
-  const recentActivity = [...(current.actionLog ?? [])].reverse().slice(0, 4);
+  const recentActivity = (current.actionLog ?? [])
+    .map((entry, index) => ({ entry, index }))
+    .reverse()
+    .slice(0, 4);
 
   async function finalizePostOutcome(followUpKind) {
     if (activePostOutcome?.completeExisting && current?.queueTaskId) {
@@ -3137,11 +3158,24 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             <h3 className="text-sm font-black text-white mb-3">Call History</h3>
             {current.callHistory?.length > 0 ? (
               <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-                {[...current.callHistory].reverse().slice(0, 8).map((h, i) => (
-                  <div key={i} className="text-xs bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
+                {current.callHistory.map((h, index) => ({ h, index })).reverse().slice(0, 8).map(({ h, index }) => (
+                  <div key={index} className="text-xs bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-bold text-slate-300">{STATUS_LABELS[h.outcome] ?? h.outcome}</span>
-                      <span className="text-slate-600">{h.date}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-600">{h.date}</span>
+                        {onDeleteCallHistory && (
+                          <button
+                            onClick={() => {
+                              if (confirm('Delete this logged call?')) onDeleteCallHistory(current.id, index);
+                            }}
+                            className="text-slate-600 hover:text-red-400 font-black px-1"
+                            title="Delete logged call"
+                          >
+                            x
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {h.notes && <p className="text-slate-500 mt-0.5 line-clamp-2">{h.notes}</p>}
                   </div>
@@ -3156,9 +3190,20 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             <h3 className="text-sm font-black text-white mb-3">Activity</h3>
             {recentActivity.length > 0 ? (
               <div className="space-y-1.5">
-                {recentActivity.map((entry, i) => (
-                  <div key={i} className="text-xs text-slate-400 bg-slate-800 rounded-lg px-3 py-2">
-                    {entry.note || entry.type || 'Action'} {entry.date ? `· ${entry.date}` : ''}
+                {recentActivity.map(({ entry, index }) => (
+                  <div key={index} className="flex items-center gap-2 text-xs text-slate-400 bg-slate-800 rounded-lg px-3 py-2">
+                    <span className="truncate flex-1">{entry.note || entry.type || 'Action'} {entry.date ? `- ${entry.date}` : ''}</span>
+                    {onDeleteAction && (
+                      <button
+                        onClick={() => {
+                          if (confirm('Delete this activity?')) onDeleteAction(current.id, index);
+                        }}
+                        className="text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
+                        title="Delete activity"
+                      >
+                        x
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

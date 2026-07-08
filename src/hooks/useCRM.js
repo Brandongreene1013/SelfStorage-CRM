@@ -172,5 +172,15 @@ export function useCRM() {
     });
   }, []);
 
-  return { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, mutateClientLog };
+  const deleteClientAction = useCallback((id, actionIndex) => {
+    setClients(prev => {
+      const client = prev.find(c => c.id === id);
+      if (!client) return prev;
+      const nextLog = (client.actionLog ?? []).filter((_, idx) => idx !== actionIndex);
+      supabase.from('clients').update({ action_log: nextLog, updated_at: new Date().toISOString() }).eq('id', id).then(() => {});
+      return prev.map(c => c.id === id ? { ...c, actionLog: nextLog } : c);
+    });
+  }, []);
+
+  return { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog };
 }

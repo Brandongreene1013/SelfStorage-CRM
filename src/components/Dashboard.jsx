@@ -257,7 +257,7 @@ function CallbackCommandCenter({ todayCallbacks, overdueCallbacks, upcomingCallb
   );
 }
 
-function PipelineAttentionActions({ rows, onEditClient, onLogClientAction, taskApi }) {
+function PipelineAttentionActions({ rows, onEditClient, onLogClientAction, onDeleteClientAction, taskApi }) {
   const [loggingClient, setLoggingClient] = useState(null);
   const [taskClient, setTaskClient] = useState(null);
 
@@ -308,6 +308,10 @@ function PipelineAttentionActions({ rows, onEditClient, onLogClientAction, taskA
           subtitle={loggingClient.facilityName}
           actionLog={loggingClient.actionLog}
           onSave={(entry) => onLogClientAction?.(loggingClient.id, entry)}
+          onDelete={onDeleteClientAction ? (index) => {
+            onDeleteClientAction(loggingClient.id, index);
+            setLoggingClient(prev => prev ? { ...prev, actionLog: (prev.actionLog ?? []).filter((_, idx) => idx !== index) } : prev);
+          } : undefined}
           onClose={() => setLoggingClient(null)}
         />
       )}
@@ -756,7 +760,7 @@ function DashboardTasks({ taskApi }) {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard({
   clients, contacts = [], meetings = [], onNavigateCalendar,
-  onStartCallMode, onOpenCallQueue, onOpenDatabaseFilter, onOpenContact, onEditClient, onLogClientAction, onMoveToMasterDB, masterListId, review, taskApi,
+  onStartCallMode, onOpenCallQueue, onOpenDatabaseFilter, onOpenContact, onEditClient, onLogClientAction, onDeleteClientAction, onMoveToMasterDB, masterListId, review, taskApi,
 }) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
@@ -864,17 +868,17 @@ export default function Dashboard({
             />
           </div>
           <div className="space-y-4">
-            <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} taskApi={taskApi} />
+            <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} onDeleteClientAction={onDeleteClientAction} taskApi={taskApi} />
             <NeedsFollowUp rows={followUpRows} onCallContact={onOpenContact} onEditClient={onEditClient} onMoveToMasterDB={onMoveToMasterDB} />
           </div>
         </div>
       ) : followUpRows.length > 0 ? (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} taskApi={taskApi} />
+          <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} onDeleteClientAction={onDeleteClientAction} taskApi={taskApi} />
           <NeedsFollowUp rows={followUpRows} onCallContact={onOpenContact} onEditClient={onEditClient} onMoveToMasterDB={onMoveToMasterDB} />
         </div>
       ) : (
-        <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} taskApi={taskApi} />
+        <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} onDeleteClientAction={onDeleteClientAction} taskApi={taskApi} />
       )}
 
       {/* ── KPI Strip ── */}

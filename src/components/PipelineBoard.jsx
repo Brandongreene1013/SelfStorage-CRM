@@ -16,7 +16,7 @@ import { StatusBadge } from './ui';
 import { NextActionIndicator, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
 /* ── Draggable client chip ── */
-function DraggableChip({ client, onEdit, onLogAction, onMoveToDatabase, taskApi }) {
+function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDatabase, taskApi }) {
   const [showLog, setShowLog] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -160,6 +160,7 @@ function DraggableChip({ client, onEdit, onLogAction, onMoveToDatabase, taskApi 
           subtitle={client.facilityName}
           actionLog={client.actionLog}
           onSave={(entry) => onLogAction(client.id, entry)}
+          onDelete={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
           onClose={() => setShowLog(false)}
         />
       )}
@@ -178,7 +179,7 @@ function DraggableChip({ client, onEdit, onLogAction, onMoveToDatabase, taskApi 
 }
 
 /* ── Droppable column ── */
-function StageColumn({ stage, clients, onEdit, onLogAction, onMoveToDatabase, taskApi, isOver: isOverProp }) {
+function StageColumn({ stage, clients, onEdit, onLogAction, onDeleteAction, onMoveToDatabase, taskApi, isOver: isOverProp }) {
   const { setNodeRef, isOver } = useDroppable({ id: String(stage.id) });
   const active = isOver || isOverProp;
 
@@ -216,7 +217,7 @@ function StageColumn({ stage, clients, onEdit, onLogAction, onMoveToDatabase, ta
           </div>
         )}
         {clients.map(c => (
-          <DraggableChip key={c.id} client={c} onEdit={onEdit} onLogAction={onLogAction} onMoveToDatabase={onMoveToDatabase} taskApi={taskApi} />
+          <DraggableChip key={c.id} client={c} onEdit={onEdit} onLogAction={onLogAction} onDeleteAction={onDeleteAction} onMoveToDatabase={onMoveToDatabase} taskApi={taskApi} />
         ))}
       </div>
     </div>
@@ -239,7 +240,7 @@ function OverlayChip({ client }) {
 }
 
 /* ── Main Pipeline Board ── */
-export default function PipelineBoard({ clients, onEdit, onStageChange, onLogAction, onMoveToDatabase, filter, taskApi }) {
+export default function PipelineBoard({ clients, onEdit, onStageChange, onLogAction, onDeleteAction, onMoveToDatabase, filter, taskApi }) {
   const [activeClient, setActiveClient] = useState(null);
 
   const sensors = useSensors(
@@ -279,6 +280,7 @@ export default function PipelineBoard({ clients, onEdit, onStageChange, onLogAct
             clients={filteredClients.filter(c => c.stageId === stage.id)}
             onEdit={onEdit}
             onLogAction={onLogAction}
+            onDeleteAction={onDeleteAction}
             onMoveToDatabase={onMoveToDatabase}
             taskApi={taskApi}
           />
