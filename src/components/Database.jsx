@@ -315,6 +315,51 @@ function PrimaryPhoneEditor({ phone = '', onSave }) {
   );
 }
 
+function CopyableAddressTile({ address }) {
+  const [copied, setCopied] = useState(false);
+  if (!address) return null;
+
+  async function copyAddress() {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // If clipboard permissions are blocked, the visible text is still
+      // selectable for manual copy.
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Address</p>
+          <p className="select-text text-sm text-slate-200 break-words">{address}</p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button
+            type="button"
+            onClick={copyAddress}
+            className="text-xs font-bold bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded-lg px-2 py-1.5 transition-all"
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-bold bg-blue-600/15 hover:bg-blue-600/25 border border-blue-600/30 text-blue-300 rounded-lg px-2 py-1.5 transition-all"
+          >
+            Maps
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onClose }) {
   return (
     <ModalLayout onClose={onClose} size="sm" className="p-6 text-center">
@@ -2955,12 +3000,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {current.email && <a href={`mailto:${current.email}`} className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-blue-300 hover:text-blue-200 truncate">Email: {current.email}</a>}
-            {current.address && (
-              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(current.address)}`} target="_blank" rel="noopener noreferrer"
-                className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-300 hover:text-white truncate">
-                Address: {current.address}
-              </a>
-            )}
+            <CopyableAddressTile address={current.address} />
             {latestCall && (
               <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
                 <p className="text-xs text-slate-500 uppercase font-semibold">Last Call</p>
