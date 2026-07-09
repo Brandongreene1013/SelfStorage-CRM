@@ -600,7 +600,7 @@ function OwnershipLinksPanel({ contact, ownershipApi, onUpdate }) {
                     title="Delete this property"
                     className="text-xs text-slate-600 hover:text-red-400 px-1.5 py-1 transition-all flex-shrink-0"
                   >
-                    ✕
+                    x
                   </button>
                 )}
               </div>
@@ -1019,7 +1019,7 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
               onChange={field('facilityName')}
             />
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white text-2xl leading-none p-1 flex-shrink-0">✕</button>
+          <button onClick={onClose} className="text-slate-500 hover:text-white text-2xl leading-none p-1 flex-shrink-0">x</button>
         </div>
 
         <div className="flex-1 overflow-auto p-5 space-y-5">
@@ -1066,6 +1066,8 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
             </div>
             <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')}
               href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
+            <EditableField label="Mailing Address" value={contact.mailingAddress} placeholder="Click to add mailing address" onChange={field('mailingAddress')}
+              href={contact.mailingAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.mailingAddress)}` : null} />
           </div>
 
           <OwnershipLinksPanel contact={contact} ownershipApi={ownershipApi} onUpdate={onUpdate} />
@@ -1475,7 +1477,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
               : 'bg-transparent border-slate-700 text-slate-500 hover:border-amber-500/40 hover:text-amber-400'
           }`}
         >
-          {added ? '✓ Added to Master DB' : '★ Add to Master Database'}
+          {added ? 'Added to Master DB' : 'Add to Master Database'}
         </button>
       )}
     </div>
@@ -1485,11 +1487,11 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
 // ─── Add Contact Modal ────────────────────────────────────────────────────────
 function AddContactModal({ listName, onSave, onClose }) {
   const [form, setForm] = useState({
-    ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', state: '', notes: '',
+    ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', mailingAddress: '', state: '', notes: '',
   });
 
   function set(key, val) { setForm(prev => ({ ...prev, [key]: val })); }
-  const blankForm = { ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', state: '', notes: '' };
+  const blankForm = { ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', mailingAddress: '', state: '', notes: '' };
 
   function handleSave() {
     if (!form.ownerName.trim() && !form.facilityName.trim()) return;
@@ -1510,6 +1512,7 @@ function AddContactModal({ listName, onSave, onClose }) {
     { key: 'phone',        label: 'Phone',           placeholder: '(555) 000-0000',          type: 'tel'  },
     { key: 'email',        label: 'Email',           placeholder: 'john@abcstorage.com',     type: 'email'},
     { key: 'address',      label: 'Address',         placeholder: '123 Main St, City, FL',   type: 'text' },
+    { key: 'mailingAddress', label: 'Mailing Address', placeholder: 'PO Box 123, City, FL',  type: 'text' },
   ];
 
   const canSave = form.ownerName.trim() || form.facilityName.trim();
@@ -1521,7 +1524,7 @@ function AddContactModal({ listName, onSave, onClose }) {
             <h2 className="text-base font-black text-white">Add Contact</h2>
             <p className="text-xs text-slate-500 mt-0.5">Adding to: <span className="text-amber-400">{listName}</span></p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
+          <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">x</button>
         </div>
 
         <div className="p-5 space-y-3 flex-1 overflow-y-auto min-h-0">
@@ -1810,7 +1813,7 @@ function LocationSortControl({ anchor, onSet, onClear, geoData, geoError, onOpen
           {geoError && <p className="text-xs text-red-400">{geoError}</p>}
           {anchor && (
             <button onClick={() => { onClear(); setOpen(false); }} className="text-xs font-semibold text-slate-500 hover:text-red-400 transition-all">
-              ✕ Clear location sort
+              Clear location sort
             </button>
           )}
         </div>
@@ -1998,6 +2001,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           (c.phone ?? '').includes(q) ||
           (c.email ?? '').toLowerCase().includes(q) ||
           (c.address ?? '').toLowerCase().includes(q) ||
+          (c.mailingAddress ?? '').toLowerCase().includes(q) ||
           (c.market ?? '').toLowerCase().includes(q)
         );
       }
@@ -2224,6 +2228,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         return (cl.name ?? '').toLowerCase().includes(q)
           || (cl.facilityName ?? '').toLowerCase().includes(q)
           || (cl.address ?? '').toLowerCase().includes(q)
+          || (cl.mailingAddress ?? '').toLowerCase().includes(q)
           || (cl.phone ?? '').includes(q)
           || (cl.email ?? '').toLowerCase().includes(q);
       })
@@ -2315,7 +2320,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           className="bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300 font-bold px-3 py-2 rounded-xl text-sm transition-all flex items-center justify-center gap-1.5"
           title="Create blank list"
         >
-          ✎ New
+          New
         </button>
         </div>
 
@@ -2485,7 +2490,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       <div className="flex-1 min-w-0 space-y-4">
         {activeListId === null && subView !== 'callQueue' && subView !== 'duplicates' && subView !== 'ownership' && (
           <EmptyState
-            icon="📂"
+            icon={null}
             title="No list selected"
             message="Select a list from the left, or create a new one."
           />
@@ -2679,7 +2684,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     onClick={() => setShowMasterImport(true)}
                     className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 text-emerald-400 font-bold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
                   >
-                    ⬆ Bulk Upload
+                    Bulk Upload
                   </button>
                 </>
               )}
@@ -2788,7 +2793,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         />
       )}
 
-      {/* ── New Blank List modal ── */}
+      {/* New Blank List modal */}
       {showNewList && (
         <ModalLayout onClose={() => setShowNewList(false)} size="sm" className="p-6 space-y-4">
             <h2 className="text-base font-black text-white">Create Blank List</h2>
@@ -2940,6 +2945,8 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi }) {
       </div>
       <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')}
         href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
+      <EditableField label="Mailing Address" value={contact.mailingAddress} placeholder="Click to add mailing address" onChange={field('mailingAddress')}
+        href={contact.mailingAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.mailingAddress)}` : null} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Relationship Type</label>
@@ -3235,6 +3242,14 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   {current.email && <a href={`mailto:${current.email}`} className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-blue-300 hover:text-blue-200 truncate">Email: {current.email}</a>}
                   <CopyableAddressTile address={current.address} />
                 </div>
+                <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+                  <EditableField
+                    label="Mailing Address"
+                    value={current.mailingAddress}
+                    placeholder="Click to add mailing address"
+                    onChange={(v) => onUpdateContact?.(current.id, { mailingAddress: v })}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -3480,6 +3495,8 @@ function MarketsView({ contacts }) {
     </div>
   );
 }
+
+
 
 
 

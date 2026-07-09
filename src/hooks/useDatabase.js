@@ -509,6 +509,7 @@ function contactInsertRow(listId, c, meta = {}) {
     alternate_phones: c.alternatePhones ?? [],
     email: c.email,
     address: c.address,
+    mailing_address: c.mailingAddress ?? '',
     state: c.state,
     notes: c.notes ?? '',
     status: 'fresh',
@@ -534,6 +535,11 @@ function stripContactExpansionColumns(row) {
 
 function stripContactSprint18Columns(row) {
   const { lead_source: _leadSource, ownership_group_id: _ownershipGroupId, ...rest } = row;
+  return rest;
+}
+
+function stripContactMailingAddressColumn(row) {
+  const { mailing_address: _mailingAddress, ...rest } = row;
   return rest;
 }
 
@@ -587,6 +593,7 @@ function mergeImportedContact(existing, incoming, meta) {
   if (!existing.leadSource && incoming.leadSource) updates.leadSource = incoming.leadSource;
   if (!existing.email && incoming.email) updates.email = incoming.email;
   if (!existing.address && incoming.address) updates.address = incoming.address;
+  if (!existing.mailingAddress && incoming.mailingAddress) updates.mailingAddress = incoming.mailingAddress;
   if (!existing.state && incoming.state) updates.state = incoming.state;
   if (!existing.source && meta.source) updates.source = meta.source;
   if (!existing.importFilename && meta.fileName) updates.importFilename = meta.fileName;
@@ -612,6 +619,7 @@ function updatePayloadFromFields(fields) {
   if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
   if (fields.email !== undefined) dbFields.email = fields.email;
   if (fields.address !== undefined) dbFields.address = fields.address;
+  if (fields.mailingAddress !== undefined) dbFields.mailing_address = fields.mailingAddress;
   if (fields.state !== undefined) dbFields.state = fields.state;
   if (fields.notes !== undefined) dbFields.notes = fields.notes;
   if (fields.status !== undefined) dbFields.status = fields.status;
@@ -747,6 +755,7 @@ export function parseImportData(text, options = {}) {
       alternatePhones,
       email: cols[fieldMap.email] ?? '',
       address,
+      mailingAddress: fieldMap.mailingAddress != null ? (cols[fieldMap.mailingAddress] ?? '') : '',
       state,
       market,
       importSource: cols[fieldMap.source] ?? '',
@@ -790,6 +799,7 @@ function dbToContact(row) {
     alternatePhones: Array.isArray(row.alternate_phones) ? row.alternate_phones : [],
     email: row.email ?? '',
     address: row.address ?? '',
+    mailingAddress: row.mailing_address ?? '',
     city: row.city ?? '',
     state: row.state ?? '',
     market: row.city && row.state ? `${row.city}, ${row.state}` : (row.state ?? ''),
@@ -977,6 +987,10 @@ export function useDatabase() {
       insertRows = insertRows.map(stripContactSourceColumns);
       res = await supabase.from('contacts').insert(insertRows).select();
     }
+    if (res.error && isMissingColumnError(res.error, 'mailing_address')) {
+      insertRows = insertRows.map(stripContactMailingAddressColumn);
+      res = await supabase.from('contacts').insert(insertRows).select();
+    }
     return res;
   }
 
@@ -997,6 +1011,7 @@ export function useDatabase() {
         relationship_type: _relationshipTypeColumn,
         lead_source: _leadSourceColumn,
         ownership_group_id: _ownershipGroupIdColumn,
+        mailing_address: _mailingAddressColumn,
         source: _sourceColumn,
         import_filename: _importFilenameColumn,
         imported_at: _importedAtColumn,
@@ -1004,7 +1019,7 @@ export function useDatabase() {
       } = dbFields;
       res = await supabase.from('contacts').update(withoutNewerColumns).eq('id', contactId);
       if (!res.error) {
-        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, leadSource: _leadSource, ownershipGroupId: _ownershipGroupId, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
+        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, leadSource: _leadSource, ownershipGroupId: _ownershipGroupId, mailingAddress: _mailingAddress, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
         fields = appFields;
       }
     }
@@ -1206,6 +1221,7 @@ export function useDatabase() {
       phone: fields.phone ?? '',
       email: fields.email ?? '',
       address: fields.address ?? '',
+      mailing_address: fields.mailingAddress ?? '',
       state: fields.state ?? state,
       status: 'fresh',
       call_history: [],
@@ -1226,6 +1242,12 @@ export function useDatabase() {
       isMissingColumnError(error, 'ownership_group_id')
     )) {
       payload = stripContactSprint18Columns(payload);
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
+    if (error && isMissingColumnError(error, 'mailing_address')) {
+      payload = stripContactMailingAddressColumn(payload);
       const retry = await supabase.from('contacts').insert([payload]).select().single();
       row = retry.data;
       error = retry.error;
@@ -1252,6 +1274,9 @@ export function useDatabase() {
     if (error && isMissingColumnError(error, 'alternate_phones')) {
       return { error: 'alternate_phones_migration_needed' };
     }
+    if (error && fields.mailingAddress !== undefined && /mailing_address/i.test(error.message ?? '')) {
+      return { error: 'Run sql/mailing_address_migration.sql in Supabase, then refresh to save mailing addresses.' };
+    }
     if (error && (
       isMissingColumnError(error, 'owner_entity')
       || isMissingColumnError(error, 'relationship_type')
@@ -1266,6 +1291,7 @@ export function useDatabase() {
         relationship_type: _relationshipTypeColumn,
         lead_source: _leadSourceColumn,
         ownership_group_id: _ownershipGroupIdColumn,
+        mailing_address: _mailingAddressColumn,
         source: _sourceColumn,
         import_filename: _importFilenameColumn,
         imported_at: _importedAtColumn,
@@ -1274,7 +1300,7 @@ export function useDatabase() {
       const retry = await supabase.from('contacts').update(withoutNewerColumns).eq('id', contactId);
       error = retry.error;
       if (!error) {
-        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, leadSource: _leadSource, ownershipGroupId: _ownershipGroupId, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
+        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, leadSource: _leadSource, ownershipGroupId: _ownershipGroupId, mailingAddress: _mailingAddress, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
         fields = appFields;
       }
     }
@@ -1393,6 +1419,7 @@ export function useDatabase() {
       alternate_phones: contact.alternatePhones ?? [],
       email: contact.email ?? '',
       address: contact.address ?? '',
+      mailing_address: contact.mailingAddress ?? '',
       state: contact.state ?? '',
       notes: contact.notes ?? '',
       status: contact.status === 'fresh' ? 'conversation' : (contact.status ?? 'conversation'),
@@ -1417,6 +1444,12 @@ export function useDatabase() {
       isMissingColumnError(error, 'ownership_group_id')
     )) {
       payload = stripContactSprint18Columns(payload);
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
+    if (error && isMissingColumnError(error, 'mailing_address')) {
+      payload = stripContactMailingAddressColumn(payload);
       const retry = await supabase.from('contacts').insert([payload]).select().single();
       row = retry.data;
       error = retry.error;

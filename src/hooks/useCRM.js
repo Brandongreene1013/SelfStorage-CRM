@@ -33,6 +33,7 @@ export function useCRM() {
       propertyType: row.property_type,
       facilityName: row.facility_name,
       address: row.address,
+      mailingAddress: row.mailing_address ?? '',
       phone: row.phone,
       email: row.email,
       units: row.units,
@@ -60,6 +61,7 @@ export function useCRM() {
       property_type: data.propertyType,
       facility_name: data.facilityName,
       address: data.address,
+      mailing_address: data.mailingAddress ?? '',
       phone: data.phone,
       email: data.email,
       units: data.units ?? null,
@@ -90,18 +92,29 @@ export function useCRM() {
       dbRow = withoutOwnership;
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
+    if (error && isMissingColumnError(error, 'mailing_address')) {
+      const { mailing_address: _mailingAddress, ...withoutMailing } = dbRow;
+      dbRow = withoutMailing;
+      ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
+    }
     if (!error && row) {
       setClients(prev => [...prev, dbToClient(row)]);
     }
   }, []);
 
   const updateClient = useCallback(async (id, data) => {
-    const { data: row, error } = await supabase
+    let dbRow = { ...clientToDb(data), updated_at: new Date().toISOString() };
+    let { data: row, error } = await supabase
       .from('clients')
-      .update({ ...clientToDb(data), updated_at: new Date().toISOString() })
+      .update(dbRow)
       .eq('id', id)
       .select()
       .single();
+    if (error && isMissingColumnError(error, 'mailing_address')) {
+      const { mailing_address: _mailingAddress, ...withoutMailing } = dbRow;
+      dbRow = withoutMailing;
+      ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
+    }
     if (!error && row) {
       setClients(prev => prev.map(c => c.id === id ? dbToClient(row) : c));
     }

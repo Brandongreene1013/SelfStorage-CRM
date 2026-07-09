@@ -110,6 +110,12 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         </a>
       )}
 
+      {showDetails && client.mailingAddress && (
+        <p className="text-xs text-slate-500 mb-2 truncate" title={client.mailingAddress}>
+          Mail: {client.mailingAddress}
+        </p>
+      )}
+
       {/* Phone + Email */}
       {showDetails && (client.phone || client.email) && (
         <div className="flex flex-col gap-0.5 mb-2">

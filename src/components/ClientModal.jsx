@@ -12,6 +12,7 @@ const EMPTY = {
   phone: '',
   email: '',
   address: '',
+  mailingAddress: '',
   units: '',
   sqft: '',
   notes: '',
@@ -44,6 +45,7 @@ export default function ClientModal({ client, onSave, onClose }) {
         phone: client.phone ?? '',
         email: client.email ?? '',
         address: client.address ?? '',
+        mailingAddress: client.mailingAddress ?? '',
         units: client.units ?? '',
         sqft: client.sqft ?? '',
         notes: client.notes ?? '',
@@ -229,6 +231,18 @@ export default function ClientModal({ client, onSave, onClose }) {
                  View on Google Maps ↗
               </a>
             )}
+          </div>
+
+          {/* Mailing Address */}
+          <div>
+            <label className={labelCls}>Mailing Address</label>
+            <input
+              name="mailingAddress"
+              value={form.mailingAddress}
+              onChange={handleChange}
+              placeholder="Where they get mail — PO Box, home, office"
+              className={inputCls}
+            />
           </div>
 
           {/* Units + Sqft */}
