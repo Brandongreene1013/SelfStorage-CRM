@@ -69,7 +69,7 @@ function RecordCard({ contact, listName, isKeeper, isRecommended, isMerged, open
         </label>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {isRecommended && (
-            <span className="text-[10px] font-black bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 rounded px-1.5 py-0.5">★ RECOMMENDED</span>
+            <span className="text-[10px] font-black bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 rounded px-1.5 py-0.5">RECOMMENDED</span>
           )}
           {isMerged && (
             <span className="text-[10px] font-black bg-blue-600/20 text-blue-400 border border-blue-600/40 rounded px-1.5 py-0.5">MERGED</span>
@@ -329,7 +329,7 @@ export default function DuplicateReview({
 
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
           <p className="text-xs font-semibold text-amber-300">
-            ⚠ Review before deleting. Worked records with calls/tasks/notes are protected — they're never
+            Review before deleting. Worked records with calls/tasks/notes are protected - they're never
             the recommended delete, and deleting one anyway shows an extra warning.
           </p>
         </div>
@@ -356,7 +356,7 @@ export default function DuplicateReview({
         {dismissalStorage === 'local' && (
           <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg px-3 py-2">
             <p className="text-xs font-semibold text-blue-300">
-              💾 Dismissals are saved on THIS DEVICE ONLY. Run{' '}
+              Dismissals are saved on this device only. Run{' '}
               <span className="font-mono text-blue-200">sql/duplicate_dismissals_migration.sql</span> once in the
               Supabase SQL Editor to make them permanent and synced across devices. Everything still works in the meantime.
             </p>
@@ -366,7 +366,7 @@ export default function DuplicateReview({
 
       {visible.length === 0 ? (
         <EmptyState
-          icon={showingDismissed ? '🗂' : '✅'}
+          icon={null}
           title={showingDismissed
             ? 'No dismissed groups'
             : undismissed.length === 0 ? 'No duplicates found' : `No ${confidenceFilter.toLowerCase()}-confidence groups`}
@@ -434,3 +434,4 @@ export default function DuplicateReview({
     </div>
   );
 }
+

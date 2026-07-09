@@ -6,7 +6,14 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173,
-      "autoPort": true
+      "cwd": "C:\\Users\\bgreene\\OneDrive - Ripco Real Estate Corp\\Storage Hunters CRM"
+    },
+    {
+      "name": "prospector-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5174,
+      "cwd": "C:\\Users\\bgreene\\StorageProspector"
     }
   ]
 }
