@@ -921,9 +921,12 @@ export function useDatabase() {
   }, []);
 
   async function loadAll() {
+    // Bulk imports give hundreds of contacts the SAME created_at, and Postgres
+    // breaks ties arbitrarily — so without the id tie-breaker every app reload
+    // dealt the queue back in a different order.
     const [listsRes, contactsRes] = await Promise.all([
-      supabase.from('lists').select('*').order('created_at', { ascending: true }),
-      supabase.from('contacts').select('*').order('created_at', { ascending: true }),
+      supabase.from('lists').select('*').order('created_at', { ascending: true }).order('id', { ascending: true }),
+      supabase.from('contacts').select('*').order('created_at', { ascending: true }).order('id', { ascending: true }),
     ]);
 
     let loadedLists = [];

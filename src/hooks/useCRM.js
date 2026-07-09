@@ -18,7 +18,8 @@ export function useCRM() {
     const { data, error } = await supabase
       .from('clients')
       .select('*')
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
     if (!error && data) {
       setClients(data.map(dbToClient));
     }
