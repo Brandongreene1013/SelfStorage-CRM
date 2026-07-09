@@ -193,7 +193,7 @@ function AttackList({ rows, onCallContact, onEditClient, onOpenDatabase }) {
       }
     >
       {rows.length === 0 ? (
-        <EmptyState message="Nothing overdue or due today. You're caught up." />
+        <EmptyState icon="🎯" message="Nothing overdue or due today. You're caught up." />
       ) : (
         <div className="space-y-1.5 max-h-[28rem] overflow-y-auto pr-1">
           {rows.map(r => (
@@ -213,9 +213,9 @@ function AttackList({ rows, onCallContact, onEditClient, onOpenDatabase }) {
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {r.kind === 'contact' && r.phone && (
-                  <a href={`tel:${r.phone}`} onClick={e => e.stopPropagation()}
+                  <a href={`tel:${r.phone}`} onClick={e => e.stopPropagation()} title="Dial"
                     className="text-xs font-bold bg-green-600/20 border border-green-600/40 text-green-400 hover:bg-green-600/30 px-2 py-1 rounded-lg transition-all">
-                    Dial
+                    📞
                   </a>
                 )}
                 {r.kind === 'contact' && r.contact && (
@@ -361,7 +361,7 @@ function NeedsFollowUp({ rows, onCallContact, onEditClient, onMoveToMasterDB }) 
                 Move to Master DB
               </button>
             )}
-            <span className="text-xs text-slate-600 flex-shrink-0">{r.kind === 'contact' ? 'Contact' : 'Client'}</span>
+            <span className="text-xs text-slate-600 flex-shrink-0">{r.kind === 'contact' ? '☎' : '💼'}</span>
           </div>
         ))}
       </div>
@@ -616,7 +616,7 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
                     {m.source === 'outlook' && <span className="ml-1.5 text-[10px] text-blue-400/80 font-bold">· Outlook</span>}
                   </p>
                   {client && <p className="text-xs text-amber-400/70 truncate mt-0.5">{client.name}</p>}
-                  {m.location && <p className="text-xs text-slate-500 truncate">{m.location}</p>}
+                  {m.location && <p className="text-xs text-slate-500 truncate">📍 {m.location}</p>}
                 </div>
               </button>
             );
@@ -705,7 +705,7 @@ function DashboardTasks({ taskApi }) {
       {loading ? (
         <LoadingSkeleton rows={3} />
       ) : totalOpen === 0 ? (
-        <EmptyState message="Nothing open. You're caught up." />
+        <EmptyState icon="✅" message="Nothing open. You're caught up." />
       ) : (
         <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
           {group('Overdue', overdue, 'text-red-400')}

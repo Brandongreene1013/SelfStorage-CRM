@@ -185,7 +185,7 @@ export default function ImportListModal({
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">Supports .xlsx, .xls, .csv, and .tsv</p>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none p-2">x</button>
+        <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none p-2">✕</button>
       </div>
 
       <div className="flex-1 overflow-auto p-5 space-y-4">

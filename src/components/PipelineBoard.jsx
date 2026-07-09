@@ -74,7 +74,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
             <p className="text-xs text-slate-400 truncate">{client.facilityName}</p>
           )}
           {client.address && (
-            <p className="text-xs text-slate-500 truncate mt-0.5"> {client.address}</p>
+            <p className="text-xs text-slate-500 truncate mt-0.5">📍 {client.address}</p>
           )}
           {(client.units || client.sqft) && (
             <div className="flex gap-2 mt-1">

@@ -76,7 +76,7 @@ export function CopyChips({ contact, compact = false }) {
               : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
           }`}
         >
-          {copiedKey === f.key ? 'Copied' : f.label}
+          {copiedKey === f.key ? '✓ Copied' : `⧉ ${f.label}`}
         </button>
       ))}
     </div>
@@ -106,7 +106,7 @@ export function OwnerResearchPanel({ contact, onAddNote }) {
   return (
     <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Owner Research</p>
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">🔎 Owner Research</p>
         {entity && (
           <span className="text-[11px] font-semibold text-purple-300 bg-purple-500/10 border border-purple-500/30 rounded px-2 py-0.5">
             Entity owner — check Secretary of State for the real principal
@@ -137,7 +137,7 @@ export function OwnerResearchPanel({ contact, onAddNote }) {
                 : 'border-slate-700 text-slate-600 cursor-not-allowed'
             }`}
           >
-            {savedFlash ? 'Added' : '+ Add Research Note'}
+            {savedFlash ? '✓ Added' : '+ Add Research Note'}
           </button>
         </div>
       )}

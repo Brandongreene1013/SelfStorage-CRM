@@ -47,7 +47,7 @@ export default function MeetingModal({ meeting, defaultDate, clients, onSave, on
     <ModalLayout onClose={onClose} className="max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 flex-shrink-0">
           <h2 className="text-lg font-bold text-white">{isEdit ? 'Edit Meeting' : 'Schedule Meeting'}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors text-xl leading-none">x</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors text-xl leading-none">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">

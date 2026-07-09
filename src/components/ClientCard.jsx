@@ -106,13 +106,13 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
           className="text-xs text-slate-500 hover:text-amber-400 mb-2 truncate flex items-center gap-1 transition-colors"
           title="Open in Google Maps"
         >
-           {client.address}
+          📍 {client.address}
         </a>
       )}
 
       {showDetails && client.mailingAddress && (
         <p className="text-xs text-slate-500 mb-2 truncate" title={client.mailingAddress}>
-          Mail: {client.mailingAddress}
+          ✉️ {client.mailingAddress}
         </p>
       )}
 
@@ -124,7 +124,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
               href={`tel:${client.phone}`}
               className="text-xs text-slate-500 hover:text-amber-400 flex items-center gap-1 transition-colors"
             >
-              Dial {client.phone}
+              📞 {client.phone}
             </a>
           )}
           {client.email && (
@@ -163,7 +163,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       {showDetails && docs.length > 0 && (
         <div className="mt-2 pt-2 border-t border-slate-700/60">
           <p className="text-xs text-slate-600 mb-1 uppercase tracking-wide font-semibold">
-            File {docs.length} document{docs.length !== 1 ? 's' : ''}
+            📎 {docs.length} document{docs.length !== 1 ? 's' : ''}
           </p>
           <div className="space-y-0.5">
             {docs.map(doc => (

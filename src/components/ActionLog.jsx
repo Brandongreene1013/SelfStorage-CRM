@@ -50,7 +50,7 @@ export function LogActionModal({ name, subtitle, actionLog = [], onSave, onDelet
           <h2 className="text-base font-black text-white">Log Action</h2>
           <p className="text-xs text-slate-500 mt-0.5">{name}{subtitle ? ` - ${subtitle}` : ''}</p>
         </div>
-        <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">x</button>
+        <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
       </div>
 
       <div className="p-5 space-y-4">
