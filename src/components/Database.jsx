@@ -4,7 +4,8 @@ import ImportListModal from './ImportListModal';
 import DuplicateReview from './DuplicateReview';
 import { findDuplicateGroups } from '../lib/duplicateReview';
 import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
-import { LogActionModal, LastActionLine } from './ActionLog';
+import { LastActionLine } from './ActionLog';
+import ActionCenterModal from './ActionCenterModal';
 import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
 import { AddToMailerButton } from './MailerListPicker';
@@ -1221,8 +1222,7 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
 // ─── Property Card ────────────────────────────────────────────────────────────
 function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, lists = [], onMoveToList, onToClients, taskApi }) {
   const [added, setAdded] = useState(false);
-  const [showLog, setShowLog] = useState(false);
-  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showActionCenter, setShowActionCenter] = useState(false);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: contact.id, data: { contact } });
 
@@ -1408,7 +1408,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
       <div className="mt-2">
         {nextTask ? (
           <button
-            onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
+            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
             className={`w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-all border ${
               nextTaskDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -1423,7 +1423,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           </button>
         ) : actionType ? (
           <button
-            onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
+            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
             className={`w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-all border ${
               fallbackDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -1438,7 +1438,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           </button>
         ) : (
           <button
-            onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
+            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
             className="w-full text-xs text-slate-600 hover:text-amber-400 border border-dashed border-slate-700 hover:border-amber-500/40 rounded-lg px-2.5 py-1.5 transition-all"
           >
             + Set Action
@@ -1451,7 +1451,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
         <div className="mt-2 flex items-center justify-between gap-2">
           <LastActionLine actionLog={contact.actionLog} />
           <button
-            onClick={e => { e.stopPropagation(); setShowLog(true); }}
+            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
             className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
           >
             + Log
@@ -1459,24 +1459,17 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
         </div>
       )}
 
-      {showLog && (
-        <LogActionModal
+      {showActionCenter && (
+        <ActionCenterModal
           name={contact.ownerName || contact.facilityName || 'Contact'}
           subtitle={contact.facilityName}
           actionLog={contact.actionLog}
-          onSave={(entry) => onLogAction(contact.id, entry)}
-          onDelete={onDeleteAction ? (index) => onDeleteAction(contact.id, index) : undefined}
-          onClose={() => setShowLog(false)}
-        />
-      )}
-      {showTaskModal && (
-        <TaskModal
-          context={{ relatedType: 'contact', relatedId: contact.id, relatedName: contact.ownerName || contact.facilityName || 'Contact', source: 'database' }}
-          defaults={modalDefaults}
-          heading="Set Next Action"
-          saveLabel="Save Next Action"
-          onSave={taskApi?.createTask}
-          onClose={() => setShowTaskModal(false)}
+          onLogAction={onLogAction ? (entry) => onLogAction(contact.id, entry) : undefined}
+          onDeleteAction={onDeleteAction ? (index) => onDeleteAction(contact.id, index) : undefined}
+          taskContext={{ relatedType: 'contact', relatedId: contact.id, relatedName: contact.ownerName || contact.facilityName || 'Contact', source: 'database' }}
+          taskDefaults={modalDefaults}
+          onSaveTask={taskApi?.createTask}
+          onClose={() => setShowActionCenter(false)}
         />
       )}
 

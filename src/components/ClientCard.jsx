@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { useFileStorage } from '../hooks/useFileStorage';
-import { LogActionModal, LastActionLine } from './ActionLog';
+import { LastActionLine } from './ActionLog';
+import ActionCenterModal from './ActionCenterModal';
 import OwnershipLinksPanel from './OwnershipLinksPanel';
 import { StatusBadge } from './ui';
-import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
+import { RelatedTasks, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
 export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, onDeleteAction, compact = false, taskApi, ownershipApi }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
   const { openFile } = useFileStorage();
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
   const docs = client.documents ?? [];
-  const [showTaskModal, setShowTaskModal] = useState(false);
-  const [showLogModal, setShowLogModal] = useState(false);
+  const [showActionCenter, setShowActionCenter] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
   const openTasks = taskApi?.getRelatedTasks('client', client.id) ?? [];
@@ -185,7 +185,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       <div className="mt-3 pt-3 border-t border-slate-700">
         {nextTask ? (
           <button
-            onClick={() => setShowTaskModal(true)}
+            onClick={() => setShowActionCenter(true)}
             className={`w-full rounded-xl px-3 py-2.5 text-left transition-all border ${
               nextTaskDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
@@ -217,7 +217,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
           </button>
         ) : actionType ? (
           <button
-            onClick={() => setShowTaskModal(true)}
+            onClick={() => setShowActionCenter(true)}
             className={`w-full rounded-xl px-3 py-2.5 text-left transition-all border ${
               fallbackDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
@@ -247,7 +247,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
           </button>
         ) : (
           <button
-            onClick={() => setShowTaskModal(true)}
+            onClick={() => setShowActionCenter(true)}
             className="w-full bg-transparent border border-dashed border-slate-700 hover:border-amber-500/40 text-slate-500 hover:text-amber-400 font-semibold px-3 py-2.5 rounded-xl text-xs transition-all"
           >
             + Set Next Action
@@ -260,7 +260,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         <div className="mt-2 flex items-center justify-between gap-2">
           <LastActionLine actionLog={client.actionLog} />
           <button
-            onClick={() => setShowLogModal(true)}
+            onClick={() => setShowActionCenter(true)}
             className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
           >
             + Log
@@ -320,24 +320,17 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       )}
     </div>
 
-    {showTaskModal && (
-      <TaskModal
-        context={{ relatedType: 'client', relatedId: client.id, relatedName: client.name, source: compact ? 'pipeline' : 'client' }}
-        defaults={modalDefaults}
-        heading="Set Next Action"
-        saveLabel="Save Next Action"
-        onSave={taskApi?.createTask}
-        onClose={() => setShowTaskModal(false)}
-      />
-    )}
-    {showLogModal && (
-      <LogActionModal
+    {showActionCenter && (
+      <ActionCenterModal
         name={client.name}
         subtitle={client.facilityName}
         actionLog={client.actionLog}
-        onSave={(entry) => onLogAction(client.id, entry)}
-        onDelete={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
-        onClose={() => setShowLogModal(false)}
+        onLogAction={onLogAction ? (entry) => onLogAction(client.id, entry) : undefined}
+        onDeleteAction={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
+        taskContext={{ relatedType: 'client', relatedId: client.id, relatedName: client.name, source: compact ? 'pipeline' : 'client' }}
+        taskDefaults={modalDefaults}
+        onSaveTask={taskApi?.createTask}
+        onClose={() => setShowActionCenter(false)}
       />
     )}
     </>

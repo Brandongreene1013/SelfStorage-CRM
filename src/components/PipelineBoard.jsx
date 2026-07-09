@@ -10,15 +10,15 @@ import {
 import { useDroppable } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
 import { PIPELINE_STAGES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
-import { LogActionModal, LastActionLine } from './ActionLog';
+import { LastActionLine } from './ActionLog';
+import ActionCenterModal from './ActionCenterModal';
 import MoveMenu from './MoveMenu';
 import { StatusBadge } from './ui';
-import { NextActionIndicator, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
+import { NextActionIndicator, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
 /* ── Draggable client chip ── */
 function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDatabase, taskApi }) {
-  const [showLog, setShowLog] = useState(false);
-  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showActionCenter, setShowActionCenter] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: client.id,
     data: { client },
@@ -66,7 +66,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
               taskApi={taskApi}
               relatedType="client"
               relatedId={client.id}
-              onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
+              onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
             />
           </div>
           <p className="text-sm font-semibold text-white truncate leading-tight">{client.name}</p>
@@ -101,7 +101,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
       {nextTask ? (
         <div
           onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
+          onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
           className={`mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-all border ${
             nextTaskDue?.tone === 'red'
               ? 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -117,7 +117,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
       ) : actionType ? (
         <div
           onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
+          onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
           className={`mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-all border ${
             fallbackDue?.tone === 'red'
               ? 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -133,7 +133,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
       ) : (
         <button
           onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); setShowTaskModal(true); }}
+          onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
           className="mt-2 w-full text-xs text-slate-600 hover:text-amber-400 border border-dashed border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1.5 transition-all"
         >
           + Set Action
@@ -146,7 +146,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
           <LastActionLine actionLog={client.actionLog} />
           <button
             onPointerDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); setShowLog(true); }}
+            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
             className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-0.5 transition-all"
           >
             + Log
@@ -154,24 +154,17 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
         </div>
       )}
 
-      {showLog && (
-        <LogActionModal
+      {showActionCenter && (
+        <ActionCenterModal
           name={client.name}
           subtitle={client.facilityName}
           actionLog={client.actionLog}
-          onSave={(entry) => onLogAction(client.id, entry)}
-          onDelete={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
-          onClose={() => setShowLog(false)}
-        />
-      )}
-      {showTaskModal && (
-        <TaskModal
-          context={{ relatedType: 'client', relatedId: client.id, relatedName: client.name, source: 'pipeline' }}
-          defaults={modalDefaults}
-          heading="Set Next Action"
-          saveLabel="Save Next Action"
-          onSave={taskApi?.createTask}
-          onClose={() => setShowTaskModal(false)}
+          onLogAction={onLogAction ? (entry) => onLogAction(client.id, entry) : undefined}
+          onDeleteAction={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
+          taskContext={{ relatedType: 'client', relatedId: client.id, relatedName: client.name, source: 'pipeline' }}
+          taskDefaults={modalDefaults}
+          onSaveTask={taskApi?.createTask}
+          onClose={() => setShowActionCenter(false)}
         />
       )}
     </div>

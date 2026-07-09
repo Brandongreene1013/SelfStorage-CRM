@@ -3,7 +3,7 @@ import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
 import RecentActivity from './RecentActivity';
 import NeedsReview from './NeedsReview';
-import { LogActionModal } from './ActionLog';
+import ActionCenterModal from './ActionCenterModal';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
@@ -266,8 +266,7 @@ function CallbackCommandCenter({ todayCallbacks, overdueCallbacks, upcomingCallb
 }
 
 function PipelineAttentionActions({ rows, onEditClient, onLogClientAction, onDeleteClientAction, taskApi }) {
-  const [loggingClient, setLoggingClient] = useState(null);
-  const [taskClient, setTaskClient] = useState(null);
+  const [actionClient, setActionClient] = useState(null);
 
   return (
     <SectionCard title="Pipeline Attention" subtitle="Deals that need a push">
@@ -298,11 +297,8 @@ function PipelineAttentionActions({ rows, onEditClient, onLogClientAction, onDel
                     Call
                   </a>
                 )}
-                <button onClick={() => setLoggingClient(r.client)} className="text-xs font-bold bg-slate-700/70 border border-slate-600 text-slate-300 hover:text-white px-2 py-1 rounded-lg">
-                  Log
-                </button>
-                <button onClick={() => setTaskClient(r.client)} className="text-xs font-bold bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 px-2 py-1 rounded-lg">
-                  Task
+                <button onClick={() => setActionClient(r.client)} className="text-xs font-bold bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 px-2 py-1 rounded-lg">
+                  Log / Task
                 </button>
               </div>
             );
@@ -310,26 +306,19 @@ function PipelineAttentionActions({ rows, onEditClient, onLogClientAction, onDel
         </div>
       )}
 
-      {loggingClient && (
-        <LogActionModal
-          name={loggingClient.name}
-          subtitle={loggingClient.facilityName}
-          actionLog={loggingClient.actionLog}
-          onSave={(entry) => onLogClientAction?.(loggingClient.id, entry)}
-          onDelete={onDeleteClientAction ? (index) => {
-            onDeleteClientAction(loggingClient.id, index);
-            setLoggingClient(prev => prev ? { ...prev, actionLog: (prev.actionLog ?? []).filter((_, idx) => idx !== index) } : prev);
+      {actionClient && (
+        <ActionCenterModal
+          name={actionClient.name}
+          subtitle={actionClient.facilityName}
+          actionLog={actionClient.actionLog}
+          onLogAction={(entry) => onLogClientAction?.(actionClient.id, entry)}
+          onDeleteAction={onDeleteClientAction ? (index) => {
+            onDeleteClientAction(actionClient.id, index);
+            setActionClient(prev => prev ? { ...prev, actionLog: (prev.actionLog ?? []).filter((_, idx) => idx !== index) } : prev);
           } : undefined}
-          onClose={() => setLoggingClient(null)}
-        />
-      )}
-
-      {taskClient && (
-        <TaskModal
-          context={{ relatedType: 'client', relatedId: taskClient.id, relatedName: taskClient.name, source: 'dashboard' }}
-          defaults={{ title: '', taskType: 'follow_up' }}
-          onSave={taskApi?.createTask}
-          onClose={() => setTaskClient(null)}
+          taskContext={{ relatedType: 'client', relatedId: actionClient.id, relatedName: actionClient.name, source: 'dashboard' }}
+          onSaveTask={taskApi?.createTask}
+          onClose={() => setActionClient(null)}
         />
       )}
     </SectionCard>
