@@ -1715,6 +1715,27 @@ function persistCallPositions() {
   try { localStorage.setItem(CALL_POSITIONS_KEY, JSON.stringify(callQueuePositions)); } catch { /* storage blocked — session memory only */ }
 }
 
+// Sprint 23 — positions remember WHO Brandon was on, not just a row number.
+// Queues shrink and reorder as outcomes get logged (called contacts drop out),
+// so a bare index lands on the wrong contact after leaving and coming back.
+// Each saved position carries the contact he was on plus the next few in line;
+// resuming jumps to the first of those still in the live queue.
+function savedQueuePosition(index, queue) {
+  return { index, contactIds: queue.slice(index, index + 6).map(c => c.id) };
+}
+
+function resolveQueuePosition(saved, queue) {
+  if (saved == null || queue.length === 0) return 0;
+  if (typeof saved === 'number') { // legacy index-only entry from before Sprint 23
+    return saved > 0 && saved < queue.length ? saved : 0;
+  }
+  for (const id of saved.contactIds ?? []) {
+    const idx = queue.findIndex(c => c.id === id);
+    if (idx >= 0) return idx;
+  }
+  return Math.min(Math.max(saved.index ?? 0, 0), queue.length - 1);
+}
+
 function saveCallSession(session) {
   try { localStorage.setItem(CALL_SESSION_KEY, JSON.stringify(session)); } catch { /* storage blocked */ }
 }
@@ -2124,14 +2145,13 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
   function selectQueue(key) {
     setCallQueueSource(key);
-    // Resume where Brandon left off in this queue, as long as that position
-    // still exists in the (live-recomputed) queue.
-    const saved = callQueuePositions[positionKey(key)] ?? 0;
+    // Resume where Brandon left off in this queue — by contact, so the saved
+    // spot survives the queue shrinking or reordering while he was away.
     const def = QUEUE_DEFS.find(q => q.key === key);
-    const len = def?.queue.length ?? 0;
-    const index = saved > 0 && saved < len ? saved : 0;
+    const queue = def?.queue ?? [];
+    const index = resolveQueuePosition(callQueuePositions[positionKey(key)], queue);
     setCallQueueIndex(index);
-    recordCallSession(key, activeListId, index, def?.queue ?? [], def?.label ?? 'Call Mode');
+    recordCallSession(key, activeListId, index, queue, def?.label ?? 'Call Mode');
   }
 
   // All Call Mode index changes flow through here so the per-queue position
@@ -2140,7 +2160,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   function setQueueIndex(next) {
     setCallQueueIndex(next);
     if (callQueueSource) {
-      callQueuePositions[positionKey(callQueueSource)] = next;
+      callQueuePositions[positionKey(callQueueSource)] = savedQueuePosition(next, activeQueueDef?.queue ?? []);
       persistCallPositions();
       recordCallSession(callQueueSource, activeListId, next, activeQueueDef?.queue ?? [], activeQueueDef?.label ?? 'Call Mode');
     }
@@ -3132,6 +3152,12 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           </div>
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold text-amber-400">{Math.round(progress)}% through queue</p>
+            {index > 0 && (
+              <button onClick={() => setIndex(0)} title="Jump back to the first contact in this queue"
+                className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5">
+                Restart Queue
+              </button>
+            )}
             {onBackToPicker && (
               <button onClick={onBackToPicker} className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5">
                 Change Queue
