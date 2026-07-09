@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { PIPELINE_STAGES, CLIENT_TYPES, PROPERTY_TYPES } from '../data/constants';
 import { useFileStorage } from '../hooks/useFileStorage';
 import ModalLayout from './ui/ModalLayout';
+import { AddToMailerButton } from './MailerListPicker';
 
 const EMPTY = {
   name: '',
@@ -25,7 +26,7 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function ClientModal({ client, onSave, onClose }) {
+export default function ClientModal({ client, onSave, onClose, mailerApi }) {
   const [form, setForm] = useState(EMPTY);
   const [pendingFiles, setPendingFiles] = useState([]);
   const [existingDocs, setExistingDocs] = useState([]);
@@ -112,7 +113,7 @@ export default function ClientModal({ client, onSave, onClose }) {
           <h2 className="text-lg font-bold text-white">
             {isEdit ? 'Edit Client' : 'Add New Client'}
           </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors text-xl leading-none">x</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors text-xl leading-none">✕</button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
@@ -228,7 +229,7 @@ export default function ClientModal({ client, onSave, onClose }) {
                 rel="noopener noreferrer"
                 className="text-xs text-amber-500 hover:text-amber-400 mt-1 inline-flex items-center gap-1 transition-colors"
               >
-                 View on Google Maps ↗
+                📍 View on Google Maps ↗
               </a>
             )}
           </div>
@@ -236,13 +237,21 @@ export default function ClientModal({ client, onSave, onClose }) {
           {/* Mailing Address */}
           <div>
             <label className={labelCls}>Mailing Address</label>
-            <input
-              name="mailingAddress"
-              value={form.mailingAddress}
-              onChange={handleChange}
-              placeholder="Where they get mail — PO Box, home, office"
-              className={inputCls}
-            />
+            <div className="flex items-center gap-2">
+              <input
+                name="mailingAddress"
+                value={form.mailingAddress}
+                onChange={handleChange}
+                placeholder="Where they get mail — PO Box, home, office"
+                className={inputCls}
+              />
+              {isEdit && mailerApi && form.mailingAddress.trim() && (
+                <AddToMailerButton
+                  mailerApi={mailerApi}
+                  member={{ type: 'client', id: client.id, name: form.name || client.name, mailingAddress: form.mailingAddress }}
+                />
+              )}
+            </div>
           </div>
 
           {/* Units + Sqft */}
@@ -328,7 +337,7 @@ export default function ClientModal({ client, onSave, onClose }) {
               <div className="mt-2 space-y-1">
                 {existingDocs.map(doc => (
                   <div key={doc.id} className="flex items-center gap-2 bg-slate-800 rounded-lg px-3 py-2">
-                    <span className="text-sm">File</span>
+                    <span className="text-sm">📎</span>
                     <button
                       type="button"
                       onClick={() => openFile(doc.id)}

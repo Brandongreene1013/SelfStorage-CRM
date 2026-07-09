@@ -7,6 +7,7 @@ import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
 import { LogActionModal, LastActionLine } from './ActionLog';
 import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
+import { AddToMailerButton } from './MailerListPicker';
 import { ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCES, LEAD_TEMPS, PROPERTY_TYPES, RELATIONSHIP_TYPES } from '../data/constants';
 import { useOwnership } from '../hooks/useOwnership';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
@@ -46,12 +47,12 @@ const STATUS_VARIANT = {
 };
 
 const CALL_OUTCOMES = [
-  { status: 'no_answer',      label: 'No Answer', color: 'bg-yellow-600/20 border-yellow-600/40 text-yellow-400 hover:bg-yellow-600/30' },
-  { status: 'voicemail',      label: 'Left VM', color: 'bg-blue-600/20 border-blue-600/40 text-blue-400 hover:bg-blue-600/30' },
-  { status: 'conversation',   label: 'Conversation', color: 'bg-green-600/20 border-green-600/40 text-green-400 hover:bg-green-600/30' },
-  { status: 'appointment',    label: 'Appt Set', color: 'bg-amber-600/20 border-amber-600/40 text-amber-400 hover:bg-amber-600/30' },
-  { status: 'not_interested', label: 'Not Interested', color: 'bg-red-600/20 border-red-600/40 text-red-400 hover:bg-red-600/30' },
-  { status: 'callback',       label: 'Call Back', color: 'bg-purple-600/20 border-purple-600/40 text-purple-400 hover:bg-purple-600/30' },
+  { status: 'no_answer',      label: 'No Answer',      icon: '📵', color: 'bg-yellow-600/20 border-yellow-600/40 text-yellow-400 hover:bg-yellow-600/30' },
+  { status: 'voicemail',      label: 'Left VM',        icon: '📩', color: 'bg-blue-600/20 border-blue-600/40 text-blue-400 hover:bg-blue-600/30' },
+  { status: 'conversation',   label: 'Conversation',   icon: '💬', color: 'bg-green-600/20 border-green-600/40 text-green-400 hover:bg-green-600/30' },
+  { status: 'appointment',    label: 'Appt Set',       icon: '📅', color: 'bg-amber-600/20 border-amber-600/40 text-amber-400 hover:bg-amber-600/30' },
+  { status: 'not_interested', label: 'Not Interested', icon: '🚫', color: 'bg-red-600/20 border-red-600/40 text-red-400 hover:bg-red-600/30' },
+  { status: 'callback',       label: 'Call Back',      icon: '🔄', color: 'bg-purple-600/20 border-purple-600/40 text-purple-400 hover:bg-purple-600/30' },
 ];
 
 const SOURCE_COLORS = {
@@ -948,7 +949,7 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
   );
 }
 
-function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteAction, onDeleteCallHistory, taskApi, ownershipApi }) {
+function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteAction, onDeleteCallHistory, taskApi, ownershipApi, mailerApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1019,7 +1020,7 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
               onChange={field('facilityName')}
             />
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white text-2xl leading-none p-1 flex-shrink-0">x</button>
+          <button onClick={onClose} className="text-slate-500 hover:text-white text-2xl leading-none p-1 flex-shrink-0">✕</button>
         </div>
 
         <div className="flex-1 overflow-auto p-5 space-y-5">
@@ -1066,8 +1067,18 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
             </div>
             <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')}
               href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
-            <EditableField label="Mailing Address" value={contact.mailingAddress} placeholder="Click to add mailing address" onChange={field('mailingAddress')}
-              href={contact.mailingAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.mailingAddress)}` : null} />
+            <div className="flex items-end gap-2">
+              <div className="flex-1 min-w-0">
+                <EditableField label="Mailing Address" value={contact.mailingAddress} placeholder="Click to add mailing address" onChange={field('mailingAddress')}
+                  href={contact.mailingAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.mailingAddress)}` : null} />
+              </div>
+              {contact.mailingAddress && (
+                <AddToMailerButton
+                  mailerApi={mailerApi}
+                  member={{ type: 'contact', id: contact.id, name: contact.ownerName || contact.facilityName || 'Unknown', mailingAddress: contact.mailingAddress }}
+                />
+              )}
+            </div>
           </div>
 
           <OwnershipLinksPanel contact={contact} ownershipApi={ownershipApi} onUpdate={onUpdate} />
@@ -1098,7 +1109,8 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
                   className={`border rounded-xl px-3 py-2.5 text-xs font-bold transition-all text-center ${o.color} ${
                     contact.status === o.status ? 'ring-2 ring-offset-1 ring-offset-slate-900 ring-current' : ''
                   }`}>
-                  <span className="block">{o.label}</span>
+                  <span className="text-base block">{o.icon}</span>
+                  <span className="mt-0.5 block">{o.label}</span>
                 </button>
               ))}
             </div>
@@ -1259,7 +1271,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           </StatusBadge>
           {contact._distanceMiles != null && (
             <span className="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2 py-0.5 rounded-md whitespace-nowrap">
-              {Math.round(contact._distanceMiles)} mi
+              📍 {Math.round(contact._distanceMiles)} mi
             </span>
           )}
           {(() => {
@@ -1328,7 +1340,8 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           rel="noopener noreferrer"
           onClick={e => e.stopPropagation()}
           className="inline-flex items-center gap-1 mb-1.5 text-xs text-slate-600 hover:text-blue-400 italic transition-colors"
-        >          Find facility
+        >
+          🏢 Find facility
         </a>
       )}
 
@@ -1360,21 +1373,21 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
       <div className="space-y-1.5">
         {contact.phone ? (
           <p className="text-xs font-mono text-green-400 flex items-center gap-1.5">
-            Dial {contact.phone}
+            <span className="text-slate-500">📞</span> {contact.phone}
           </p>
         ) : (
           <p className="text-xs text-slate-700 italic flex items-center gap-1.5">
-            No phone
+            <span>📞</span> No phone
           </p>
         )}
         {contact.email && (
           <p className="text-xs text-blue-400 flex items-center gap-1.5 truncate">
-            <span className="truncate">{contact.email}</span>
+            <span className="text-slate-500">📧</span> <span className="truncate">{contact.email}</span>
           </p>
         )}
         {contact.address && (
           <p className="text-xs text-slate-500 flex items-center gap-1.5 truncate">
-            <span className="truncate">{contact.address}</span>
+            <span>📍</span> <span className="truncate">{contact.address}</span>
           </p>
         )}
       </div>
@@ -1524,7 +1537,7 @@ function AddContactModal({ listName, onSave, onClose }) {
             <h2 className="text-base font-black text-white">Add Contact</h2>
             <p className="text-xs text-slate-500 mt-0.5">Adding to: <span className="text-amber-400">{listName}</span></p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">x</button>
+          <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
         </div>
 
         <div className="p-5 space-y-3 flex-1 overflow-y-auto min-h-0">
@@ -1655,12 +1668,12 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
             onClick={e => { e.stopPropagation(); setRenaming(true); setDraft(l.name); setConfirmDelete(false); }}
             title="Rename"
             className="text-slate-600 hover:text-slate-300 text-xs p-0.5 transition-all"
-          >Edit</button>
+          >✏️</button>
           <button
             onClick={e => { e.stopPropagation(); setConfirmDelete(v => !v); setRenaming(false); }}
             title="Delete list"
             className="text-slate-600 hover:text-red-400 text-xs p-0.5 transition-all"
-          >Delete</button>
+          >🗑</button>
           <span className="text-xs bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-md ml-0.5">{count}</span>
         </div>
       </div>
@@ -1793,7 +1806,7 @@ function LocationSortControl({ anchor, onSet, onClear, geoData, geoError, onOpen
         }`}
         title="Sort this list by distance to a city or ZIP"
       >
-        {anchor ? `Near ${anchor.label}` : 'Location'}
+        {anchor ? `📍 Near ${anchor.label}` : '📍 Location'}
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1.5 z-30 w-72 bg-slate-900 border border-slate-700 rounded-xl p-3 shadow-xl shadow-black/50 space-y-2.5">
@@ -1923,7 +1936,7 @@ function CallModeQueuePicker({ queues, onSelect, onExit, resumeInfo, onResume, o
 }
 
 // ─── Main Database Component ──────────────────────────────────────────────────
-export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, entryRequest, onEntryConsumed }) {
+export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, mailerApi, entryRequest, onEntryConsumed }) {
   const {
     lists, contacts, masterListId,
     importList, importIntoList, mergeDuplicateContact, moveContactToList, createList, addContact,
@@ -2360,7 +2373,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     : 'text-emerald-400/70 hover:text-emerald-400 hover:bg-slate-800 border-l-2 border-transparent'
                 }`}
               >
-                <span className="font-bold flex items-center gap-1.5">Master Database</span>
+                <span className="font-bold flex items-center gap-1.5">⭐ Master Database</span>
                 <span className="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 px-1.5 py-0.5 rounded-md">
                   {contacts.filter(c => c.listId === masterListId).length + clients.length}
                 </span>
@@ -2455,8 +2468,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           {[
             { key: 'callQueue',  label: 'Call Mode', badge: todayCallbackQueue.length + overdueCallbackQueue.length + allFutureCallbackQueue.length },
             { key: 'ownership',  label: 'Owners / Properties', badge: ownershipApi.groups.length },
-            { key: 'duplicates', label: 'Duplicate Review', badge: duplicateGroupCount, badgeTone: 'amber' },
-            { key: 'markets',    label: 'Markets',    badge: null },
+            { key: 'duplicates', label: '🧹 Duplicate Review', badge: duplicateGroupCount, badgeTone: 'amber' },
+            { key: 'markets',    label: '🗺 Markets',    badge: null },
           ].map(t => (
             <button
               key={t.key}
@@ -2510,7 +2523,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       <div className="flex-1 min-w-0 space-y-4">
         {activeListId === null && subView !== 'callQueue' && subView !== 'duplicates' && subView !== 'ownership' && (
           <EmptyState
-            icon={null}
+            icon="📋"
             title="No list selected"
             message="Select a list from the left, or create a new one."
           />
@@ -2576,6 +2589,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               masterListId={masterListId}
               taskApi={taskApi}
               ownershipApi={ownershipApi}
+              mailerApi={mailerApi}
               queueLabel={activeQueueDef?.label ?? 'Call Mode'}
               queueReasonText={activeQueueDef?.reason ?? ''}
               locationLabel={callQueueSource === 'activeList' ? locationAnchor?.label : null}
@@ -2698,7 +2712,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
                     title="Open the Duplicate Review Center — review, merge, and confirm each delete"
                   >
-                    Review Duplicates{duplicateGroupCount > 0 ? ` (${duplicateGroupCount})` : ''}
+                    🧹 Review Duplicates{duplicateGroupCount > 0 ? ` (${duplicateGroupCount})` : ''}
                   </button>
                   <button
                     onClick={() => setShowMasterImport(true)}
@@ -2721,7 +2735,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             {/* Card grid */}
             {filtered.length === 0 && clientsInView.length === 0 ? (
               <EmptyState
-                icon={null}
+                icon="📋"
                 message="No contacts. Import a list to get started."
                 action={
                   <button onClick={() => setShowImport(true)} className="mt-3 text-amber-500 hover:text-amber-400 text-sm font-semibold">
@@ -2789,6 +2803,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           onDeleteCallHistory={deleteContactCallHistory}
           taskApi={taskApi}
           ownershipApi={ownershipApi}
+          mailerApi={mailerApi}
         />
       )}
 
@@ -2948,7 +2963,7 @@ function HeaderInlineField({ value, placeholder, onSave, textClassName, inputCla
 // Sprint 20 — full contact editing without leaving Call Mode. Reuses the same
 // editors as ContactDetailModal (EditableField, relationship/lead-source
 // selects, OwnershipLinksPanel) so behavior stays identical in both surfaces.
-function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi }) {
+function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerApi }) {
   function field(key) {
     return (val) => onUpdateContact?.(contact.id, { [key]: val });
   }
@@ -2965,8 +2980,18 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi }) {
       </div>
       <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')}
         href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
-      <EditableField label="Mailing Address" value={contact.mailingAddress} placeholder="Click to add mailing address" onChange={field('mailingAddress')}
-        href={contact.mailingAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.mailingAddress)}` : null} />
+      <div className="flex items-end gap-2">
+        <div className="flex-1 min-w-0">
+          <EditableField label="Mailing Address" value={contact.mailingAddress} placeholder="Click to add mailing address" onChange={field('mailingAddress')}
+            href={contact.mailingAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.mailingAddress)}` : null} />
+        </div>
+        {contact.mailingAddress && (
+          <AddToMailerButton
+            mailerApi={mailerApi}
+            member={{ type: 'contact', id: contact.id, name: contact.ownerName || contact.facilityName || 'Unknown', mailingAddress: contact.mailingAddress }}
+          />
+        )}
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Relationship Type</label>
@@ -2999,7 +3024,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi }) {
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker }) {
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
@@ -3184,7 +3209,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 {current.market && <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md font-semibold">{current.market}</span>}
                 {current._distanceMiles != null && (
                   <span className="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2 py-0.5 rounded-md whitespace-nowrap">
-                    {Math.round(current._distanceMiles)} mi{locationLabel ? ` from ${locationLabel}` : ''}
+                    📍 {Math.round(current._distanceMiles)} mi{locationLabel ? ` from ${locationLabel}` : ''}
                   </span>
                 )}
                 <SourceBadge source={current.source} />
@@ -3231,6 +3256,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               contact={current}
               onUpdateContact={onUpdateContact}
               ownershipApi={ownershipApi}
+              mailerApi={mailerApi}
             />
           )}
 
@@ -3268,13 +3294,21 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   {current.email && <a href={`mailto:${current.email}`} className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-blue-300 hover:text-blue-200 truncate">Email: {current.email}</a>}
                   <CopyableAddressTile address={current.address} />
                 </div>
-                <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
-                  <EditableField
-                    label="Mailing Address"
-                    value={current.mailingAddress}
-                    placeholder="Click to add mailing address"
-                    onChange={(v) => onUpdateContact?.(current.id, { mailingAddress: v })}
-                  />
+                <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-end gap-2">
+                  <div className="flex-1 min-w-0">
+                    <EditableField
+                      label="Mailing Address"
+                      value={current.mailingAddress}
+                      placeholder="Click to add mailing address"
+                      onChange={(v) => onUpdateContact?.(current.id, { mailingAddress: v })}
+                    />
+                  </div>
+                  {current.mailingAddress && (
+                    <AddToMailerButton
+                      mailerApi={mailerApi}
+                      member={{ type: 'contact', id: current.id, name: current.ownerName || current.facilityName || 'Unknown', mailingAddress: current.mailingAddress }}
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -3299,7 +3333,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               {CALL_OUTCOMES.map(o => (
                 <button key={o.status} onClick={() => handleOutcome(o.status)}
                   className={`border rounded-xl px-3 py-3 text-xs font-bold transition-all text-center ${o.color}`}>
-                  <span className="block">{o.label}</span>
+                  <span className="text-base block">{o.icon}</span>
+                  <span className="block mt-0.5">{o.label}</span>
                 </button>
               ))}
             </div>
@@ -3455,12 +3490,12 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           {masterListId && (
             current.listId === masterListId ? (
               <div className="w-full bg-amber-500/10 border border-amber-500/30 text-amber-400/80 font-black px-4 py-3 rounded-2xl text-sm text-center">
-                In Master Database
+                ⭐ In Master Database
               </div>
             ) : (
               <button onClick={moveCurrentToMaster}
                 className="w-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 font-black px-4 py-3 rounded-2xl text-sm transition-all">
-                Move to Master Database
+                ⭐ Move to Master Database
               </button>
             )
           )}

@@ -6,6 +6,8 @@ import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useDailyProgress } from './hooks/useDailyProgress';
 import { useTasks } from './hooks/useTasks';
 import { useOwnership } from './hooks/useOwnership';
+import { useMailerLists } from './hooks/useMailerLists';
+import MailerLists from './components/MailerLists';
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import PipelineBoard from './components/PipelineBoard';
@@ -18,7 +20,7 @@ import { PIPELINE_STAGES } from './data/constants';
 import { SearchToolbar, FilterPills, EmptyState, PageHeader, Button } from './components/ui';
 import './index.css';
 
-const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Analyst', 'Calendar'];
+const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
@@ -29,6 +31,7 @@ export default function App() {
   const { increment: incrementProgress } = useDailyProgress();
   const taskApi = useTasks(); // universal task/next-action engine (Sprint 2)
   const ownershipApi = useOwnership();
+  const mailerApi = useMailerLists(); // mailer lists — shared so the ✉️ buttons and the Mailers tab stay in sync
 
   // CRM meetings + synced Outlook calendar events, for the dashboard widget
   const allMeetings = [...meetings, ...calendarEvents];
@@ -249,12 +252,12 @@ export default function App() {
           ))}
         </nav>
 
-        {!['Calendar', 'Database', 'Analyst'].includes(view) && (
+        {!['Calendar', 'Database', 'Mailers', 'Analyst'].includes(view) && (
           <Button onClick={() => setShowAddModal(true)}>
             <span className="text-lg leading-none font-black">+</span> Add Client
           </Button>
         )}
-        {['Calendar', 'Database', 'Analyst'].includes(view) && (
+        {['Calendar', 'Database', 'Mailers', 'Analyst'].includes(view) && (
           <div className="w-[110px]" />
         )}
       </header>
@@ -390,9 +393,17 @@ export default function App() {
               onDeleteAction: deleteClientAction,
             }}
             taskApi={taskApi}
+            mailerApi={mailerApi}
             entryRequest={dbEntryRequest}
             onEntryConsumed={() => setDbEntryRequest(null)}
           />
+        )}
+
+        {view === 'Mailers' && (
+          <div>
+            <PageHeader title="Mailer Lists" badge="Who's getting mail, and where" />
+            <MailerLists mailerApi={mailerApi} contacts={db.contacts} clients={clients} />
+          </div>
         )}
 
         {view === 'Analyst' && <Analyst />}
@@ -422,6 +433,7 @@ export default function App() {
           client={editingClient}
           onSave={handleSaveEdit}
           onClose={() => setEditingClient(null)}
+          mailerApi={mailerApi}
         />
       )}
       {deletingClient && (
