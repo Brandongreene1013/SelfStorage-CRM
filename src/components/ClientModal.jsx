@@ -110,7 +110,7 @@ export default function ClientModal({ client, onSave, onClose }) {
           <h2 className="text-lg font-bold text-white">
             {isEdit ? 'Edit Client' : 'Add New Client'}
           </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors text-xl leading-none">✕</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors text-xl leading-none">x</button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
@@ -226,7 +226,7 @@ export default function ClientModal({ client, onSave, onClose }) {
                 rel="noopener noreferrer"
                 className="text-xs text-amber-500 hover:text-amber-400 mt-1 inline-flex items-center gap-1 transition-colors"
               >
-                📍 View on Google Maps ↗
+                 View on Google Maps ↗
               </a>
             )}
           </div>
@@ -314,7 +314,7 @@ export default function ClientModal({ client, onSave, onClose }) {
               <div className="mt-2 space-y-1">
                 {existingDocs.map(doc => (
                   <div key={doc.id} className="flex items-center gap-2 bg-slate-800 rounded-lg px-3 py-2">
-                    <span className="text-sm">📎</span>
+                    <span className="text-sm">File</span>
                     <button
                       type="button"
                       onClick={() => openFile(doc.id)}
@@ -330,7 +330,7 @@ export default function ClientModal({ client, onSave, onClose }) {
                       className="text-slate-600 hover:text-red-400 transition-colors text-xs flex-shrink-0"
                       title="Remove"
                     >
-                      ✕
+                      x
                     </button>
                   </div>
                 ))}
@@ -351,7 +351,7 @@ export default function ClientModal({ client, onSave, onClose }) {
                       className="text-slate-600 hover:text-red-400 transition-colors text-xs flex-shrink-0"
                       title="Remove"
                     >
-                      ✕
+                      x
                     </button>
                   </div>
                 ))}

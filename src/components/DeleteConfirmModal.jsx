@@ -3,7 +3,7 @@ import ModalLayout from './ui/ModalLayout';
 export default function DeleteConfirmModal({ clientName, onConfirm, onClose }) {
   return (
     <ModalLayout onClose={onClose} size="sm" className="p-6 text-center">
-      <div className="text-4xl mb-3">🗑️</div>
+      <div className="text-4xl mb-3">Delete</div>
       <h2 className="text-lg font-bold text-white mb-1">Remove Client?</h2>
       <p className="text-slate-400 text-sm mb-6">
         <span className="text-white font-semibold">{clientName}</span> will be permanently removed from the CRM.

@@ -8,7 +8,7 @@ export default function NeedsReview({ items = [], records = [], onConfirm, onRea
   return (
     <div className="bg-slate-900 border border-amber-500/30 rounded-xl p-5">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-xs font-bold text-amber-400 uppercase tracking-widest">⚠ Email Matches — Needs Review</h2>
+        <h2 className="text-xs font-bold text-amber-400 uppercase tracking-widest">Email Matches - Needs Review</h2>
         <span className="text-xs text-slate-500">{items.length}</span>
       </div>
       <div className="space-y-2.5 max-h-96 overflow-auto pr-1">
@@ -37,7 +37,7 @@ function ReviewRow({ item, records, onConfirm, onReassign, onDismiss }) {
       <p className="text-sm text-slate-200 truncate">{entry.note}</p>
       <p className="text-xs text-slate-500 mt-0.5 truncate">
         {entry.email && <span className="text-slate-400">{entry.email}</span>}
-        {' → matched to '}<span className="text-amber-400">{host.name || 'Unknown'}</span>
+        {' matched to '}<span className="text-amber-400">{host.name || 'Unknown'}</span>
         {host.facility ? <span className="text-slate-600"> · {host.facility}</span> : null}
         {entry.confidence != null && <span className="text-slate-600"> · {Math.round(entry.confidence * 100)}%</span>}
       </p>
@@ -46,7 +46,7 @@ function ReviewRow({ item, records, onConfirm, onReassign, onDismiss }) {
         <div className="flex gap-2 mt-2">
           <button onClick={() => onConfirm(item)}
             className="text-xs font-bold text-emerald-400 bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-600/30 rounded-lg px-3 py-1 transition-all">
-            ✓ Confirm
+            Confirm
           </button>
           <button onClick={() => setReassigning(true)}
             className="text-xs font-bold text-slate-300 bg-slate-700/60 hover:bg-slate-700 border border-slate-600 rounded-lg px-3 py-1 transition-all">

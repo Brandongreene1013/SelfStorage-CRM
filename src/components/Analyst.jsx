@@ -56,7 +56,7 @@ function ModelDownload({ model }) {
         disabled={busy}
         className="inline-flex items-center gap-2 bg-emerald-600/20 border border-emerald-600/40 text-emerald-400 hover:bg-emerald-600/30 font-bold px-4 py-2 rounded-xl text-xs transition-all disabled:opacity-50"
       >
-        {busy ? 'Building…' : '⬇ Download Excel Model'}
+        {busy ? 'Building…' : 'Download Excel Model'}
       </button>
       {err && <p className="text-xs text-red-400 mt-1">{err}</p>}
     </div>
@@ -122,7 +122,7 @@ export default function Analyst() {
     const blocks = [...attachments.map(a => a.block)];
     if (userText) blocks.push({ type: 'text', text: userText });
 
-    const displayText = userText + (attachments.length ? `\n\n📎 ${attachments.map(a => a.name).join(', ')}` : '');
+    const displayText = userText + (attachments.length ? `\n\nFile ${attachments.map(a => a.name).join(', ')}` : '');
     const newUserMsg = { role: 'user', content: displayText, apiContent: blocks };
 
     const nextMessages = [...messages, newUserMsg];
@@ -166,7 +166,7 @@ export default function Analyst() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-900 font-black text-lg shadow">
-          📊
+          AI
         </div>
         <div>
           <h2 className="text-lg font-black text-white leading-tight">AI Analyst</h2>
@@ -178,7 +178,7 @@ export default function Analyst() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-1">
         {messages.length === 0 && (
           <div className="text-center py-10">
-            <div className="text-5xl mb-3">📊</div>
+            <div className="text-5xl mb-3">AI</div>
             <p className="text-slate-400 font-semibold mb-1">Your personal underwriting analyst</p>
             <p className="text-sm text-slate-600 max-w-md mx-auto mb-6">
               Give me back-of-napkin numbers, or upload a rent roll / P&L / occupancy report and I'll
@@ -236,8 +236,8 @@ export default function Analyst() {
         <div className="mt-2 flex flex-wrap gap-2">
           {attachments.map((a, i) => (
             <span key={i} className="text-xs bg-slate-800 border border-slate-700 text-slate-300 rounded-lg px-2.5 py-1 flex items-center gap-1.5">
-              📎 {a.name}
-              <button onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))} className="text-slate-500 hover:text-red-400">✕</button>
+              File {a.name}
+              <button onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))} className="text-slate-500 hover:text-red-400">x</button>
             </span>
           ))}
         </div>
@@ -250,7 +250,7 @@ export default function Analyst() {
           title="Attach rent roll, P&L, occupancy report (PDF / Excel / CSV)"
           className="flex-shrink-0 w-11 h-11 rounded-xl bg-slate-800 border border-slate-700 hover:border-amber-500/40 text-slate-400 hover:text-amber-400 transition-all text-lg"
         >
-          📎
+          File
         </button>
         <input ref={fileRef} type="file" multiple accept=".pdf,.xlsx,.xls,.csv,.txt" onChange={handleFile} className="hidden" />
         <textarea

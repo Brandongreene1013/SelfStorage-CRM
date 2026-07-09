@@ -50,7 +50,7 @@ export default function TaskModal({ context, defaults = {}, emphasizeDueDate = f
             <p className="text-xs text-slate-500 mt-0.5">For {context.relatedName}</p>
           )}
         </div>
-        <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
+        <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">x</button>
       </div>
 
       <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">

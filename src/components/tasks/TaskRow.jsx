@@ -55,7 +55,7 @@ export default function TaskRow({ task, onComplete, onDelete, onEdit, compact = 
             onClick={() => onDelete(task.id)}
             className="opacity-0 group-hover:opacity-100 text-slate-700 hover:text-red-400 text-xs transition-all leading-none"
           >
-            ✕
+            x
           </button>
         )}
       </div>

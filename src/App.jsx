@@ -32,6 +32,7 @@ export default function App() {
 
   // CRM meetings + synced Outlook calendar events, for the dashboard widget
   const allMeetings = [...meetings, ...calendarEvents];
+  const [view, setView] = useState('Dashboard');
 
   // ── Email "needs review" matches: build the flagged list + confirm/reassign/dismiss ──
   const reviewRecords = useMemo(() => [
@@ -118,16 +119,15 @@ export default function App() {
   // actions navigate into Database and tell it what to open. Consumed once
   // by Database, then cleared here so the same action can fire again.
   const [dbEntryRequest, setDbEntryRequest] = useState(null);
-  const [view, setView] = useState('Dashboard');
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState(0);
 
-  const handleStartCallMode = useCallback(() => {
+  const handleStartCallMode = useCallback((queueSource) => {
     // Opens Database's Call Mode queue picker (Sprint 6) rather than jumping
-    // straight into an ambiguous All Contacts session — Brandon chooses which
-    // queue to work from there.
-    setDbEntryRequest({ subView: 'callQueue' });
+    // straight into an ambiguous All Contacts session. When Dashboard already
+    // knows the exact callback bucket, it can pass the queue key through.
+    setDbEntryRequest({ subView: 'callQueue', queueSource });
     setView('Database');
   }, []);
 

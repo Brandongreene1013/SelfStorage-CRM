@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { IMPORT_FIELD_OPTIONS, parseImportData } from '../hooks/useDatabase';
 import ModalLayout from './ui/ModalLayout';
@@ -67,6 +67,8 @@ export default function ImportListModal({
   const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [showMapping, setShowMapping] = useState(false);
+  const [showPreviewRows, setShowPreviewRows] = useState(false);
   const fileInputRef = useRef(null);
 
   const effectiveSource = useMemo(() => {
@@ -124,6 +126,8 @@ export default function ImportListModal({
       if (!name) setName(fileBaseName(file.name));
 
       const parsed = buildPreview(tsv);
+      setShowMapping(parsed.mappingWarnings.length > 0);
+      setShowPreviewRows(false);
       if (parsed.contacts.length === 0) {
         setError('No rows found. Make sure the file has facility names, addresses, or column headers.');
       }
@@ -134,12 +138,12 @@ export default function ImportListModal({
     }
   }
 
-  const handleDrop = useCallback((e) => {
+  function handleDrop(e) {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files[0];
     if (file) handleFile(file);
-  }, [name, existingContacts]);
+  }
 
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = () => setIsDragging(false);
@@ -268,10 +272,6 @@ export default function ImportListModal({
               {metric('Ready to work', preview.summary.readyToCall, 'green')}
               {metric('Needs phone', preview.summary.missingPhone, preview.summary.missingPhone ? 'amber' : 'slate')}
               {metric('Possible duplicates', preview.summary.possibleDuplicates, preview.summary.possibleDuplicates ? 'amber' : 'slate')}
-              {metric('Missing owner', preview.summary.missingOwner, preview.summary.missingOwner ? 'amber' : 'slate')}
-              {metric('Missing address', preview.summary.missingAddress, preview.summary.missingAddress ? 'amber' : 'slate')}
-              {metric('Multi-phone rows', preview.summary.multiplePhoneRecords, preview.summary.multiplePhoneRecords ? 'blue' : 'slate')}
-              {metric('Extra phones', preview.summary.additionalPhones, preview.summary.additionalPhones ? 'blue' : 'slate')}
             </div>
 
             {preview.mappingWarnings.length > 0 && (
@@ -281,7 +281,34 @@ export default function ImportListModal({
               </div>
             )}
 
-            <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowMapping(v => !v)}
+                className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 rounded-lg px-3 py-1.5 transition-all"
+              >
+                {showMapping ? 'Hide Column Mapping' : 'Review Column Mapping'}
+              </button>
+              <button
+                onClick={() => setShowPreviewRows(v => !v)}
+                className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 rounded-lg px-3 py-1.5 transition-all"
+              >
+                {showPreviewRows ? 'Hide Row Preview' : 'Preview Rows'}
+              </button>
+              <select
+                value={duplicateMode}
+                onChange={e => setDuplicateMode(e.target.value)}
+                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+              >
+                <option value="import">Import anyway</option>
+                <option value="skip">Skip possible duplicates</option>
+                <option value="append">Append missing phones/notes</option>
+              </select>
+              <span className="text-xs text-slate-600">
+                {preview.summary.missingOwner} missing owner · {preview.summary.missingAddress} missing address · {preview.summary.additionalPhones} extra phones
+              </span>
+            </div>
+
+            {showMapping && <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-bold text-white">Column Mapping</p>
                 <p className="text-xs text-slate-500">Source saved as: {effectiveSource}</p>
@@ -302,20 +329,12 @@ export default function ImportListModal({
                   </div>
                 ))}
               </div>
-            </div>
+            </div>}
 
-            <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
+            {showPreviewRows && <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
                 <p className="text-sm font-bold text-white">Import Preview</p>
-                <select
-                  value={duplicateMode}
-                  onChange={e => setDuplicateMode(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-                >
-                  <option value="import">Import anyway</option>
-                  <option value="skip">Skip possible duplicates</option>
-                  <option value="append">Append missing phones/notes</option>
-                </select>
+                <p className="text-xs text-slate-500">Duplicate handling is set above.</p>
               </div>
 
               <div className="overflow-auto max-h-72">
@@ -370,7 +389,7 @@ export default function ImportListModal({
                   <p className="text-xs text-slate-500 mt-2 text-center">+{preview.rows.length - 12} more rows</p>
                 )}
               </div>
-            </div>
+            </div>}
           </>
         )}
 

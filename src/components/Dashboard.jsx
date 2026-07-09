@@ -141,22 +141,30 @@ function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, meeti
             onClick={onStartCallMode}
             className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-black px-5 py-3 rounded-xl text-sm transition-all shadow flex items-center gap-2"
           >
-            📞 Start Call Session
+            Start Call Session
           </button>
           {/* Callbacks owed — same task-based logic as Call Mode's Today's/
               Overdue Callbacks queues, so these numbers always match what
               the queue picker will show. */}
           <div className="flex items-center gap-2">
-            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+            <button
+              onClick={() => onStartCallMode('today')}
+              disabled={todayCallbacks === 0}
+              title="Open today's callback queue"
+              className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition-all ${
               todayCallbacks > 0 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-slate-800/60 border-slate-700 text-slate-600'
             }`}>
               {todayCallbacks} callback{todayCallbacks === 1 ? '' : 's'} due today
-            </span>
-            <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+            </button>
+            <button
+              onClick={() => onStartCallMode('overdue')}
+              disabled={overdueCallbacks === 0}
+              title="Open overdue callback queue"
+              className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition-all ${
               overdueCallbacks > 0 ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-slate-800/60 border-slate-700 text-slate-600'
             }`}>
               {overdueCallbacks} overdue callback{overdueCallbacks === 1 ? '' : 's'}
-            </span>
+            </button>
           </div>
         </div>
       </div>
@@ -177,15 +185,15 @@ function AttackList({ rows, onCallContact, onEditClient, onOpenDatabase }) {
   return (
     <SectionCard
       title="Today's Attack List"
-      subtitle="Who to contact next, ranked overdue → due today"
+      subtitle="Who to contact next, ranked overdue to due today"
       actions={
         <button onClick={onOpenDatabase} className="text-xs text-amber-500 hover:text-amber-400 font-semibold transition-colors">
-          Open Call Mode →
+          Open Call Mode
         </button>
       }
     >
       {rows.length === 0 ? (
-        <EmptyState icon="🎯" message="Nothing overdue or due today — you're caught up." />
+        <EmptyState message="Nothing overdue or due today. You're caught up." />
       ) : (
         <div className="space-y-1.5 max-h-[28rem] overflow-y-auto pr-1">
           {rows.map(r => (
@@ -200,20 +208,20 @@ function AttackList({ rows, onCallContact, onEditClient, onOpenDatabase }) {
                   {r.facilityName && <span className="text-xs text-slate-500 truncate">{r.facilityName}</span>}
                 </div>
                 <p className={`text-xs mt-0.5 truncate ${r.overdue ? 'text-red-400' : 'text-amber-400/80'}`}>
-                  {r.overdue ? 'OVERDUE — ' : ''}{r.reason}
+                  {r.overdue ? 'OVERDUE - ' : ''}{r.reason}
                 </p>
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {r.kind === 'contact' && r.phone && (
                   <a href={`tel:${r.phone}`} onClick={e => e.stopPropagation()}
                     className="text-xs font-bold bg-green-600/20 border border-green-600/40 text-green-400 hover:bg-green-600/30 px-2 py-1 rounded-lg transition-all">
-                    📞
+                    Dial
                   </a>
                 )}
                 {r.kind === 'contact' && r.contact && (
                   <button onClick={() => onCallContact(r.contact)}
                     className="text-xs font-bold bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 px-2.5 py-1 rounded-lg transition-all">
-                    Call
+                    Open
                   </button>
                 )}
                 {r.kind === 'client' && r.client && (
@@ -353,7 +361,7 @@ function NeedsFollowUp({ rows, onCallContact, onEditClient, onMoveToMasterDB }) 
                 Move to Master DB
               </button>
             )}
-            <span className="text-xs text-slate-600 flex-shrink-0">{r.kind === 'contact' ? '☎' : '💼'}</span>
+            <span className="text-xs text-slate-600 flex-shrink-0">{r.kind === 'contact' ? 'Contact' : 'Client'}</span>
           </div>
         ))}
       </div>
@@ -576,11 +584,10 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
     >
       {upcoming.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-6 text-slate-600 gap-2">
-          <span className="text-2xl">📅</span>
           <p className="text-xs">No upcoming meetings</p>
           <button onClick={onNavigate}
             className="text-amber-500 hover:text-amber-400 text-xs font-semibold transition-colors">
-            + Schedule one →
+            Schedule one
           </button>
         </div>
       ) : (
@@ -609,14 +616,14 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
                     {m.source === 'outlook' && <span className="ml-1.5 text-[10px] text-blue-400/80 font-bold">· Outlook</span>}
                   </p>
                   {client && <p className="text-xs text-amber-400/70 truncate mt-0.5">{client.name}</p>}
-                  {m.location && <p className="text-xs text-slate-500 truncate">📍 {m.location}</p>}
+                  {m.location && <p className="text-xs text-slate-500 truncate">{m.location}</p>}
                 </div>
               </button>
             );
           })}
           <button onClick={onNavigate}
             className="w-full text-xs text-slate-600 hover:text-amber-400 py-1 transition-colors text-center">
-            View full calendar →
+            View full calendar
           </button>
         </div>
       )}
@@ -698,7 +705,7 @@ function DashboardTasks({ taskApi }) {
       {loading ? (
         <LoadingSkeleton rows={3} />
       ) : totalOpen === 0 ? (
-        <EmptyState icon="✅" message="Nothing open — you're caught up." />
+        <EmptyState message="Nothing open. You're caught up." />
       ) : (
         <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
           {group('Overdue', overdue, 'text-red-400')}
@@ -779,6 +786,7 @@ export default function Dashboard({
   const [selectedMonth, setSelectedMonth] = useState(
     () => new Date().toISOString().slice(0, 7)
   );
+  const [showReporting, setShowReporting] = useState(false);
 
   const analyticsData = analyticsRange === 'Week' ? getWeek()
     : analyticsRange === 'Month' ? getMonth()
@@ -881,50 +889,21 @@ export default function Dashboard({
         <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} onDeleteClientAction={onDeleteClientAction} taskApi={taskApi} />
       )}
 
-      {/* ── KPI Strip ── */}
-      <MetricCardGrid metrics={kpiStats} />
-
-      {/* ── Pipeline Continuum ── */}
-      <PipelineContinuum
-        stageCounts={stageCounts}
-        totalUnits={totalUnits}
-        totalSqft={totalSqft}
-      />
-
-      {/* ── Main Body: Left content + Right sidebar ── */}
+      {/* ── Main Body: Daily work + lighter sidebar ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Left: Daily Production + Analytics + Funnel */}
+        {/* Left: Tasks + Meetings + Review */}
         <div className="lg:col-span-2 space-y-4">
-          <DailyProduction
-            today={today}
-            increment={increment}
-            decrement={decrement}
-            setValue={setValue}
-            todayLabel={todayLabel}
-            completedTodayCount={completedTodayCount}
-            callbacksCreatedToday={callbacksCreatedToday}
-          />
-
-          <ProductivityAnalytics
-            analyticsRange={analyticsRange}
-            setAnalyticsRange={setAnalyticsRange}
-            analyticsData={analyticsData}
-            selectedMonth={selectedMonth}
-            setSelectedMonth={setSelectedMonth}
-          />
-
-          <FunnelChart clients={clients} filter="All" />
-        </div>
-
-        {/* Right: Tasks + Meetings + Recent Activity */}
-        <div className="space-y-4">
           <DashboardTasks taskApi={taskApi} />
           <UpcomingMeetingsWidget
             meetings={meetings}
             clients={clients}
             onNavigate={onNavigateCalendar}
           />
+        </div>
+
+        {/* Right: Review + Recent Activity */}
+        <div className="space-y-4">
           {review && (
             <NeedsReview
               items={review.items}
@@ -937,6 +916,69 @@ export default function Dashboard({
           <RecentActivity clients={clients} contacts={contacts} />
         </div>
 
+      </div>
+
+      <div className="border-t border-slate-800 pt-4">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-sm font-black text-white">Performance</h2>
+            <p className="text-xs text-slate-500">Pipeline and production reporting</p>
+          </div>
+          <button
+            onClick={() => setShowReporting(v => !v)}
+            className="text-xs font-semibold text-slate-500 hover:text-amber-400 transition-colors"
+          >
+            {showReporting ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        {showReporting ? (
+          <div className="space-y-4">
+            <MetricCardGrid metrics={kpiStats} />
+            <PipelineContinuum
+              stageCounts={stageCounts}
+              totalUnits={totalUnits}
+              totalSqft={totalSqft}
+            />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <DailyProduction
+                today={today}
+                increment={increment}
+                decrement={decrement}
+                setValue={setValue}
+                todayLabel={todayLabel}
+                completedTodayCount={completedTodayCount}
+                callbacksCreatedToday={callbacksCreatedToday}
+              />
+              <ProductivityAnalytics
+                analyticsRange={analyticsRange}
+                setAnalyticsRange={setAnalyticsRange}
+                analyticsData={analyticsData}
+                selectedMonth={selectedMonth}
+                setSelectedMonth={setSelectedMonth}
+              />
+            </div>
+            <FunnelChart clients={clients} filter="All" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
+              <p className="text-xl font-black text-white">{clients.length}</p>
+              <p className="text-xs text-slate-500">clients</p>
+            </div>
+            <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
+              <p className="text-xl font-black text-green-400">{active}</p>
+              <p className="text-xs text-slate-500">active deals</p>
+            </div>
+            <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
+              <p className="text-xl font-black text-emerald-400">{completedTodayCount}</p>
+              <p className="text-xs text-slate-500">tasks done today</p>
+            </div>
+            <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
+              <p className="text-xl font-black text-purple-400">{callbacksCreatedToday}</p>
+              <p className="text-xs text-slate-500">callbacks created</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

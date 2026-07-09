@@ -48,38 +48,38 @@ export const LEAD_SOURCES = [
 export const STORAGE_CLASSES = ['Class A', 'Class B', 'Class C'];
 
 export const PROPERTY_TYPES = [
-  { value: 'Self-Storage', label: 'Self-Storage', icon: '🏢' },
-  { value: 'Boat/RV Storage', label: 'Boat/RV Storage', icon: '⛵' },
-  { value: 'Land', label: 'Land', icon: '🌿' },
+  { value: 'Self-Storage', label: 'Self-Storage', icon: '' },
+  { value: 'Boat/RV Storage', label: 'Boat/RV Storage', icon: '' },
+  { value: 'Land', label: 'Land', icon: '' },
 ];
 
 export const LEAD_TEMPS = [
-  { value: 'hot',  label: 'HOT',  icon: '🔥', bg: 'bg-red-500/20',   border: 'border-red-500/40',   text: 'text-red-400'   },
-  { value: 'warm', label: 'WARM', icon: '🟡', bg: 'bg-amber-500/20', border: 'border-amber-500/40', text: 'text-amber-400' },
-  { value: 'cold', label: 'COLD', icon: '🧊', bg: 'bg-blue-500/20',  border: 'border-blue-500/40',  text: 'text-blue-400'  },
+  { value: 'hot',  label: 'HOT',  icon: '', bg: 'bg-red-500/20',   border: 'border-red-500/40',   text: 'text-red-400'   },
+  { value: 'warm', label: 'WARM', icon: '', bg: 'bg-amber-500/20', border: 'border-amber-500/40', text: 'text-amber-400' },
+  { value: 'cold', label: 'COLD', icon: '', bg: 'bg-blue-500/20',  border: 'border-blue-500/40',  text: 'text-blue-400'  },
 ];
 
 export const ACTION_TYPES = [
-  { value: 'call',     label: 'Follow-Up Call',   icon: '📞' },
-  { value: 'email',    label: 'Send Email',       icon: '📧' },
-  { value: 'research', label: 'Market Research',  icon: '🔍' },
-  { value: 'meeting',  label: 'Schedule Meeting', icon: '📅' },
-  { value: 'bov',      label: 'BOV Presentation', icon: '📊' },
+  { value: 'call',     label: 'Follow-Up Call',   icon: 'Call' },
+  { value: 'email',    label: 'Send Email',       icon: 'Email' },
+  { value: 'research', label: 'Market Research',  icon: 'Research' },
+  { value: 'meeting',  label: 'Schedule Meeting', icon: 'Meeting' },
+  { value: 'bov',      label: 'BOV Presentation', icon: 'BOV' },
 ];
 
-// Universal Task engine (Sprint 2) — richer type/priority vocab than the
+// Universal Task engine (Sprint 2) - richer type/priority vocab than the
 // legacy single-slot ACTION_TYPES above, since one entity can now have
 // several open tasks at once.
 export const TASK_TYPES = [
-  { value: 'call',                label: 'Call',                icon: '📞' },
-  { value: 'email',               label: 'Email',                icon: '📧' },
-  { value: 'meeting',             label: 'Meeting',              icon: '📅' },
-  { value: 'send_report',         label: 'Send Report',          icon: '📈' },
-  { value: 'request_financials',  label: 'Request Financials',   icon: '📄' },
-  { value: 'bov',                 label: 'BOV',                  icon: '📊' },
-  { value: 'follow_up',           label: 'Follow Up',            icon: '🔁' },
-  { value: 'contract',            label: 'Contract',             icon: '📝' },
-  { value: 'general',             label: 'General',              icon: '✅' },
+  { value: 'call',                label: 'Call',                icon: 'Call' },
+  { value: 'email',               label: 'Email',                icon: 'Email' },
+  { value: 'meeting',             label: 'Meeting',              icon: 'Meeting' },
+  { value: 'send_report',         label: 'Send Report',          icon: 'Report' },
+  { value: 'request_financials',  label: 'Request Financials',   icon: 'Docs' },
+  { value: 'bov',                 label: 'BOV',                  icon: 'BOV' },
+  { value: 'follow_up',           label: 'Follow Up',            icon: 'Follow' },
+  { value: 'contract',            label: 'Contract',             icon: 'Contract' },
+  { value: 'general',             label: 'General',              icon: 'Task' },
 ];
 
 export const TASK_PRIORITIES = [

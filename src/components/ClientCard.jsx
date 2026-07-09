@@ -13,6 +13,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
   const docs = client.documents ?? [];
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   const openTasks = taskApi?.getRelatedTasks('client', client.id) ?? [];
   const nextTask = getNextOpenTask(openTasks);
@@ -77,20 +78,27 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
             className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white transition-all text-xs"
             title="Edit"
           >
-            ✏️
+            Edit
           </button>
           <button
             onClick={() => onDelete(client.id)}
             className="p-1.5 rounded-lg hover:bg-red-900/50 text-slate-400 hover:text-red-400 transition-all text-xs"
             title="Delete"
           >
-            🗑️
+            Delete
           </button>
         </div>
       </div>
 
       {/* Address — clickable Google Maps link */}
-      {client.address && (
+      <button
+        onClick={() => setShowDetails(v => !v)}
+        className="mb-2 text-xs font-semibold text-slate-600 hover:text-slate-300 transition-colors"
+      >
+        {showDetails ? 'Hide details' : 'Details'}
+      </button>
+
+      {showDetails && client.address && (
         <a
           href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.address)}`}
           target="_blank"
@@ -98,19 +106,19 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
           className="text-xs text-slate-500 hover:text-amber-400 mb-2 truncate flex items-center gap-1 transition-colors"
           title="Open in Google Maps"
         >
-          📍 {client.address}
+           {client.address}
         </a>
       )}
 
       {/* Phone + Email */}
-      {(client.phone || client.email) && (
+      {showDetails && (client.phone || client.email) && (
         <div className="flex flex-col gap-0.5 mb-2">
           {client.phone && (
             <a
               href={`tel:${client.phone}`}
               className="text-xs text-slate-500 hover:text-amber-400 flex items-center gap-1 transition-colors"
             >
-              📞 {client.phone}
+              Dial {client.phone}
             </a>
           )}
           {client.email && (
@@ -125,7 +133,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       )}
 
       {/* Stats row */}
-      {(client.units || client.sqft) && (
+      {showDetails && (client.units || client.sqft) && (
         <div className="flex gap-3 mb-2">
           {client.units && (
             <span className="text-xs text-slate-400">
@@ -141,15 +149,15 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       )}
 
       {/* Notes */}
-      {client.notes && (
+      {showDetails && client.notes && (
         <p className="text-xs text-slate-500 italic line-clamp-2">{client.notes}</p>
       )}
 
       {/* Documents */}
-      {docs.length > 0 && (
+      {showDetails && docs.length > 0 && (
         <div className="mt-2 pt-2 border-t border-slate-700/60">
           <p className="text-xs text-slate-600 mb-1 uppercase tracking-wide font-semibold">
-            📎 {docs.length} document{docs.length !== 1 ? 's' : ''}
+            File {docs.length} document{docs.length !== 1 ? 's' : ''}
           </p>
           <div className="space-y-0.5">
             {docs.map(doc => (
@@ -254,6 +262,8 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         </div>
       )}
 
+      {showDetails && (
+        <>
       {/* Universal tasks tied to this client (Sprint 2) */}
       <RelatedTasks
         taskApi={taskApi}
@@ -287,9 +297,11 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
           </select>
         </div>
       )}
+        </>
+      )}
 
       {/* Move out of the pipeline → keep as a Master Database contact */}
-      {onMoveToDatabase && (
+      {showDetails && onMoveToDatabase && (
         <button
           onClick={() => {
             if (confirm(`Move "${client.name}" out of the Clients pipeline and into the Master Database as a contact?`)) onMoveToDatabase(client);

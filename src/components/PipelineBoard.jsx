@@ -74,7 +74,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
             <p className="text-xs text-slate-400 truncate">{client.facilityName}</p>
           )}
           {client.address && (
-            <p className="text-xs text-slate-500 truncate mt-0.5">📍 {client.address}</p>
+            <p className="text-xs text-slate-500 truncate mt-0.5"> {client.address}</p>
           )}
           {(client.units || client.sqft) && (
             <div className="flex gap-2 mt-1">
@@ -85,14 +85,14 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {onMoveToDatabase && (
-            <MoveMenu label="⋯" options={[{ label: '→ Master Database (out of pipeline)', onClick: () => { if (confirm(`Move "${client.name}" out of the pipeline and into the Master Database?`)) onMoveToDatabase(client); } }]} />
+            <MoveMenu label="More" options={[{ label: 'Move to Master Database', onClick: () => { if (confirm(`Move "${client.name}" out of the pipeline and into the Master Database?`)) onMoveToDatabase(client); } }]} />
           )}
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); onEdit(client); }}
             className="p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-white opacity-0 group-hover:opacity-100 transition-all text-xs"
           >
-            ✏️
+            Edit
           </button>
         </div>
       </div>

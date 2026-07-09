@@ -24,7 +24,7 @@ export default function ActionModal({ name, subtitle, actionType, actionDate, ac
             <h2 className="text-base font-black text-white">Set Next Action</h2>
             <p className="text-xs text-slate-500 mt-0.5">{name}{subtitle ? ` · ${subtitle}` : ''}</p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
+          <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">x</button>
         </div>
 
         <div className="p-5 space-y-4">

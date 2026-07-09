@@ -74,7 +74,7 @@ export default function Calendar({ meetings, calendarEvents = [], clients, onAdd
           : 'bg-slate-900 border-slate-800'
       }`}>
         <div className="flex items-center gap-3">
-          <span className="text-xl">📧</span>
+          <span className="text-xl">Email</span>
           <div>
             {connected ? (
               <>
@@ -228,7 +228,7 @@ export default function Calendar({ meetings, calendarEvents = [], clients, onAdd
 
           {selectedMeetings.length === 0 ? (
             <EmptyState
-              icon="📅"
+              icon=""
               message="No meetings on this day"
               action={
                 <button onClick={() => { setEditingMeeting(null); setShowModal(true); }}
@@ -273,7 +273,7 @@ function OutlookEventCard({ event }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-bold text-blue-400 bg-blue-600/20 px-1.5 py-0.5 rounded">
-              {event.isOnline ? '🎥 Teams' : '📧 Outlook'}
+              {event.isOnline ? '🎥 Teams' : 'Email Outlook'}
             </span>
           </div>
           <h4 className="font-bold text-white text-sm">{event.title}</h4>
@@ -282,7 +282,7 @@ function OutlookEventCard({ event }) {
               🕐 {event.startTime}{event.startTime && event.endTime ? ` – ${event.endTime}` : ''}
             </p>
           )}
-          {event.location && <p className="text-xs text-slate-400 mt-0.5">📍 {event.location}</p>}
+          {event.location && <p className="text-xs text-slate-400 mt-0.5"> {event.location}</p>}
           {event.organizer && <p className="text-xs text-slate-500 mt-0.5">Organizer: {event.organizer}</p>}
           {event.notes && <p className="text-xs text-slate-500 mt-1.5 italic line-clamp-2">{event.notes}</p>}
         </div>
@@ -360,10 +360,10 @@ function MeetingCard({ meeting, client, onEdit, onDelete }) {
             </p>
           )}
           {meeting.location && (
-            <p className="text-xs text-slate-400 mt-0.5">📍 {meeting.location}</p>
+            <p className="text-xs text-slate-400 mt-0.5"> {meeting.location}</p>
           )}
           {client && (
-            <p className="text-xs text-amber-400/80 mt-0.5">👤 {client.name}{client.facilityName ? ` · ${client.facilityName}` : ''}</p>
+            <p className="text-xs text-amber-400/80 mt-0.5">{client.name}{client.facilityName ? ` · ${client.facilityName}` : ''}</p>
           )}
           {meeting.notes && (
             <p className="text-xs text-slate-500 mt-1.5 italic line-clamp-2">{meeting.notes}</p>
@@ -375,14 +375,14 @@ function MeetingCard({ meeting, client, onEdit, onDelete }) {
             className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white transition-all text-xs"
             title="Edit"
           >
-            ✏️
+            Edit
           </button>
           <button
             onClick={onDelete}
             className="p-1.5 rounded-lg hover:bg-red-900/50 text-slate-400 hover:text-red-400 transition-all text-xs"
             title="Delete"
           >
-            🗑️
+            Delete
           </button>
         </div>
       </div>
@@ -392,13 +392,13 @@ function MeetingCard({ meeting, client, onEdit, onDelete }) {
           onClick={openInOutlook}
           className="flex-1 text-xs font-semibold py-1.5 rounded-lg bg-blue-600/20 border border-blue-700/50 text-blue-400 hover:bg-blue-600/30 transition-all"
         >
-          📧 Open in Outlook
+          Email Open in Outlook
         </button>
         <button
           onClick={downloadICS}
           className="flex-1 text-xs font-semibold py-1.5 rounded-lg bg-slate-700 border border-slate-600 text-slate-300 hover:bg-slate-600 transition-all"
         >
-          ⬇ Download .ics
+          Download .ics
         </button>
       </div>
     </div>
