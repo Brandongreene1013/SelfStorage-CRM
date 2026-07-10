@@ -1717,10 +1717,10 @@ function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelet
       {/* Confirm delete */}
       {confirmDelete && (
         <div className="mx-3 mb-2 mt-1 bg-red-900/30 border border-red-800/50 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2">
-          <span className="text-xs text-red-400 font-semibold">Delete {count} contacts?</span>
+          <span className="text-xs text-red-400 font-semibold">Delete list?</span>
           <div className="flex gap-1.5">
             <button onClick={() => setConfirmDelete(false)} className="text-xs text-slate-400 hover:text-white transition-all">Cancel</button>
-            <button onClick={() => { onDelete(l.id); setConfirmDelete(false); }} className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-2 py-0.5 rounded transition-all">Delete</button>
+            <button onClick={() => { onDelete(l.id); setConfirmDelete(false); }} className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-2 py-0.5 rounded transition-all">Continue</button>
           </div>
         </div>
       )}
@@ -2023,6 +2023,25 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [relationshipFilter, setRelationshipFilter] = useState('all');
   const [leadSourceFilter, setLeadSourceFilter] = useState('all');
   const [search, setSearch]         = useState('');
+
+  async function handleDeleteList(listId) {
+    if (!listId || listId === masterListId) return;
+    const list = lists.find(l => l.id === listId);
+    const count = contacts.filter(c => c.listId === listId).length;
+    const ok = confirm(
+      `Delete "${list?.name ?? 'this list'}" from the database?\n\n` +
+      `This will permanently delete ${count} contact${count === 1 ? '' : 's'} still assigned to this list.\n\n` +
+      'Anything already added to the Master Database will stay there.'
+    );
+    if (!ok) return;
+
+    const result = await deleteList(listId);
+    if (result?.error) {
+      alert(`Could not delete list: ${result.error}`);
+      return;
+    }
+    if (activeListId === listId) setActiveListId('all');
+  }
 
   // Sprint 22 — location sort. Each list remembers its own anchor ("sort the
   // car wash list around DFW") in localStorage, mirroring how Call Mode
@@ -2469,7 +2488,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               isActive={activeListId === l.id && subView === 'contacts'}
               onSelect={() => { setActiveListId(l.id); setSubView('contacts'); }}
               onRename={(name) => renameList(l.id, name)}
-              onDelete={(id) => { deleteList(id); if (activeListId === id) setActiveListId('all'); }}
+              onDelete={handleDeleteList}
             />
           ))}
         </div>
@@ -2567,14 +2586,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         {/* Delete list button — not for Master Database */}
         {activeListId !== 'all' && activeListId !== masterListId && (
           <button
-            onClick={() => {
-              const l = lists.find(x => x.id === activeListId);
-              const count = contacts.filter(c => c.listId === activeListId).length;
-              if (confirm(`Delete "${l?.name}" and all ${count} contacts?`)) {
-                deleteList(activeListId);
-                setActiveListId('all');
-              }
-            }}
+            onClick={() => handleDeleteList(activeListId)}
             className="w-full text-xs font-semibold text-red-500 hover:text-red-400 bg-red-900/10 hover:bg-red-900/20 border border-red-900/30 rounded-xl px-3 py-2 transition-all"
           >
             Delete This List

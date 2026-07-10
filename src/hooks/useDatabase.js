@@ -1221,12 +1221,20 @@ export function useDatabase() {
   }, []);
 
   const deleteList = useCallback(async (listId) => {
-    const { error } = await supabase.from('lists').delete().eq('id', listId);
-    if (!error) {
-      setLists(prev => prev.filter(l => l.id !== listId));
-      setContacts(prev => prev.filter(c => c.listId !== listId));
-    }
-  }, []);
+    if (!listId) return { error: 'No list selected.' };
+    if (listId === masterListId) return { error: 'The Master Database cannot be deleted.' };
+
+    const deletedContacts = contacts.filter(c => c.listId === listId).length;
+    const contactDelete = await supabase.from('contacts').delete().eq('list_id', listId);
+    if (contactDelete.error) return { error: contactDelete.error.message };
+
+    const listDelete = await supabase.from('lists').delete().eq('id', listId);
+    if (listDelete.error) return { error: listDelete.error.message };
+
+    setLists(prev => prev.filter(l => l.id !== listId));
+    setContacts(prev => prev.filter(c => c.listId !== listId));
+    return { ok: true, deletedContacts };
+  }, [contacts, masterListId]);
 
   const renameList = useCallback(async (listId, newName) => {
     const { error } = await supabase.from('lists').update({ name: newName }).eq('id', listId);
