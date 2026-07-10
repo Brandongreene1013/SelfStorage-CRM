@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { PIPELINE_STAGES, CLIENT_TYPES, PROPERTY_TYPES } from '../data/constants';
 import { useFileStorage } from '../hooks/useFileStorage';
+import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } from '../lib/dealValue';
 import ModalLayout from './ui/ModalLayout';
 import { AddToMailerButton } from './MailerListPicker';
 
@@ -16,6 +17,8 @@ const EMPTY = {
   mailingAddress: '',
   units: '',
   sqft: '',
+  desiredSalePrice: '',
+  projectedCommissionPct: '',
   notes: '',
   stageId: 1,
 };
@@ -49,6 +52,8 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
         mailingAddress: client.mailingAddress ?? '',
         units: client.units ?? '',
         sqft: client.sqft ?? '',
+        desiredSalePrice: client.desiredSalePrice ?? '',
+        projectedCommissionPct: client.projectedCommissionPct ?? '',
         notes: client.notes ?? '',
         stageId: client.stageId ?? 1,
       });
@@ -95,6 +100,8 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
         stageId: Number(form.stageId),
         units: form.units === '' ? null : Number(form.units),
         sqft: form.sqft === '' ? null : Number(form.sqft),
+        desiredSalePrice: numberOrNull(form.desiredSalePrice),
+        projectedCommissionPct: numberOrNull(form.projectedCommissionPct),
         documents: [...existingDocs, ...newDocs],
       });
       onClose();
@@ -105,6 +112,7 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
 
   const inputCls = 'w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 text-sm focus:outline-none focus:border-amber-500 placeholder:text-slate-500';
   const labelCls = 'block text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wide';
+  const projectedCommission = projectedCommissionAmount(form.desiredSalePrice, form.projectedCommissionPct);
 
   return (
     <ModalLayout onClose={onClose} className="max-h-[90vh] flex flex-col">
@@ -279,6 +287,47 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
                 placeholder="e.g. 38000"
                 className={inputCls}
               />
+            </div>
+          </div>
+
+          {/* Deal Value */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-900/60 border border-slate-800 rounded-xl p-3">
+            <div>
+              <label className={labelCls}>Desired Sale Price</label>
+              <input
+                name="desiredSalePrice"
+                type="number"
+                min="0"
+                step="1000"
+                value={form.desiredSalePrice}
+                onChange={handleChange}
+                placeholder="e.g. 4500000"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Commission %</label>
+              <input
+                name="projectedCommissionPct"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.projectedCommissionPct}
+                onChange={handleChange}
+                placeholder="e.g. 3"
+                className={inputCls}
+              />
+            </div>
+            <div className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
+              <p className={labelCls}>Projected Commission</p>
+              <p className="text-lg font-black text-emerald-400 leading-tight">
+                {projectedCommission ? formatMoney(projectedCommission) : '$0'}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {form.desiredSalePrice && form.projectedCommissionPct
+                  ? `${formatMoney(form.desiredSalePrice, { compact: true })} x ${formatPercent(form.projectedCommissionPct)}`
+                  : 'Enter price and %'}
+              </p>
             </div>
           </div>
 

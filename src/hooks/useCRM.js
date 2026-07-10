@@ -39,6 +39,8 @@ export function useCRM() {
       email: row.email,
       units: row.units,
       sqft: row.sqft,
+      desiredSalePrice: row.desired_sale_price ?? null,
+      projectedCommissionPct: row.projected_commission_pct ?? null,
       notes: row.notes,
       stageId: row.stage_id,
       storageClass: row.storage_class,
@@ -67,6 +69,8 @@ export function useCRM() {
       email: data.email,
       units: data.units ?? null,
       sqft: data.sqft ?? null,
+      desired_sale_price: data.desiredSalePrice ?? null,
+      projected_commission_pct: data.projectedCommissionPct ?? null,
       notes: data.notes,
       stage_id: data.stageId ?? 1,
       storage_class: data.storageClass,
@@ -98,6 +102,11 @@ export function useCRM() {
       dbRow = withoutMailing;
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
+    if (error && (isMissingColumnError(error, 'desired_sale_price') || isMissingColumnError(error, 'projected_commission_pct'))) {
+      const { desired_sale_price: _desiredSalePrice, projected_commission_pct: _projectedCommissionPct, ...withoutDealValue } = dbRow;
+      dbRow = withoutDealValue;
+      ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
+    }
     if (!error && row) {
       setClients(prev => [...prev, dbToClient(row)]);
     }
@@ -114,6 +123,11 @@ export function useCRM() {
     if (error && isMissingColumnError(error, 'mailing_address')) {
       const { mailing_address: _mailingAddress, ...withoutMailing } = dbRow;
       dbRow = withoutMailing;
+      ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
+    }
+    if (error && (isMissingColumnError(error, 'desired_sale_price') || isMissingColumnError(error, 'projected_commission_pct'))) {
+      const { desired_sale_price: _desiredSalePrice, projected_commission_pct: _projectedCommissionPct, ...withoutDealValue } = dbRow;
+      dbRow = withoutDealValue;
       ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
     }
     if (!error && row) {

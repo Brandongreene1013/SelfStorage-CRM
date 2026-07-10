@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { useFileStorage } from '../hooks/useFileStorage';
+import { formatMoney, formatPercent, projectedCommissionAmount } from '../lib/dealValue';
 import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
 import OwnershipLinksPanel from './OwnershipLinksPanel';
@@ -21,6 +22,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
   const nextTaskDue = dueMeta(nextTask?.dueDate);
   const actionType = ACTION_TYPES.find(a => a.value === client.nextActionType);
   const fallbackDue = dueMeta(client.nextActionDate);
+  const projectedCommission = projectedCommissionAmount(client.desiredSalePrice, client.projectedCommissionPct);
   const modalDefaults = nextTask
     ? {}
     : legacyActionDefaults(client.nextActionType, client.nextActionDate, client.nextActionNote);
@@ -69,6 +71,21 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
           <h3 className="font-bold text-white text-sm mt-1 truncate">{client.name}</h3>
           {client.facilityName && (
             <p className="text-xs text-slate-400 truncate">{client.facilityName}</p>
+          )}
+          {(client.desiredSalePrice || projectedCommission) && (
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
+              {client.desiredSalePrice && (
+                <span className="text-slate-300 bg-slate-900/70 border border-slate-700 px-2 py-0.5 rounded-md">
+                  Target {formatMoney(client.desiredSalePrice, { compact: true })}
+                </span>
+              )}
+              {projectedCommission && (
+                <span className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-md">
+                  Fee {formatMoney(projectedCommission, { compact: true })}
+                  {client.projectedCommissionPct ? ` @ ${formatPercent(client.projectedCommissionPct)}` : ''}
+                </span>
+              )}
+            </div>
           )}
         </div>
         {/* Actions */}
