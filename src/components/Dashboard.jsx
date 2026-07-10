@@ -182,18 +182,23 @@ function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, meeti
 
 // ─── Today's Attack List ──────────────────────────────────────────────────────
 function AttackList({ rows, onCallContact, onEditClient, onOpenDatabase }) {
+  const actionButton = 'h-9 min-w-[68px] inline-flex items-center justify-center rounded-lg border px-3 text-xs font-bold transition-all';
+
   return (
     <SectionCard
       title="Today's Attack List"
       subtitle="Who to contact next, ranked overdue to due today"
       actions={
-        <button onClick={onOpenDatabase} className="text-xs text-amber-500 hover:text-amber-400 font-semibold transition-colors">
-          Open Call Mode
+        <button
+          onClick={onOpenDatabase}
+          className={`${actionButton} border-amber-500/40 bg-amber-500/15 text-amber-400 hover:bg-amber-500/25`}
+        >
+          Call Mode
         </button>
       }
     >
       {rows.length === 0 ? (
-        <EmptyState icon="🎯" message="Nothing overdue or due today. You're caught up." />
+        <EmptyState icon="??" message="Nothing overdue or due today. You're caught up." />
       ) : (
         <div className="space-y-1.5 max-h-[28rem] overflow-y-auto pr-1">
           {rows.map(r => (
@@ -214,20 +219,20 @@ function AttackList({ rows, onCallContact, onEditClient, onOpenDatabase }) {
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {r.kind === 'contact' && r.phone && (
                   <a href={`tel:${r.phone}`} onClick={e => e.stopPropagation()} title="Dial"
-                    className="text-xs font-bold bg-green-600/20 border border-green-600/40 text-green-400 hover:bg-green-600/30 px-2 py-1 rounded-lg transition-all">
-                    📞
+                    className={`${actionButton} border-green-600/40 bg-green-600/20 text-green-400 hover:bg-green-600/30`}>
+                    Call
                   </a>
                 )}
                 {r.kind === 'contact' && r.contact && (
                   <button onClick={() => onCallContact(r.contact)}
-                    className="text-xs font-bold bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 px-2.5 py-1 rounded-lg transition-all">
+                    className={`${actionButton} border-amber-500/40 bg-amber-500/15 text-amber-400 hover:bg-amber-500/25`}>
                     Open
                   </button>
                 )}
                 {r.kind === 'client' && r.client && (
                   <button onClick={() => onEditClient(r.client)}
-                    className="text-xs font-bold bg-blue-500/15 border border-blue-500/40 text-blue-400 hover:bg-blue-500/25 px-2.5 py-1 rounded-lg transition-all">
-                    Push
+                    className={`${actionButton} border-amber-500/40 bg-amber-500/15 text-amber-400 hover:bg-amber-500/25`}>
+                    Open
                   </button>
                 )}
               </div>
