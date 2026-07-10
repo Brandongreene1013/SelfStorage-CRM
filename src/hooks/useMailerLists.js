@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 
-// Mailer Lists — named lists of contacts/clients for physical mailings.
-// Members are stored as (member_type, member_id) references; the mailing
-// address itself lives on the contact/client record, so edits there flow
-// through to every list automatically. Backed by sql/mailer_lists_migration.sql;
+// Mailer Lists: named lists of contacts/clients for physical mailings.
+// Members store the referenced person plus the exact selected mailing address,
+// so one person can be mailed at multiple affiliated addresses.
+// Backed by sql/mailer_lists_migration.sql;
 // until that runs, `tablesMissing` is true and the UI shows a run-the-migration
 // notice instead of silently failing.
 
@@ -13,6 +13,13 @@ function isMissingTableError(error) {
   const msg = error.message ?? '';
   return error.code === '42P01' || error.code === 'PGRST205'
     || /relation .*mailer_list.* does not exist|could not find the table/i.test(msg);
+}
+
+function isMissingMailerSchemaError(error) {
+  if (!error) return false;
+  const msg = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`;
+  return error.code === 'PGRST204' || error.code === '42703'
+    || /mailing_address|address_label/i.test(msg);
 }
 
 function dbToList(row) {
@@ -25,6 +32,8 @@ function dbToMember(row) {
     listId: row.list_id,
     memberType: row.member_type,
     memberId: row.member_id,
+    mailingAddress: row.mailing_address ?? '',
+    addressLabel: row.address_label ?? '',
     createdAt: row.created_at ?? null,
   };
 }
@@ -54,7 +63,7 @@ export function useMailerLists() {
     if (!trimmed) return null;
     const { data: row, error } = await supabase
       .from('mailer_lists').insert([{ name: trimmed }]).select().single();
-    if (isMissingTableError(error)) { setTablesMissing(true); return null; }
+    if (isMissingTableError(error) || isMissingMailerSchemaError(error)) { setTablesMissing(true); return null; }
     if (error || !row) return null;
     const list = dbToList(row);
     setMailerLists(prev => [...prev, list]);
@@ -76,14 +85,21 @@ export function useMailerLists() {
     }
   }, []);
 
-  const addMember = useCallback(async (listId, memberType, memberId) => {
+  const addMember = useCallback(async (listId, memberType, memberId, options = {}) => {
+    const mailingAddress = (options.mailingAddress ?? '').trim();
+    const addressLabel = (options.addressLabel ?? '').trim();
     const { data: row, error } = await supabase
       .from('mailer_list_members')
-      .insert([{ list_id: listId, member_type: memberType, member_id: memberId }])
+      .insert([{
+        list_id: listId,
+        member_type: memberType,
+        member_id: memberId,
+        mailing_address: mailingAddress,
+        address_label: addressLabel,
+      }])
       .select().single();
-    if (isMissingTableError(error)) { setTablesMissing(true); return null; }
+    if (isMissingTableError(error) || isMissingMailerSchemaError(error)) { setTablesMissing(true); return null; }
     if (error) {
-      // unique violation = already on the list; treat as success
       if (error.code === '23505') return 'exists';
       return null;
     }
@@ -92,19 +108,32 @@ export function useMailerLists() {
     return member;
   }, []);
 
-  const removeMember = useCallback(async (listId, memberType, memberId) => {
-    const { error } = await supabase
+  const removeMember = useCallback(async (listId, memberType, memberId, options = {}) => {
+    let query = supabase
       .from('mailer_list_members').delete()
       .eq('list_id', listId).eq('member_type', memberType).eq('member_id', memberId);
+    if (options.memberRowId) query = query.eq('id', options.memberRowId);
+    else if (options.mailingAddress !== undefined) query = query.eq('mailing_address', (options.mailingAddress ?? '').trim());
+    const { error } = await query;
     if (!error) {
-      setMembers(prev => prev.filter(m =>
-        !(m.listId === listId && m.memberType === memberType && m.memberId === memberId)));
+      const targetAddress = options.mailingAddress === undefined ? undefined : (options.mailingAddress ?? '').trim();
+      setMembers(prev => prev.filter(m => !(
+        m.listId === listId &&
+        m.memberType === memberType &&
+        m.memberId === memberId &&
+        (!options.memberRowId || m.id === options.memberRowId) &&
+        (targetAddress === undefined || (m.mailingAddress ?? '') === targetAddress)
+      )));
     }
   }, []);
 
-  // listIds a given contact/client is on — powers the picker's checkmarks
-  const membershipFor = useCallback((memberType, memberId) => {
-    return new Set(members.filter(m => m.memberType === memberType && m.memberId === memberId).map(m => m.listId));
+  // listIds a given contact/client/address is on - powers the picker's checkmarks
+  const membershipFor = useCallback((memberType, memberId, mailingAddress) => {
+    const address = mailingAddress === undefined ? undefined : (mailingAddress ?? '').trim();
+    return new Set(members
+      .filter(m => m.memberType === memberType && m.memberId === memberId
+        && (address === undefined || (m.mailingAddress ?? '') === address))
+      .map(m => m.listId));
   }, [members]);
 
   const memberCounts = useMemo(() => {

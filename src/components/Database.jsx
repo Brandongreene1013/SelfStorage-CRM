@@ -9,6 +9,7 @@ import ActionCenterModal from './ActionCenterModal';
 import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
 import { AddToMailerButton } from './MailerListPicker';
+import MailingAddressList from './MailingAddressList';
 import { ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCES, LEAD_TEMPS, PROPERTY_TYPES, RELATIONSHIP_TYPES } from '../data/constants';
 import { useOwnership } from '../hooks/useOwnership';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
@@ -1076,10 +1077,18 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
               {contact.mailingAddress && (
                 <AddToMailerButton
                   mailerApi={mailerApi}
-                  member={{ type: 'contact', id: contact.id, name: contact.ownerName || contact.facilityName || 'Unknown', mailingAddress: contact.mailingAddress }}
+                  member={{ type: 'contact', id: contact.id, name: contact.ownerName || contact.facilityName || 'Unknown', mailingAddress: contact.mailingAddress, addressLabel: 'Primary' }}
                 />
               )}
             </div>
+            <MailingAddressList
+              addresses={contact.mailingAddresses}
+              onChange={(rows) => onUpdate(contact.id, { mailingAddresses: rows })}
+              mailerApi={mailerApi}
+              member={{ type: 'contact', id: contact.id, name: contact.ownerName || contact.facilityName || 'Unknown' }}
+              inputClassName="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+              compact
+            />
           </div>
 
           <OwnershipLinksPanel contact={contact} ownershipApi={ownershipApi} onUpdate={onUpdate} />
@@ -2781,6 +2790,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     onDeleteAction={clientHandlers.onDeleteAction}
                     taskApi={taskApi}
                     ownershipApi={ownershipApi}
+                    mailerApi={clientHandlers.mailerApi}
                   />
                 ))}
               </div>
@@ -2994,10 +3004,18 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
         {contact.mailingAddress && (
           <AddToMailerButton
             mailerApi={mailerApi}
-            member={{ type: 'contact', id: contact.id, name: contact.ownerName || contact.facilityName || 'Unknown', mailingAddress: contact.mailingAddress }}
+            member={{ type: 'contact', id: contact.id, name: contact.ownerName || contact.facilityName || 'Unknown', mailingAddress: contact.mailingAddress, addressLabel: 'Primary' }}
           />
         )}
       </div>
+      <MailingAddressList
+        addresses={contact.mailingAddresses}
+        onChange={(rows) => onUpdateContact?.(contact.id, { mailingAddresses: rows })}
+        mailerApi={mailerApi}
+        member={{ type: 'contact', id: contact.id, name: contact.ownerName || contact.facilityName || 'Unknown' }}
+        inputClassName="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+        compact
+      />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Relationship Type</label>
@@ -3312,7 +3330,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   {current.mailingAddress && (
                     <AddToMailerButton
                       mailerApi={mailerApi}
-                      member={{ type: 'contact', id: current.id, name: current.ownerName || current.facilityName || 'Unknown', mailingAddress: current.mailingAddress }}
+                      member={{ type: 'contact', id: current.id, name: current.ownerName || current.facilityName || 'Unknown', mailingAddress: current.mailingAddress, addressLabel: 'Primary' }}
                     />
                   )}
                 </div>

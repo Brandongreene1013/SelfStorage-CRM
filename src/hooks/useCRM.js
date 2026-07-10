@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { normalizeMailingAddresses } from '../lib/mailingAddresses';
 
 function isMissingColumnError(error, columnName) {
   if (!error) return false;
@@ -35,6 +36,7 @@ export function useCRM() {
       facilityName: row.facility_name,
       address: row.address,
       mailingAddress: row.mailing_address ?? '',
+      mailingAddresses: normalizeMailingAddresses(row.mailing_addresses),
       phone: row.phone,
       email: row.email,
       units: row.units,
@@ -65,6 +67,7 @@ export function useCRM() {
       facility_name: data.facilityName,
       address: data.address,
       mailing_address: data.mailingAddress ?? '',
+      mailing_addresses: normalizeMailingAddresses(data.mailingAddresses),
       phone: data.phone,
       email: data.email,
       units: data.units ?? null,
@@ -98,8 +101,13 @@ export function useCRM() {
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
     if (error && isMissingColumnError(error, 'mailing_address')) {
-      const { mailing_address: _mailingAddress, ...withoutMailing } = dbRow;
+      const { mailing_address: _mailingAddress, mailing_addresses: _mailingAddresses, ...withoutMailing } = dbRow;
       dbRow = withoutMailing;
+      ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
+    }
+    if (error && isMissingColumnError(error, 'mailing_addresses')) {
+      const { mailing_addresses: _mailingAddresses, ...withoutMailingAddresses } = dbRow;
+      dbRow = withoutMailingAddresses;
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
     if (error && (isMissingColumnError(error, 'desired_sale_price') || isMissingColumnError(error, 'projected_commission_pct'))) {
@@ -121,8 +129,13 @@ export function useCRM() {
       .select()
       .single();
     if (error && isMissingColumnError(error, 'mailing_address')) {
-      const { mailing_address: _mailingAddress, ...withoutMailing } = dbRow;
+      const { mailing_address: _mailingAddress, mailing_addresses: _mailingAddresses, ...withoutMailing } = dbRow;
       dbRow = withoutMailing;
+      ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
+    }
+    if (error && isMissingColumnError(error, 'mailing_addresses')) {
+      const { mailing_addresses: _mailingAddresses, ...withoutMailingAddresses } = dbRow;
+      dbRow = withoutMailingAddresses;
       ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
     }
     if (error && (isMissingColumnError(error, 'desired_sale_price') || isMissingColumnError(error, 'projected_commission_pct'))) {

@@ -4,3 +4,5 @@
 
 alter table contacts add column if not exists mailing_address text not null default '';
 alter table clients  add column if not exists mailing_address text not null default '';
+alter table contacts add column if not exists mailing_addresses jsonb not null default '[]'::jsonb;
+alter table clients  add column if not exists mailing_addresses jsonb not null default '[]'::jsonb;

@@ -4,11 +4,12 @@ import { useFileStorage } from '../hooks/useFileStorage';
 import { formatMoney, formatPercent, projectedCommissionAmount } from '../lib/dealValue';
 import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
+import { AddToMailerButton } from './MailerListPicker';
 import OwnershipLinksPanel from './OwnershipLinksPanel';
 import { StatusBadge } from './ui';
 import { RelatedTasks, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
-export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, onDeleteAction, compact = false, taskApi, ownershipApi }) {
+export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, onDeleteAction, compact = false, taskApi, ownershipApi, mailerApi }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
   const { openFile } = useFileStorage();
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
@@ -126,11 +127,32 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
           📍 {client.address}
         </a>
       )}
-
       {showDetails && client.mailingAddress && (
-        <p className="text-xs text-slate-500 mb-2 truncate" title={client.mailingAddress}>
-          ✉️ {client.mailingAddress}
-        </p>
+        <div className="mb-2 flex items-center gap-2">
+          <p className="text-xs text-slate-500 truncate flex-1" title={client.mailingAddress}>
+            Mail: {client.mailingAddress}
+          </p>
+          <AddToMailerButton
+            mailerApi={mailerApi}
+            member={{ type: 'client', id: client.id, name: client.name, mailingAddress: client.mailingAddress, addressLabel: 'Primary' }}
+          />
+        </div>
+      )}
+
+      {showDetails && client.mailingAddresses?.length > 0 && (
+        <div className="mb-2 space-y-1">
+          {client.mailingAddresses.map(row => (
+            <div key={row.id || row.address} className="flex items-center gap-2">
+              <p className="text-xs text-slate-500 truncate flex-1" title={row.address}>
+                {row.label ? `${row.label}: ` : 'Mail: '}{row.address}
+              </p>
+              <AddToMailerButton
+                mailerApi={mailerApi}
+                member={{ type: 'client', id: client.id, name: client.name, mailingAddress: row.address, addressLabel: row.label || 'Affiliated' }}
+              />
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Phone + Email */}

@@ -86,6 +86,7 @@ export default function App() {
       facilityName: contact.facilityName ?? '',
       address: contact.address ?? '',
       mailingAddress: contact.mailingAddress ?? '',
+      mailingAddresses: contact.mailingAddresses ?? [],
       phone: contact.phone ?? '',
       email: contact.email ?? '',
       notes: contact.notes ?? '',
@@ -109,6 +110,7 @@ export default function App() {
       email: client.email ?? '',
       address: client.address ?? '',
       mailingAddress: client.mailingAddress ?? '',
+      mailingAddresses: client.mailingAddresses ?? [],
       notes: client.notes ?? '',
       status: 'conversation',
       leadTemp: client.leadTemp ?? '',
@@ -371,6 +373,7 @@ export default function App() {
                     onDeleteAction={deleteClientAction}
                     taskApi={taskApi}
                     ownershipApi={ownershipApi}
+                    mailerApi={mailerApi}
                   />
                 ))}
               </div>
@@ -391,6 +394,7 @@ export default function App() {
               onSetAction: setClientAction,
               onLogAction: logClientAction,
               onDeleteAction: deleteClientAction,
+              mailerApi,
             }}
             taskApi={taskApi}
             mailerApi={mailerApi}

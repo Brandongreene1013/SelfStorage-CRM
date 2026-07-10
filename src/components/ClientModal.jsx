@@ -5,6 +5,7 @@ import { useFileStorage } from '../hooks/useFileStorage';
 import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } from '../lib/dealValue';
 import ModalLayout from './ui/ModalLayout';
 import { AddToMailerButton } from './MailerListPicker';
+import MailingAddressList from './MailingAddressList';
 
 const EMPTY = {
   name: '',
@@ -15,6 +16,7 @@ const EMPTY = {
   email: '',
   address: '',
   mailingAddress: '',
+  mailingAddresses: [],
   units: '',
   sqft: '',
   desiredSalePrice: '',
@@ -50,6 +52,7 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
         email: client.email ?? '',
         address: client.address ?? '',
         mailingAddress: client.mailingAddress ?? '',
+        mailingAddresses: client.mailingAddresses ?? [],
         units: client.units ?? '',
         sqft: client.sqft ?? '',
         desiredSalePrice: client.desiredSalePrice ?? '',
@@ -102,6 +105,7 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
         sqft: form.sqft === '' ? null : Number(form.sqft),
         desiredSalePrice: numberOrNull(form.desiredSalePrice),
         projectedCommissionPct: numberOrNull(form.projectedCommissionPct),
+        mailingAddresses: form.mailingAddresses,
         documents: [...existingDocs, ...newDocs],
       });
       onClose();
@@ -244,7 +248,7 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
 
           {/* Mailing Address */}
           <div>
-            <label className={labelCls}>Mailing Address</label>
+            <label className={labelCls}>Primary Mailing Address</label>
             <div className="flex items-center gap-2">
               <input
                 name="mailingAddress"
@@ -256,9 +260,18 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
               {isEdit && mailerApi && form.mailingAddress.trim() && (
                 <AddToMailerButton
                   mailerApi={mailerApi}
-                  member={{ type: 'client', id: client.id, name: form.name || client.name, mailingAddress: form.mailingAddress }}
+                  member={{ type: 'client', id: client.id, name: form.name || client.name, mailingAddress: form.mailingAddress, addressLabel: 'Primary' }}
                 />
               )}
+            </div>
+            <div className="mt-2">
+              <MailingAddressList
+                addresses={form.mailingAddresses}
+                onChange={(rows) => setForm(prev => ({ ...prev, mailingAddresses: rows }))}
+                mailerApi={isEdit ? mailerApi : null}
+                member={isEdit ? { type: 'client', id: client.id, name: form.name || client.name } : null}
+                inputClassName={inputCls}
+              />
             </div>
           </div>
 

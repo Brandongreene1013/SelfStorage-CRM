@@ -12,8 +12,8 @@ function csvEscape(value) {
 }
 
 function exportListCsv(list, rows) {
-  const header = ['Name', 'Mailing Address', 'Facility', 'Type'];
-  const lines = [header, ...rows.map(r => [r.name, r.mailingAddress, r.facility, r.memberType === 'contact' ? 'Contact' : 'Client'])]
+  const header = ['Name', 'Mailing Address', 'Address Label', 'Facility', 'Type'];
+  const lines = [header, ...rows.map(r => [r.name, r.mailingAddress, r.addressLabel, r.facility, r.memberType === 'contact' ? 'Contact' : 'Client'])]
     .map(cols => cols.map(csvEscape).join(','));
   const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -93,14 +93,16 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
             : clients.find(c => c.id === m.memberId);
           if (!record) return null;
           return {
-            key: `${m.memberType}:${m.memberId}`,
+            key: m.id || `${m.memberType}:${m.memberId}:${m.mailingAddress}`,
             memberType: m.memberType,
             memberId: m.memberId,
+            memberRowId: m.id,
             name: m.memberType === 'contact'
               ? (record.ownerName || record.facilityName || 'Unknown')
               : (record.name || 'Unknown'),
             facility: record.facilityName ?? '',
-            mailingAddress: record.mailingAddress ?? '',
+            mailingAddress: m.mailingAddress || record.mailingAddress || '',
+            addressLabel: m.addressLabel || (m.mailingAddress ? 'Selected' : 'Primary'),
           };
         })
         .filter(Boolean)
@@ -223,7 +225,7 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
                         {r.facility && <span className="text-slate-500 font-normal"> · {r.facility}</span>}
                       </p>
                       <p className={`text-xs truncate ${r.mailingAddress ? 'text-slate-400' : 'text-amber-400 italic'}`}>
-                        {r.mailingAddress || '⚠ No mailing address on file'}
+                        {r.addressLabel && r.mailingAddress ? `${r.addressLabel}: ` : ''}{r.mailingAddress || 'No mailing address on file'}
                       </p>
                     </div>
                     <span className={`text-xs font-semibold flex-shrink-0 px-2 py-0.5 rounded-md border ${
@@ -234,7 +236,7 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
                       {r.memberType === 'contact' ? 'Contact' : 'Client'}
                     </span>
                     <button
-                      onClick={() => mailerApi.removeMember(activeList.id, r.memberType, r.memberId)}
+                      onClick={() => mailerApi.removeMember(activeList.id, r.memberType, r.memberId, { memberRowId: r.memberRowId })}
                       title="Remove from this mailer list"
                       className="flex-shrink-0 text-xs font-semibold text-slate-500 hover:text-red-400 transition-all"
                     >

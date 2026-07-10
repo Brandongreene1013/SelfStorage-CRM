@@ -8,13 +8,15 @@ import ModalLayout from './ui/ModalLayout';
 export function MailerListPicker({ member, mailerApi, onClose }) {
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
-  const onLists = mailerApi.membershipFor(member.type, member.id);
+  const selectedAddress = (member.mailingAddress ?? '').trim();
+  const selectedLabel = (member.addressLabel ?? '').trim();
+  const onLists = mailerApi.membershipFor(member.type, member.id, selectedAddress);
 
   async function toggle(list) {
     if (onLists.has(list.id)) {
-      await mailerApi.removeMember(list.id, member.type, member.id);
+      await mailerApi.removeMember(list.id, member.type, member.id, { mailingAddress: selectedAddress });
     } else {
-      await mailerApi.addMember(list.id, member.type, member.id);
+      await mailerApi.addMember(list.id, member.type, member.id, { mailingAddress: selectedAddress, addressLabel: selectedLabel });
     }
   }
 
@@ -24,7 +26,7 @@ export function MailerListPicker({ member, mailerApi, onClose }) {
     setCreating(true);
     const list = await mailerApi.createList(name);
     if (list) {
-      await mailerApi.addMember(list.id, member.type, member.id);
+      await mailerApi.addMember(list.id, member.type, member.id, { mailingAddress: selectedAddress, addressLabel: selectedLabel });
       setNewName('');
     }
     setCreating(false);
@@ -37,7 +39,7 @@ export function MailerListPicker({ member, mailerApi, onClose }) {
           <h2 className="text-base font-black text-white">✉️ Add to Mailer List</h2>
           <p className="text-xs text-slate-500 mt-0.5 truncate">{member.name}</p>
           {member.mailingAddress && (
-            <p className="text-xs text-slate-400 mt-0.5 truncate">{member.mailingAddress}</p>
+            <p className="text-xs text-slate-400 mt-0.5 truncate">{selectedLabel ? `${selectedLabel}: ` : ''}{selectedAddress}</p>
           )}
         </div>
         <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
@@ -127,7 +129,7 @@ export function MailerListPicker({ member, mailerApi, onClose }) {
 export function AddToMailerButton({ member, mailerApi, className = '' }) {
   const [open, setOpen] = useState(false);
   if (!mailerApi) return null;
-  const count = mailerApi.membershipFor(member.type, member.id).size;
+  const count = mailerApi.membershipFor(member.type, member.id, member.mailingAddress).size;
   return (
     <>
       <button

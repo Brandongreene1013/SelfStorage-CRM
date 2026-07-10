@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
 import { buildMergePlan } from '../lib/duplicateReview';
+import { normalizeMailingAddresses } from '../lib/mailingAddresses';
 import { DEFAULT_RELATIONSHIP_TYPE, RELATIONSHIP_TYPES } from '../data/constants';
 
 const US_STATES = {
@@ -510,6 +511,7 @@ function contactInsertRow(listId, c, meta = {}) {
     email: c.email,
     address: c.address,
     mailing_address: c.mailingAddress ?? '',
+    mailing_addresses: normalizeMailingAddresses(c.mailingAddresses),
     state: c.state,
     notes: c.notes ?? '',
     status: 'fresh',
@@ -539,7 +541,12 @@ function stripContactSprint18Columns(row) {
 }
 
 function stripContactMailingAddressColumn(row) {
-  const { mailing_address: _mailingAddress, ...rest } = row;
+  const { mailing_address: _mailingAddress, mailing_addresses: _mailingAddresses, ...rest } = row;
+  return rest;
+}
+
+function stripContactMailingAddressesColumn(row) {
+  const { mailing_addresses: _mailingAddresses, ...rest } = row;
   return rest;
 }
 
@@ -594,6 +601,7 @@ function mergeImportedContact(existing, incoming, meta) {
   if (!existing.email && incoming.email) updates.email = incoming.email;
   if (!existing.address && incoming.address) updates.address = incoming.address;
   if (!existing.mailingAddress && incoming.mailingAddress) updates.mailingAddress = incoming.mailingAddress;
+  if (!existing.mailingAddresses?.length && incoming.mailingAddresses?.length) updates.mailingAddresses = incoming.mailingAddresses;
   if (!existing.state && incoming.state) updates.state = incoming.state;
   if (!existing.source && meta.source) updates.source = meta.source;
   if (!existing.importFilename && meta.fileName) updates.importFilename = meta.fileName;
@@ -620,6 +628,7 @@ function updatePayloadFromFields(fields) {
   if (fields.email !== undefined) dbFields.email = fields.email;
   if (fields.address !== undefined) dbFields.address = fields.address;
   if (fields.mailingAddress !== undefined) dbFields.mailing_address = fields.mailingAddress;
+  if (fields.mailingAddresses !== undefined) dbFields.mailing_addresses = normalizeMailingAddresses(fields.mailingAddresses);
   if (fields.state !== undefined) dbFields.state = fields.state;
   if (fields.notes !== undefined) dbFields.notes = fields.notes;
   if (fields.status !== undefined) dbFields.status = fields.status;
@@ -800,6 +809,7 @@ function dbToContact(row) {
     email: row.email ?? '',
     address: row.address ?? '',
     mailingAddress: row.mailing_address ?? '',
+    mailingAddresses: normalizeMailingAddresses(row.mailing_addresses),
     city: row.city ?? '',
     state: row.state ?? '',
     market: row.city && row.state ? `${row.city}, ${row.state}` : (row.state ?? ''),
@@ -1225,6 +1235,7 @@ export function useDatabase() {
       email: fields.email ?? '',
       address: fields.address ?? '',
       mailing_address: fields.mailingAddress ?? '',
+      mailing_addresses: normalizeMailingAddresses(fields.mailingAddresses),
       state: fields.state ?? state,
       status: 'fresh',
       call_history: [],
@@ -1255,6 +1266,12 @@ export function useDatabase() {
       row = retry.data;
       error = retry.error;
     }
+    if (error && isMissingColumnError(error, 'mailing_addresses')) {
+      payload = stripContactMailingAddressesColumn(payload);
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
     if (!error && row) {
       const contact = dbToContact(row);
       setContacts(prev => [...prev, contact]);
@@ -1277,7 +1294,7 @@ export function useDatabase() {
     if (error && isMissingColumnError(error, 'alternate_phones')) {
       return { error: 'alternate_phones_migration_needed' };
     }
-    if (error && fields.mailingAddress !== undefined && /mailing_address/i.test(error.message ?? '')) {
+    if (error && (fields.mailingAddress !== undefined || fields.mailingAddresses !== undefined) && /mailing_address/i.test(error.message ?? '')) {
       return { error: 'Run sql/mailing_address_migration.sql in Supabase, then refresh to save mailing addresses.' };
     }
     if (error && (
@@ -1295,6 +1312,7 @@ export function useDatabase() {
         lead_source: _leadSourceColumn,
         ownership_group_id: _ownershipGroupIdColumn,
         mailing_address: _mailingAddressColumn,
+        mailing_addresses: _mailingAddressesColumn,
         source: _sourceColumn,
         import_filename: _importFilenameColumn,
         imported_at: _importedAtColumn,
@@ -1303,7 +1321,7 @@ export function useDatabase() {
       const retry = await supabase.from('contacts').update(withoutNewerColumns).eq('id', contactId);
       error = retry.error;
       if (!error) {
-        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, leadSource: _leadSource, ownershipGroupId: _ownershipGroupId, mailingAddress: _mailingAddress, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
+        const { ownerEntity: _ownerEntity, relationshipType: _relationshipType, leadSource: _leadSource, ownershipGroupId: _ownershipGroupId, mailingAddress: _mailingAddress, mailingAddresses: _mailingAddresses, source: _source, importFilename: _file, importedAt: _at, ...appFields } = fields;
         fields = appFields;
       }
     }
@@ -1423,6 +1441,7 @@ export function useDatabase() {
       email: contact.email ?? '',
       address: contact.address ?? '',
       mailing_address: contact.mailingAddress ?? '',
+      mailing_addresses: normalizeMailingAddresses(contact.mailingAddresses),
       state: contact.state ?? '',
       notes: contact.notes ?? '',
       status: contact.status === 'fresh' ? 'conversation' : (contact.status ?? 'conversation'),
@@ -1453,6 +1472,12 @@ export function useDatabase() {
     }
     if (error && isMissingColumnError(error, 'mailing_address')) {
       payload = stripContactMailingAddressColumn(payload);
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
+    if (error && isMissingColumnError(error, 'mailing_addresses')) {
+      payload = stripContactMailingAddressesColumn(payload);
       const retry = await supabase.from('contacts').insert([payload]).select().single();
       row = retry.data;
       error = retry.error;
