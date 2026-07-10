@@ -334,13 +334,14 @@ function PrimaryPhoneEditor({ phone = '', onSave }) {
   );
 }
 
-function CopyableAddressTile({ address, label = 'Address' }) {
+function EditableAddressRow({ label, address, placeholder, onChange, extraActions = null }) {
   const [copied, setCopied] = useState(false);
-  if (!address) return null;
+  const cleanAddress = (address ?? '').trim();
 
   async function copyAddress() {
+    if (!cleanAddress) return;
     try {
-      await navigator.clipboard.writeText(address);
+      await navigator.clipboard.writeText(cleanAddress);
       setCopied(true);
       setTimeout(() => setCopied(false), 1400);
     } catch {
@@ -351,13 +352,17 @@ function CopyableAddressTile({ address, label = 'Address' }) {
   }
 
   return (
-    <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs text-slate-500 uppercase font-semibold mb-1">{label}</p>
-          <p className="select-text text-sm text-slate-200 break-words">{address}</p>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+    <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-end gap-2">
+      <div className="flex-1 min-w-0 select-text">
+        <EditableField
+          label={label}
+          value={address}
+          placeholder={placeholder}
+          onChange={onChange}
+        />
+      </div>
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        {cleanAddress && (
           <button
             type="button"
             onClick={copyAddress}
@@ -365,15 +370,18 @@ function CopyableAddressTile({ address, label = 'Address' }) {
           >
             {copied ? 'Copied' : 'Copy'}
           </button>
+        )}
+        {cleanAddress && (
           <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleanAddress)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs font-bold bg-blue-600/15 hover:bg-blue-600/25 border border-blue-600/30 text-blue-300 rounded-lg px-2 py-1.5 transition-all"
           >
             Maps
           </a>
-        </div>
+        )}
+        {extraActions}
       </div>
     </div>
   );
@@ -3033,20 +3041,24 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
         <EditableField label="Market" value={contact.market} placeholder="Click to add market" onChange={field('market')} />
         <EditableField label="State" value={contact.state} placeholder="Click to add state" onChange={field('state')} />
       </div>
-      <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')} />
-      <CopyableAddressTile label="Facility Address" address={contact.address} />
-      <div className="flex items-end gap-2">
-        <div className="flex-1 min-w-0">
-          <EditableField label="Mailing Address" value={contact.mailingAddress} placeholder="Click to add mailing address" onChange={field('mailingAddress')} />
-        </div>
-        {contact.mailingAddress && (
+      <EditableAddressRow
+        label="Facility Address"
+        address={contact.address}
+        placeholder="Click to add address"
+        onChange={field('address')}
+      />
+      <EditableAddressRow
+        label="Mailing Address"
+        address={contact.mailingAddress}
+        placeholder="Click to add mailing address"
+        onChange={field('mailingAddress')}
+        extraActions={contact.mailingAddress ? (
           <AddToMailerButton
             mailerApi={mailerApi}
             member={{ type: 'contact', id: contact.id, name: contact.ownerName || contact.facilityName || 'Unknown', mailingAddress: contact.mailingAddress, addressLabel: 'Primary' }}
           />
-        )}
-      </div>
-      <CopyableAddressTile label="Mailing Address" address={contact.mailingAddress} />
+        ) : null}
+      />
       <MailingAddressList
         addresses={contact.mailingAddresses}
         onChange={(rows) => onUpdateContact?.(contact.id, { mailingAddresses: rows })}
@@ -3055,13 +3067,6 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
         inputClassName="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
         compact
       />
-      {(contact.mailingAddresses ?? []).filter(row => row?.address?.trim()).map((row, idx) => (
-        <CopyableAddressTile
-          key={row.id || `${row.address}-${idx}`}
-          label={row.label ? `${row.label} Mailing Address` : 'Affiliated Mailing Address'}
-          address={row.address}
-        />
-      ))}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Relationship Type</label>
@@ -3365,34 +3370,25 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                     email={current.email}
                     onChange={(v) => onUpdateContact?.(current.id, { email: v })}
                   />
-                  <CopyableAddressTile label="Facility Address" address={current.address} />
+                  <EditableAddressRow
+                    label="Facility Address"
+                    address={current.address}
+                    placeholder="Click to add address"
+                    onChange={(v) => onUpdateContact?.(current.id, { address: v })}
+                  />
                 </div>
-                <div className="space-y-3">
-                  <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-end gap-2">
-                    <div className="flex-1 min-w-0">
-                      <EditableField
-                        label="Mailing Address"
-                        value={current.mailingAddress}
-                        placeholder="Click to add mailing address"
-                        onChange={(v) => onUpdateContact?.(current.id, { mailingAddress: v })}
-                      />
-                    </div>
-                    {current.mailingAddress && (
-                      <AddToMailerButton
-                        mailerApi={mailerApi}
-                        member={{ type: 'contact', id: current.id, name: current.ownerName || current.facilityName || 'Unknown', mailingAddress: current.mailingAddress, addressLabel: 'Primary' }}
-                      />
-                    )}
-                  </div>
-                  <CopyableAddressTile label="Mailing Address" address={current.mailingAddress} />
-                  {(current.mailingAddresses ?? []).filter(row => row?.address?.trim()).map((row, idx) => (
-                    <CopyableAddressTile
-                      key={row.id || `${row.address}-${idx}`}
-                      label={row.label ? `${row.label} Mailing Address` : 'Affiliated Mailing Address'}
-                      address={row.address}
+                <EditableAddressRow
+                  label="Mailing Address"
+                  address={current.mailingAddress}
+                  placeholder="Click to add mailing address"
+                  onChange={(v) => onUpdateContact?.(current.id, { mailingAddress: v })}
+                  extraActions={current.mailingAddress ? (
+                    <AddToMailerButton
+                      mailerApi={mailerApi}
+                      member={{ type: 'contact', id: current.id, name: current.ownerName || current.facilityName || 'Unknown', mailingAddress: current.mailingAddress, addressLabel: 'Primary' }}
                     />
-                  ))}
-                </div>
+                  ) : null}
+                />
               </div>
             )}
           </div>
