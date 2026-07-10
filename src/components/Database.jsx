@@ -379,6 +379,32 @@ function CopyableAddressTile({ address, label = 'Address' }) {
   );
 }
 
+function EditableEmailTile({ email, onChange }) {
+  const cleanEmail = (email ?? '').trim();
+
+  return (
+    <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-end gap-2">
+      <div className="flex-1 min-w-0">
+        <EditableField
+          label="Email"
+          value={email}
+          placeholder="Click to add email"
+          onChange={onChange}
+          type="email"
+        />
+      </div>
+      {cleanEmail && (
+        <a
+          href={`mailto:${cleanEmail}`}
+          className="text-xs font-bold bg-blue-600/15 hover:bg-blue-600/25 border border-blue-600/30 text-blue-300 rounded-lg px-2 py-1.5 transition-all"
+        >
+          Email
+        </a>
+      )}
+    </div>
+  );
+}
+
 function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onClose }) {
   return (
     <ModalLayout onClose={onClose} size="sm" className="p-6 text-center">
@@ -3003,8 +3029,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
         <EditableField label="Owner Name" value={contact.ownerName} placeholder="Click to add owner name" onChange={field('ownerName')} />
         <EditableField label="Owner Entity" value={contact.ownerEntity} placeholder="ABC Storage LLC / owns personally" onChange={field('ownerEntity')} />
         <EditableField label="Facility Name" value={contact.facilityName} placeholder="Click to add facility name" onChange={field('facilityName')} />
-        <EditableField label="Email" value={contact.email} placeholder="Click to add email" onChange={field('email')}
-          href={contact.email ? `mailto:${contact.email}` : null} />
+        <EditableEmailTile email={contact.email} onChange={field('email')} />
         <EditableField label="Market" value={contact.market} placeholder="Click to add market" onChange={field('market')} />
         <EditableField label="State" value={contact.state} placeholder="Click to add state" onChange={field('state')} />
       </div>
@@ -3336,7 +3361,10 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   onSave={(phones) => onUpdateContact?.(current.id, { alternatePhones: phones })}
                 />
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {current.email && <a href={`mailto:${current.email}`} className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-blue-300 hover:text-blue-200 truncate">Email: {current.email}</a>}
+                  <EditableEmailTile
+                    email={current.email}
+                    onChange={(v) => onUpdateContact?.(current.id, { email: v })}
+                  />
                   <CopyableAddressTile label="Facility Address" address={current.address} />
                 </div>
                 <div className="space-y-3">
