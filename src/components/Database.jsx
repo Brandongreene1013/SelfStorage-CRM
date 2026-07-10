@@ -2286,11 +2286,25 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       alert('Pick a callback date before logging Call Back.');
       return;
     }
+    const callDate = activityDate || new Date().toISOString().slice(0, 10);
     const loggedNote = status === 'callback'
       ? appendDateToLogNote(note, 'Callback date', callbackDate)
       : note;
+    const updatedCallHistory = [
+      ...(contact.callHistory ?? []),
+      { date: callDate, outcome: status, notes: loggedNote ?? '' },
+    ];
     await updateContactStatus(contact.id, status, loggedNote, activityDate);
-    if (status === 'callback' && callbackDate) updateContactCallback(contact.id, callbackDate);
+    if (status === 'callback' && callbackDate) await updateContactCallback(contact.id, callbackDate);
+    if (masterListId && contact.listId !== masterListId) {
+      await addToMasterDB({
+        ...contact,
+        status,
+        callHistory: updatedCallHistory,
+        lastCalled: callDate,
+        callbackDate: status === 'callback' ? callbackDate : contact.callbackDate,
+      }, { mergeIfExists: true });
+    }
     if (status === 'callback') {
       taskApi?.createTask({
         title: 'Call back',

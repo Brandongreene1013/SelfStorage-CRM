@@ -550,6 +550,19 @@ function stripContactMailingAddressesColumn(row) {
   return rest;
 }
 
+function mergeCallHistories(existing = [], incoming = []) {
+  const merged = [...existing];
+  const seen = new Set(merged.map(h => `${h.date ?? ''}|${h.outcome ?? ''}|${h.notes ?? ''}`));
+  incoming.forEach(h => {
+    const key = `${h.date ?? ''}|${h.outcome ?? ''}|${h.notes ?? ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(h);
+    }
+  });
+  return merged;
+}
+
 function stripListMetaColumns(row) {
   const {
     import_filename: _importFilename,
@@ -1418,15 +1431,40 @@ export function useDatabase() {
   }, [updateContact]);
 
   // Copy a contact into the Master Database list
-  const addToMasterDB = useCallback(async (contact) => {
+  const addToMasterDB = useCallback(async (contact, options = {}) => {
     if (!masterListId) return null;
     // Check if already in Master DB (by owner name + facility name)
-    const alreadyExists = contacts.some(c =>
+    const existingMaster = contacts.find(c =>
       c.listId === masterListId &&
       c.ownerName === contact.ownerName &&
       c.facilityName === contact.facilityName
     );
-    if (alreadyExists) return 'exists';
+    if (existingMaster) {
+      if (!options.mergeIfExists) return 'exists';
+      const updates = {
+        ownerEntity: existingMaster.ownerEntity || contact.ownerEntity || '',
+        relationshipType: contact.relationshipType ?? existingMaster.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
+        leadSource: existingMaster.leadSource || contact.leadSource || '',
+        ownershipGroupId: existingMaster.ownershipGroupId || contact.ownershipGroupId || null,
+        phone: existingMaster.phone || contact.phone || '',
+        alternatePhones: existingMaster.alternatePhones?.length ? existingMaster.alternatePhones : (contact.alternatePhones ?? []),
+        email: existingMaster.email || contact.email || '',
+        address: existingMaster.address || contact.address || '',
+        mailingAddress: existingMaster.mailingAddress || contact.mailingAddress || '',
+        mailingAddresses: existingMaster.mailingAddresses?.length ? existingMaster.mailingAddresses : (contact.mailingAddresses ?? []),
+        state: existingMaster.state || contact.state || '',
+        notes: [existingMaster.notes, contact.notes].filter(Boolean).join('\n'),
+        status: contact.status === 'fresh' ? (existingMaster.status || 'conversation') : (contact.status ?? existingMaster.status ?? 'conversation'),
+        callHistory: mergeCallHistories(existingMaster.callHistory, contact.callHistory),
+        callbackDate: contact.callbackDate ?? existingMaster.callbackDate ?? null,
+        nextActionType: contact.nextActionType ?? existingMaster.nextActionType ?? '',
+        nextActionDate: contact.nextActionDate ?? existingMaster.nextActionDate ?? '',
+        nextActionNote: contact.nextActionNote ?? existingMaster.nextActionNote ?? '',
+        leadTemp: contact.leadTemp ?? existingMaster.leadTemp ?? '',
+      };
+      await updateContact(existingMaster.id, updates);
+      return 'merged';
+    }
 
     let payload = {
       list_id: masterListId,
@@ -1488,7 +1526,7 @@ export function useDatabase() {
       return newContact;
     }
     return null;
-  }, [masterListId, contacts]);
+  }, [masterListId, contacts, updateContact]);
 
   return {
     lists,
