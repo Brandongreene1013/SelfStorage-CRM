@@ -7,7 +7,7 @@ on:
 
 jobs:
   backup:
-    name: Encrypted Postgres dump
+    name: Encrypted CRM JSON export
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -15,61 +15,41 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install PostgreSQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
 
-      - name: Create encrypted backup
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Export CRM tables
+        run: |
+          set -euo pipefail
+          mkdir -p backup-work
+          BACKUP_OUTPUT_DIR="$PWD/backup-work" node scripts/export-supabase-json-backup.mjs
+
+      - name: Encrypt backup
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
         run: |
           set -euo pipefail
 
-          if [ -z "${SUPABASE_DB_URL:-}" ]; then
-            echo "Missing GitHub secret: SUPABASE_DB_URL" >&2
-            exit 1
-          fi
           if [ -z "${BACKUP_ENCRYPTION_PASSPHRASE:-}" ]; then
             echo "Missing GitHub secret: BACKUP_ENCRYPTION_PASSPHRASE" >&2
             exit 1
           fi
 
           stamp="$(date -u +'%Y%m%dT%H%M%SZ')"
-          workdir="backup-${stamp}"
-          mkdir "$workdir"
-
-          pg_dump "$SUPABASE_DB_URL" \
-            --format=custom \
-            --no-owner \
-            --no-acl \
-            --file="$workdir/storage-hunters-crm-${stamp}.dump"
-
-          pg_dump "$SUPABASE_DB_URL" \
-            --schema-only \
-            --no-owner \
-            --no-acl \
-            --file="$workdir/storage-hunters-crm-${stamp}-schema.sql"
-
-          {
-            echo "product=Storage Hunters CRM"
-            echo "created_utc=${stamp}"
-            echo "format=pg_dump custom + schema sql"
-            echo "project_ref=rpoiphoqwgvbiyygfjrm"
-            echo "restore_notes=Decrypt, then restore the .dump with pg_restore into a clean Supabase/Postgres database."
-          } > "$workdir/MANIFEST.txt"
-
-          sha256sum "$workdir"/* > "$workdir/SHA256SUMS.txt"
-          tar -czf "${workdir}.tar.gz" "$workdir"
-
+          tar -czf "storage-hunters-crm-json-${stamp}.tar.gz" -C backup-work .
           openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
-            -in "${workdir}.tar.gz" \
-            -out "${workdir}.tar.gz.enc" \
+            -in "storage-hunters-crm-json-${stamp}.tar.gz" \
+            -out "storage-hunters-crm-json-${stamp}.tar.gz.enc" \
             -pass env:BACKUP_ENCRYPTION_PASSPHRASE
 
-          rm -rf "$workdir" "${workdir}.tar.gz"
-          echo "BACKUP_FILE=${workdir}.tar.gz.enc" >> "$GITHUB_ENV"
+          rm -rf backup-work "storage-hunters-crm-json-${stamp}.tar.gz"
+          echo "BACKUP_FILE=storage-hunters-crm-json-${stamp}.tar.gz.enc" >> "$GITHUB_ENV"
 
       - name: Upload encrypted backup artifact
         uses: actions/upload-artifact@v4

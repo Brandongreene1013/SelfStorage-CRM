@@ -1,58 +1,64 @@
 # Storage Hunters CRM Backup And Recovery
 
-This app's irreplaceable data lives in Supabase Postgres. Vercel can redeploy the app from GitHub, but the CRM records need their own protection.
+This app's irreplaceable data lives in Supabase. Vercel can redeploy the app from GitHub, but CRM records need their own protection.
 
-## Protection Layers
+## What Is Set Up Now
 
-1. Supabase Point-in-Time Recovery
-   - Turn on PITR in the Supabase dashboard for project `rpoiphoqwgvbiyygfjrm`.
-   - Supabase requires a paid plan/compute add-on for PITR. This is the best protection against a bad deploy, bad import, or accidental mass update because it can restore to a specific point in time.
-
-2. Encrypted scheduled database dumps
+1. Encrypted scheduled CRM table exports
    - `.github/workflows/supabase-backup.yml` runs every day at 08:17 UTC and can also be run manually.
-   - It creates a full `pg_dump` custom-format backup plus a schema-only SQL file.
-   - The dump is encrypted before upload. Plain database dumps are never committed to the repo.
+   - It exports the app's CRM tables to JSON.
+   - It encrypts the export before uploading it as a GitHub Actions artifact.
+   - This works with the access available in this repo today and does not require the Supabase database password.
 
-3. Manual in-app JSON export
+2. Manual in-app JSON export
    - The app header has a `Backup` button.
-   - This downloads a JSON safety export of CRM tables for quick pre-change snapshots.
-   - This is a convenience export, not the primary disaster-recovery restore path.
+   - This downloads a JSON safety export of CRM tables whenever Brandon wants a quick snapshot.
 
-## Required GitHub Secrets
+3. Local JSON backup command
+   - `npm run backup:json` writes a local JSON backup to `backups/`.
+   - `backups/` is ignored by git.
 
-Set these in GitHub repo settings under `Settings > Secrets and variables > Actions`.
+## What Still Requires Supabase Dashboard/Billing Access
 
-- `SUPABASE_DB_URL`
-  - Use the Supabase Postgres connection string for project `rpoiphoqwgvbiyygfjrm`.
-  - Prefer the session pooler connection string unless a direct connection is required.
-  - It should include the database password.
+Supabase Point-in-Time Recovery is the strongest protection. Turn it on for project `rpoiphoqwgvbiyygfjrm` when the account/plan allows it. PITR is the best answer for "roll the database back to right before a bad import or bad deploy."
+
+The codebase cannot enable PITR by itself without Supabase account billing/dashboard access.
+
+## Backup Encryption Passphrase
+
+The GitHub workflow uses this secret:
 
 - `BACKUP_ENCRYPTION_PASSPHRASE`
-  - Use a long random passphrase.
-  - Store a copy somewhere Brandon can access outside GitHub, such as a password manager.
-  - Without this passphrase, encrypted backup artifacts cannot be restored.
 
-## Manual Local Backup
+The passphrase must also be stored somewhere Brandon controls, outside GitHub, because GitHub secrets cannot be viewed after they are saved.
 
-Install PostgreSQL client tools so `pg_dump` is available, then run:
+## Manual Local JSON Backup
+
+```powershell
+npm run backup:json
+```
+
+The files are written to `backups/`.
+
+## Optional Full Postgres Backup
+
+If you later have the Supabase Postgres connection string, this command creates a full `pg_dump` custom-format backup:
 
 ```powershell
 $env:SUPABASE_DB_URL="postgresql://..."
 npm run backup:db
 ```
 
-The files are written to `backups/`, which is ignored by git.
+This is closer to a full disaster-recovery backup than JSON table export because it preserves more database-level detail. Store these files securely and never commit them.
 
-## Restore Drill
-
-Run this at least once after setting up backups, and then monthly or before major data-model changes.
+## Restore Drill For Encrypted JSON Artifacts
 
 1. Download the latest encrypted artifact from the `Supabase backup` GitHub Action.
 2. Decrypt it:
 
 ```bash
 openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
-  -in backup-YYYYMMDDTHHMMSSZ.tar.gz.enc \
+  -in storage-hunters-crm-json-YYYYMMDDTHHMMSSZ.tar.gz.enc \
   -out backup.tar.gz \
   -pass pass:"YOUR_BACKUP_ENCRYPTION_PASSPHRASE"
 ```
@@ -63,24 +69,19 @@ openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
 tar -xzf backup.tar.gz
 ```
 
-4. Restore into a fresh Supabase project or local Postgres database, not production:
-
-```bash
-pg_restore --clean --if-exists --no-owner --no-acl \
-  --dbname "postgresql://..." \
-  backup-YYYYMMDDTHHMMSSZ/storage-hunters-crm-YYYYMMDDTHHMMSSZ.dump
-```
-
-5. Verify key counts:
+4. Inspect the JSON file inside. It contains:
    - `clients`
    - `contacts`
    - `lists`
    - `tasks`
    - `meetings`
+   - `calendar_event`
+   - `daily_progress`
    - `ownership_groups`
    - `properties`
    - `mailer_lists`
    - `mailer_list_members`
+   - `duplicate_dismissals`
 
 ## Before Risky Feature Work
 
@@ -91,11 +92,11 @@ Use this sequence before imports, migrations, delete features, or anything that 
 3. Wait for the encrypted artifact to finish uploading.
 4. Make the code/schema change.
 5. Verify with real reads/writes against Supabase.
-6. If anything looks wrong, stop and restore from PITR or the encrypted dump before continuing.
+6. If anything looks wrong, stop and restore from PITR if enabled, or rebuild affected records from the JSON export.
 
 ## Notes
 
-- `app_secrets` is intentionally excluded from the in-app JSON export because it is service-role protected.
+- `app_secrets` is intentionally excluded from JSON exports because it is service-role protected.
 - Vercel environment variables are not database records. Keep a separate password-manager record for `ANTHROPIC_KEY`, `SUPABASE_SERVICE_KEY`, TractIQ credentials, and backup passphrases.
-- Never commit `.dump`, `.sql` database dumps, `.tar.gz`, or decrypted backup files.
+- Never commit `.dump`, `.sql` database dumps, `.tar.gz`, decrypted backup files, or backup passphrases.
 
