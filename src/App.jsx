@@ -18,6 +18,7 @@ import Database from './components/Database';
 import Analyst from './components/Analyst';
 import { PIPELINE_STAGES } from './data/constants';
 import { SearchToolbar, FilterPills, EmptyState, PageHeader, Button } from './components/ui';
+import { downloadCrmBackup } from './lib/crmBackupExport';
 import './index.css';
 
 const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
@@ -31,6 +32,7 @@ export default function App() {
   const { increment: incrementProgress } = useDailyProgress();
   const taskApi = useTasks(); // universal task/next-action engine (Sprint 2)
   const ownershipApi = useOwnership();
+  const [backupStatus, setBackupStatus] = useState('');
   const mailerApi = useMailerLists(); // mailer lists — shared so the ✉️ buttons and the Mailers tab stay in sync
 
   // CRM meetings + synced Outlook calendar events, for the dashboard widget
@@ -154,6 +156,19 @@ export default function App() {
     setView('Database');
   }, []);
 
+  const handleDownloadBackup = useCallback(async () => {
+    setBackupStatus('exporting');
+    try {
+      const payload = await downloadCrmBackup();
+      setBackupStatus(payload.errors.length ? 'partial' : 'done');
+      setTimeout(() => setBackupStatus(''), 3000);
+    } catch (error) {
+      console.error('CRM backup export failed', error);
+      setBackupStatus('error');
+      setTimeout(() => setBackupStatus(''), 5000);
+    }
+  }, []);
+
   // Dashboard "Move to Master DB" quick action — for a lukewarm contact that
   // shouldn't be nudging Brandon as a follow-up anymore. Parks it in the
   // Master Database list without leaving the Dashboard.
@@ -254,14 +269,22 @@ export default function App() {
           ))}
         </nav>
 
-        {!['Calendar', 'Database', 'Mailers', 'Analyst'].includes(view) && (
-          <Button onClick={() => setShowAddModal(true)}>
-            <span className="text-lg leading-none font-black">+</span> Add Client
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleDownloadBackup}
+            disabled={backupStatus === 'exporting'}
+            title="Download a JSON safety export of CRM tables"
+          >
+            {backupStatus === 'exporting' ? 'Exporting' : backupStatus === 'done' ? 'Exported' : backupStatus === 'partial' ? 'Partial Export' : backupStatus === 'error' ? 'Export Failed' : 'Backup'}
           </Button>
-        )}
-        {['Calendar', 'Database', 'Mailers', 'Analyst'].includes(view) && (
-          <div className="w-[110px]" />
-        )}
+          {!['Calendar', 'Database', 'Mailers', 'Analyst'].includes(view) && (
+            <Button onClick={() => setShowAddModal(true)}>
+              <span className="text-lg leading-none font-black">+</span> Add Client
+            </Button>
+          )}
+        </div>
       </header>
 
       {/* Filter bar — only for Pipeline / Clients */}

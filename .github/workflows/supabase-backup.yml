@@ -1,0 +1,81 @@
+name: Supabase backup
+
+on:
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: Encrypted Postgres dump
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Create encrypted backup
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "Missing GitHub secret: SUPABASE_DB_URL" >&2
+            exit 1
+          fi
+          if [ -z "${BACKUP_ENCRYPTION_PASSPHRASE:-}" ]; then
+            echo "Missing GitHub secret: BACKUP_ENCRYPTION_PASSPHRASE" >&2
+            exit 1
+          fi
+
+          stamp="$(date -u +'%Y%m%dT%H%M%SZ')"
+          workdir="backup-${stamp}"
+          mkdir "$workdir"
+
+          pg_dump "$SUPABASE_DB_URL" \
+            --format=custom \
+            --no-owner \
+            --no-acl \
+            --file="$workdir/storage-hunters-crm-${stamp}.dump"
+
+          pg_dump "$SUPABASE_DB_URL" \
+            --schema-only \
+            --no-owner \
+            --no-acl \
+            --file="$workdir/storage-hunters-crm-${stamp}-schema.sql"
+
+          {
+            echo "product=Storage Hunters CRM"
+            echo "created_utc=${stamp}"
+            echo "format=pg_dump custom + schema sql"
+            echo "project_ref=rpoiphoqwgvbiyygfjrm"
+            echo "restore_notes=Decrypt, then restore the .dump with pg_restore into a clean Supabase/Postgres database."
+          } > "$workdir/MANIFEST.txt"
+
+          sha256sum "$workdir"/* > "$workdir/SHA256SUMS.txt"
+          tar -czf "${workdir}.tar.gz" "$workdir"
+
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+            -in "${workdir}.tar.gz" \
+            -out "${workdir}.tar.gz.enc" \
+            -pass env:BACKUP_ENCRYPTION_PASSPHRASE
+
+          rm -rf "$workdir" "${workdir}.tar.gz"
+          echo "BACKUP_FILE=${workdir}.tar.gz.enc" >> "$GITHUB_ENV"
+
+      - name: Upload encrypted backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BACKUP_FILE }}
+          path: ${{ env.BACKUP_FILE }}
+          retention-days: 14
+          if-no-files-found: error
+
