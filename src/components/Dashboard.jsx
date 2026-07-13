@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
 import RecentActivity from './RecentActivity';
@@ -169,7 +169,7 @@ function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, today
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
         {stats.map(s => (
           <div key={s.label} className="bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5 text-center">
             <p className={`text-2xl font-black leading-none ${s.accent}`}>{s.value}</p>
@@ -439,7 +439,7 @@ function WeeklyProductionScorecard({ data }) {
     <SectionCard
       title="This Week's Production"
       subtitle={weekLabel}
-      bodyClassName="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3"
+      bodyClassName="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3"
     >
       {PROGRESS_FIELDS.map(f => (
         <div key={f.key} className={`${f.bg} border ${f.border} rounded-xl px-4 py-3 min-w-0`}>
@@ -514,6 +514,160 @@ function DailyProduction({ today, increment, decrement, setValue, todayLabel, co
 }
 
 // ─── Productivity Analytics ───────────────────────────────────────────────────
+function DailyActivityIntelligenceReview() {
+  const [review, setReview] = useState(null);
+  const [counts, setCounts] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  async function loadStatus() {
+    try {
+      const res = await fetch('/api/daily-activity?mode=status');
+      const data = await res.json();
+      if (data.review) {
+        setReview(data.review);
+        setCounts(data.review.approved_counts || data.review.summary || {});
+      }
+    } catch {
+      setMessage('Activity review is available after deployment.');
+    }
+  }
+
+  useEffect(() => {
+    loadStatus();
+  }, []);
+
+  async function generateDraft() {
+    setLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/daily-activity?mode=draft');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not generate review');
+      setReview({
+        activity_date: data.activityDate,
+        status: 'draft',
+        summary: data.analysis.counts,
+        important_items: data.analysis.importantItems,
+        slipped_items: data.analysis.slippedItems,
+      });
+      setCounts(data.analysis.counts);
+      setMessage('Draft generated.');
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function approve() {
+    if (!review?.activity_date) return;
+    setLoading(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/daily-activity', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'approve', activityDate: review.activity_date, counts }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not approve review');
+      setReview(prev => ({ ...prev, status: 'approved', approved_counts: counts }));
+      setMessage('Approved and merged into today\'s scorecard.');
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const status = review?.status || 'not generated';
+  const important = review?.important_items ?? [];
+  const slipped = review?.slipped_items ?? [];
+
+  return (
+    <SectionCard
+      title="Activity Intelligence"
+      subtitle={`Today · ${status.replace('_', ' ')}`}
+      actions={
+        <button
+          onClick={generateDraft}
+          disabled={loading}
+          className="text-xs font-semibold text-slate-500 hover:text-amber-400 disabled:text-slate-700 transition-colors"
+        >
+          {loading ? 'Working...' : review ? 'Refresh Draft' : 'Generate'}
+        </button>
+      }
+    >
+      {!review ? (
+        <div className="text-center py-4">
+          <p className="text-xs text-slate-500 mb-3">No activity review has been generated for today yet.</p>
+          <button
+            onClick={generateDraft}
+            disabled={loading}
+            className="bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-950 font-bold rounded-lg px-4 py-2 text-sm"
+          >
+            Generate Today's Review
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+            {PROGRESS_FIELDS.map(field => (
+              <label key={field.key} className={`${field.bg} border ${field.border} rounded-lg px-3 py-2`}>
+                <span className={`block text-xs font-bold ${field.accent} mb-1`}>{field.shortLabel || field.label}</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={counts[field.key] ?? 0}
+                  onChange={e => setCounts(prev => ({ ...prev, [field.key]: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))}
+                  className={`w-full bg-slate-900/70 border border-slate-700 rounded-md px-2 py-1 text-lg font-black tabular-nums ${field.accent} focus:outline-none focus:border-current`}
+                />
+              </label>
+            ))}
+          </div>
+
+          {(important.length > 0 || slipped.length > 0) && (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              {important.length > 0 && (
+                <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3">
+                  <p className="text-xs font-black text-amber-400 uppercase mb-2">Important</p>
+                  <div className="space-y-1">
+                    {important.slice(0, 5).map((item, idx) => (
+                      <p key={idx} className="text-xs text-slate-300 truncate">{item.label}: <span className="text-slate-500">{item.reason}</span></p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {slipped.length > 0 && (
+                <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3">
+                  <p className="text-xs font-black text-red-400 uppercase mb-2">May Have Slipped</p>
+                  <div className="space-y-1">
+                    {slipped.slice(0, 5).map((item, idx) => (
+                      <p key={idx} className="text-xs text-slate-300 truncate">{item.email}: <span className="text-slate-500">{item.reason}</span></p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3">
+            <p className={`text-xs ${message.includes('Could') ? 'text-red-400' : 'text-slate-500'}`}>{message}</p>
+            <button
+              onClick={approve}
+              disabled={loading || status === 'approved' || status === 'auto_logged'}
+              className="bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-950 font-bold rounded-lg px-4 py-2 text-sm"
+            >
+              {status === 'approved' ? 'Approved' : status === 'auto_logged' ? 'Auto-logged' : 'Approve + Merge'}
+            </button>
+          </div>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsData, selectedMonth, setSelectedMonth }) {
   // Recomputed on every render so it's always accurate regardless of year
   const monthOptions = useMemo(() => {
@@ -570,7 +724,7 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
         </>
       }
     >
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
         {PROGRESS_FIELDS.map(f => (
           <div key={f.key} className={`${f.bg} border ${f.border} rounded-xl p-3 text-center`}>
             <p className={`text-xs font-semibold ${f.accent} mb-1 leading-tight`}>{f.label}</p>
@@ -927,6 +1081,7 @@ export default function Dashboard({
             callbacksCreatedToday={callbacksCreatedToday}
             migrationNeeded={migrationNeeded}
           />
+          <DailyActivityIntelligenceReview />
           <DashboardTasks taskApi={taskApi} />
           <UpcomingMeetingsWidget
             meetings={meetings}

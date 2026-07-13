@@ -27,6 +27,8 @@ const RESTORE_ORDER = [
   'meetings',
   'calendar_event',
   'daily_progress',
+  'daily_email_events',
+  'daily_activity_reviews',
   'mailer_lists',
   'mailer_list_members',
   'duplicate_dismissals',

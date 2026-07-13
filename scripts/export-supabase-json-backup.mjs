@@ -13,6 +13,8 @@ const TABLES = [
   'meetings',
   'calendar_event',
   'daily_progress',
+  'daily_email_events',
+  'daily_activity_reviews',
   'ownership_groups',
   'properties',
   'mailer_lists',
@@ -95,4 +97,3 @@ if (emptyCore.length > 0) {
   console.error('This usually means an RLS or key problem, not an actually-empty database.');
   process.exit(1);
 }
-

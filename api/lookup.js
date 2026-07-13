@@ -50,7 +50,7 @@ Return ONLY a JSON object (no markdown):
         signal: AbortSignal.timeout(20000),
       });
       assessorText = await jinaRes.text();
-    } catch (e) {
+    } catch {
       assessorText = '';
     }
 

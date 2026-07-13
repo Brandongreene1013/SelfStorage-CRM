@@ -1,0 +1,35 @@
+name: Daily Activity Intelligence
+
+on:
+  schedule:
+    # Covers 5 PM and 8 PM Eastern during both daylight and standard time.
+    # The API checks the real Eastern hour and skips until the window is due.
+    - cron: '5 21-23 * * 1-5'
+    - cron: '5 0-2 * * 2-6'
+  workflow_dispatch:
+
+jobs:
+  activity-intelligence:
+    name: Generate/review/finalize daily activity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Call Daily Activity endpoint
+        env:
+          ACTIVITY_INTELLIGENCE_SECRET: ${{ secrets.ACTIVITY_INTELLIGENCE_SECRET }}
+        run: |
+          set -euo pipefail
+          base="https://self-storage-crm.vercel.app/api/daily-activity"
+          header=()
+          if [ -n "${ACTIVITY_INTELLIGENCE_SECRET:-}" ]; then
+            header=(-H "x-activity-secret: ${ACTIVITY_INTELLIGENCE_SECRET}")
+          fi
+
+          echo "Checking 5 PM ET review window..."
+          curl -fsS "${header[@]}" "${base}?mode=review-due"
+          echo
+
+          echo "Checking 8 PM ET finalize window..."
+          curl -fsS "${header[@]}" "${base}?mode=finalize-due"
+          echo

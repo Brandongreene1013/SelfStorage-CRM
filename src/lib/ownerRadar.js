@@ -50,8 +50,59 @@ export const SAME_OWNER_REASONS = {
   SAME_EMAIL: 'Same email',
   SAME_OWNER_NAME: 'Same owner name',
   SIMILAR_OWNER_NAME: 'Similar owner name',
-  SAME_ENTITY: 'Same entity',
+  SAME_ENTITY: 'Same ownership entity',
+  SIMILAR_ENTITY: 'Similar ownership entity',
+  SIMILAR_FACILITY: 'Similar facility name',
+  SAME_MARKET: 'Similar location',
 };
+
+const FACILITY_NOISE = new Set([
+  'self', 'storage', 'storages', 'mini', 'rv', 'boat', 'vehicle', 'climate',
+  'controlled', 'units', 'unit', 'facility', 'facilities', 'llc', 'inc',
+  'properties', 'property',
+]);
+
+function meaningfulTokens(value, noise = new Set()) {
+  return normalizeFacilityName(value)
+    .split(' ')
+    .filter(t => t.length >= 3 && !noise.has(t));
+}
+
+function hasSharedMeaningfulToken(a, b, noise) {
+  const aTokens = meaningfulTokens(a, noise);
+  const bSet = new Set(meaningfulTokens(b, noise));
+  return aTokens.some(t => bSet.has(t));
+}
+
+function facilitySimilarity(a, b) {
+  const aKey = normalizeFacilityName(a);
+  const bKey = normalizeFacilityName(b);
+  const direct = nameSimilarity(aKey, bKey);
+  if (direct !== 'none') return direct;
+  return hasSharedMeaningfulToken(a, b, FACILITY_NOISE) ? 'similar' : 'none';
+}
+
+function locationKey(contact) {
+  const market = normalizeFacilityName(contact.market || [contact.city, contact.state].filter(Boolean).join(' '));
+  if (market) return market;
+  const parts = String(contact.address || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    const city = parts[parts.length - 2];
+    const state = (parts[parts.length - 1].match(/\b[A-Z]{2}\b/) || [contact.state || ''])[0];
+    return normalizeFacilityName([city, state].filter(Boolean).join(' '));
+  }
+  return '';
+}
+
+function hasSimilarLocation(a, b) {
+  const aLoc = locationKey(a);
+  const bLoc = locationKey(b);
+  return !!aLoc && !!bLoc && aLoc === bLoc;
+}
+
+function pushUnique(reasons, reason) {
+  if (!reasons.includes(reason)) reasons.push(reason);
+}
 
 // Reasons contact `a` and contact `b` look like the same owner. Empty = no match.
 export function sameOwnerReasons(a, b) {
@@ -59,25 +110,40 @@ export function sameOwnerReasons(a, b) {
 
   const aPhones = contactPhoneKeys(a);
   for (const key of contactPhoneKeys(b)) {
-    if (aPhones.has(key)) { reasons.push(SAME_OWNER_REASONS.SAME_PHONE); break; }
+    if (aPhones.has(key)) { pushUnique(reasons, SAME_OWNER_REASONS.SAME_PHONE); break; }
   }
 
   const aEmail = (a.email ?? '').trim().toLowerCase();
   const bEmail = (b.email ?? '').trim().toLowerCase();
-  if (aEmail && aEmail === bEmail) reasons.push(SAME_OWNER_REASONS.SAME_EMAIL);
+  if (aEmail && aEmail === bEmail) pushUnique(reasons, SAME_OWNER_REASONS.SAME_EMAIL);
 
-  const aOwner = normalizeOwnerName(a.ownerName);
-  const bOwner = normalizeOwnerName(b.ownerName);
-  if (aOwner.length >= 4) {
-    const sim = nameSimilarity(aOwner, bOwner);
-    if (sim === 'same') reasons.push(SAME_OWNER_REASONS.SAME_OWNER_NAME);
-    else if (sim === 'similar') reasons.push(SAME_OWNER_REASONS.SIMILAR_OWNER_NAME);
+  const ownerPairs = [
+    [normalizeOwnerName(a.ownerName), normalizeOwnerName(b.ownerName)],
+    [normalizeOwnerName(a.ownerName), normalizeOwnerName(b.ownerEntity)],
+    [normalizeOwnerName(a.ownerEntity), normalizeOwnerName(b.ownerName)],
+  ];
+  for (const [left, right] of ownerPairs) {
+    if (left.length < 4 || right.length < 4) continue;
+    const sim = nameSimilarity(left, right);
+    if (sim === 'same') pushUnique(reasons, SAME_OWNER_REASONS.SAME_OWNER_NAME);
+    else if (sim === 'similar') pushUnique(reasons, SAME_OWNER_REASONS.SIMILAR_OWNER_NAME);
   }
 
   const aEntity = normalizeOwnerName(a.ownerEntity);
   const bEntity = normalizeOwnerName(b.ownerEntity);
-  if (aEntity.length >= 4 && nameSimilarity(aEntity, bEntity) !== 'none') {
-    reasons.push(SAME_OWNER_REASONS.SAME_ENTITY);
+  if (aEntity.length >= 4 && bEntity.length >= 4) {
+    const sim = nameSimilarity(aEntity, bEntity);
+    if (sim === 'same') pushUnique(reasons, SAME_OWNER_REASONS.SAME_ENTITY);
+    else if (sim === 'similar') pushUnique(reasons, SAME_OWNER_REASONS.SIMILAR_ENTITY);
+  }
+
+  const facilitySim = facilitySimilarity(a.facilityName, b.facilityName);
+  const similarLocation = hasSimilarLocation(a, b);
+  if (facilitySim !== 'none' && similarLocation) {
+    pushUnique(reasons, SAME_OWNER_REASONS.SIMILAR_FACILITY);
+    pushUnique(reasons, SAME_OWNER_REASONS.SAME_MARKET);
+  } else if (similarLocation && reasons.length > 0) {
+    pushUnique(reasons, SAME_OWNER_REASONS.SAME_MARKET);
   }
 
   return reasons;
@@ -108,7 +174,10 @@ export function findSameOwnerMatches(contact, contacts) {
     (reasons.includes(SAME_OWNER_REASONS.SAME_EMAIL) ? 4 : 0) +
     (reasons.includes(SAME_OWNER_REASONS.SAME_OWNER_NAME) ? 3 : 0) +
     (reasons.includes(SAME_OWNER_REASONS.SAME_ENTITY) ? 2 : 0) +
-    (reasons.includes(SAME_OWNER_REASONS.SIMILAR_OWNER_NAME) ? 1 : 0);
+    (reasons.includes(SAME_OWNER_REASONS.SIMILAR_OWNER_NAME) ? 2 : 0) +
+    (reasons.includes(SAME_OWNER_REASONS.SIMILAR_ENTITY) ? 2 : 0) +
+    (reasons.includes(SAME_OWNER_REASONS.SIMILAR_FACILITY) ? 2 : 0) +
+    (reasons.includes(SAME_OWNER_REASONS.SAME_MARKET) ? 1 : 0);
   return matches.sort((a, b) => strength(b.reasons) - strength(a.reasons));
 }
 

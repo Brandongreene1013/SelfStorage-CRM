@@ -75,11 +75,6 @@ export function useOutlookCalendar() {
     }).catch(() => {});
   }, []);
 
-  // Fetch events whenever connected
-  useEffect(() => {
-    if (connected && account) fetchEvents();
-  }, [connected, account]);
-
   async function getToken() {
     const msal = await getMsal();
     const acc  = msal.getAllAccounts()[0];
@@ -130,6 +125,11 @@ export function useOutlookCalendar() {
       setSyncing(false);
     }
   }, []);
+
+  // Fetch events whenever connected
+  useEffect(() => {
+    if (connected && account) fetchEvents();
+  }, [connected, account, fetchEvents]);
 
   const connect = useCallback(async () => {
     setLoading(true);

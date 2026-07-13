@@ -17,7 +17,7 @@ export default function FunnelChart({ clients, filter }) {
         Brokerage Continuum — Pipeline Funnel
       </h3>
       <div className="space-y-2">
-        {counts.map((stage, i) => {
+        {counts.map((stage) => {
           const barPct = total === 0 ? 0 : (stage.count / maxCount) * 100;
           const pct = total === 0 ? 0 : Math.round((stage.count / total) * 100);
           return (

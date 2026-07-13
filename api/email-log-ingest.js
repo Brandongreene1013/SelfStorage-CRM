@@ -7,6 +7,7 @@
 // Rules: sent-only, known-records-only (never create), dedup on messageId,
 // append-only. Backward compatible with the old {recipient, summary, ...} body.
 import { createClient } from '@supabase/supabase-js';
+import { easternDateString } from './_dailyActivity.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL || 'https://rpoiphoqwgvbiyygfjrm.supabase.co',
@@ -33,6 +34,7 @@ const NICK = {
 const tokens = (s) => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
 const norm = (t) => NICK[t] || t;
 const secondLevel = (domain) => { const p = (domain || '').split('.'); return p.length >= 2 ? p[p.length - 2] : (p[0] || ''); };
+const hasText = (value) => String(value || '').trim();
 
 function nameScore(query, candidate) {
   const q = tokens(query).map(norm);
@@ -63,12 +65,69 @@ async function callClaudeTiebreak(apiKey, ctx) {
   } catch { return null; }
 }
 
+function importanceReasons({ direction, summary, subject, bodyPreview }) {
+  const text = `${summary || ''} ${subject || ''} ${bodyPreview || ''}`.toLowerCase();
+  const reasons = [];
+  if (direction === 'received') reasons.push('Owner reply');
+  if (/conversation|spoke|call me|interested|discuss|follow up/.test(text)) reasons.push('Conversation signal');
+  if (/appointment|meeting|tour|site visit/.test(text)) reasons.push('Meeting or appointment signal');
+  if (/\bbov\b|valuation|proposal|opinion of value/.test(text)) reasons.push('BOV interest');
+  if (/tractiq|report|market report|pricing report/.test(text)) reasons.push('Report sent or discussed');
+  if (/bounce|undeliver|delivery failed|could not be delivered/.test(text)) reasons.push('Email delivery problem');
+  if (/portfolio|multiple propert|also owns|another facility/.test(text)) reasons.push('Possible multi-property owner');
+  return [...new Set(reasons)];
+}
+
+async function persistEmailEvent({ body, counterpartyEmail, counterpartyName, direction, sentAt, winner, matchMethod, confidence, needsReview }) {
+  const reasons = importanceReasons({
+    direction,
+    summary: body.summary,
+    subject: body.subject,
+    bodyPreview: body.bodyPreview,
+  });
+  const row = {
+    message_id: body.messageId || null,
+    direction,
+    counterparty_email: counterpartyEmail,
+    counterparty_name: counterpartyName || null,
+    subject: body.subject || null,
+    summary: body.summary || body.bodyPreview || body.subject || '',
+    body_preview: body.bodyPreview || null,
+    sent_at: sentAt,
+    activity_date: easternDateString(new Date(sentAt)),
+    matched_table: winner?.table ?? null,
+    matched_id: winner?.id ?? null,
+    match_method: matchMethod || 'none',
+    confidence: confidence || 0,
+    needs_review: !!needsReview,
+    important: reasons.length > 0,
+    importance_reasons: reasons,
+    raw: body,
+  };
+  const { error } = await supabase.from('daily_email_events').upsert(row, { onConflict: 'message_id' });
+  if (error && (error.code === '42P01' || error.code === '42703' || error.code === 'PGRST204')) {
+    return { ok: false, skipped: true, reason: 'daily_email_events migration missing' };
+  }
+  if (error) return { ok: false, skipped: false, error: error.message };
+  return { ok: true, skipped: false };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
-  const { recipient, recipientName, summary, sentAt, messageId } = req.body || {};
-  if (!recipient || !summary) return res.status(400).json({ error: 'recipient and summary are required' });
+  const body = req.body || {};
+  const { summary, sentAt, messageId } = body;
+  const direction = String(body.direction || 'sent').toLowerCase() === 'received' ? 'received' : 'sent';
+  const counterparty = direction === 'received'
+    ? (body.sender || body.from || body.recipient)
+    : (body.recipient || body.to || body.sender);
+  const counterpartyName = direction === 'received'
+    ? (body.senderName || body.fromName || body.recipientName)
+    : (body.recipientName || body.toName || body.senderName);
+  if (!counterparty || !(hasText(summary) || hasText(body.subject) || hasText(body.bodyPreview))) {
+    return res.status(400).json({ error: 'counterparty email and summary/subject/bodyPreview are required' });
+  }
 
-  const email = String(recipient).trim().toLowerCase();
+  const email = String(counterparty).trim().toLowerCase();
   const domain = email.split('@')[1] || '';
   const localPart = email.split('@')[0] || '';
   const isConsumer = CONSUMER.has(domain);
@@ -106,7 +165,7 @@ export default async function handler(req, res) {
 
   // ── Tier 3: name fuzzy ──
   if (!winner) {
-    const query = recipientName || localPart;
+    const query = counterpartyName || localPart;
     const scored = recs
       .map(r => ({ r, s: Math.max(nameScore(query, r.name), nameScore(localPart, r.name)) }))
       .filter(x => x.s >= 0.5)
@@ -119,7 +178,7 @@ export default async function handler(req, res) {
   // ── Tier 4: AI tiebreak (only when ambiguous) ──
   if (!winner && shortlist.length >= 2 && process.env.ANTHROPIC_KEY) {
     const pick = await callClaudeTiebreak(process.env.ANTHROPIC_KEY, {
-      email, name: recipientName || localPart, summary,
+      email, name: counterpartyName || localPart, summary,
       candidates: shortlist.map(r => ({ id: `${r.table}:${r.id}`, name: r.name, company: r.facility, location: r.address, stage: r.stage })),
     });
     if (pick && pick.id && pick.id !== 'null') {
@@ -129,7 +188,18 @@ export default async function handler(req, res) {
   }
 
   if (!winner || confidence < 0.5) {
-    return res.status(200).json({ ok: true, matched: false, logged: false, matchMethod: 'none', confidence: 0, action: 'skipped', emailBackfilled: false });
+    const evidence = await persistEmailEvent({
+      body,
+      counterpartyEmail: email,
+      counterpartyName,
+      direction,
+      sentAt: sentAt || new Date().toISOString(),
+      winner: null,
+      matchMethod: 'none',
+      confidence: 0,
+      needsReview: true,
+    });
+    return res.status(200).json({ ok: true, matched: false, logged: false, matchMethod: 'none', confidence: 0, action: 'skipped', emailBackfilled: false, evidence });
   }
 
   const needsReview = confidence < 0.75;
@@ -138,23 +208,46 @@ export default async function handler(req, res) {
   const { data: full } = await supabase.from(winner.table).select('id, email, action_log').eq('id', winner.id).single();
   const log = full?.action_log ?? [];
   if (messageId && log.some(e => e.messageId && e.messageId === messageId)) {
-    return res.status(200).json({ ok: true, matched: true, logged: false, clientId: winner.id, matchMethod, confidence, action: 'duplicate', emailBackfilled: false });
+    const evidence = await persistEmailEvent({
+      body,
+      counterpartyEmail: email,
+      counterpartyName,
+      direction,
+      sentAt: sentAt || new Date().toISOString(),
+      winner,
+      matchMethod,
+      confidence,
+      needsReview,
+    });
+    return res.status(200).json({ ok: true, matched: true, logged: false, clientId: winner.id, matchMethod, confidence, action: 'duplicate', emailBackfilled: false, evidence });
   }
 
   const at = sentAt || new Date().toISOString();
-  const entry = { type: 'email', note: summary, at, date: at.slice(0, 10), messageId: messageId || null, email: recipient, source: 'email', matchMethod, confidence, needsReview };
+  const note = summary || body.bodyPreview || body.subject || '';
+  const entry = { type: 'email', note, at, date: at.slice(0, 10), messageId: messageId || null, email, source: 'email', direction, matchMethod, confidence, needsReview };
 
   const update = { action_log: [...log, entry], updated_at: new Date().toISOString() };
   // Backfill address if this record has no email on file and we're confident
   let emailBackfilled = false;
-  if (!needsReview && (!full?.email || !full.email.trim())) { update.email = recipient; emailBackfilled = true; }
+  if (!needsReview && (!full?.email || !full.email.trim())) { update.email = email; emailBackfilled = true; }
 
   const { error } = await supabase.from(winner.table).update(update).eq('id', winner.id);
   if (error) return res.status(500).json({ error: error.message });
+  const evidence = await persistEmailEvent({
+    body,
+    counterpartyEmail: email,
+    counterpartyName,
+    direction,
+    sentAt: at,
+    winner,
+    matchMethod,
+    confidence,
+    needsReview,
+  });
 
   return res.status(200).json({
     ok: true, matched: true, logged: true, clientId: winner.id,
     matchMethod, confidence: Math.round(confidence * 100) / 100,
-    action: needsReview ? 'needs_review' : 'logged', emailBackfilled,
+    action: needsReview ? 'needs_review' : 'logged', emailBackfilled, evidence,
   });
 }

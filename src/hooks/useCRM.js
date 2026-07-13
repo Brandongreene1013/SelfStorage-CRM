@@ -11,11 +11,7 @@ function isMissingColumnError(error, columnName) {
 export function useCRM() {
   const [clients, setClients] = useState([]);
 
-  useEffect(() => {
-    loadClients();
-  }, []);
-
-  async function loadClients() {
+  const loadClients = useCallback(async () => {
     const { data, error } = await supabase
       .from('clients')
       .select('*')
@@ -24,7 +20,11 @@ export function useCRM() {
     if (!error && data) {
       setClients(data.map(dbToClient));
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
 
   // Map DB snake_case → app camelCase
   function dbToClient(row) {

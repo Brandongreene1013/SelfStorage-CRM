@@ -308,10 +308,6 @@ function OutlookEventCard({ event }) {
 
 function MeetingCard({ meeting, client, onEdit, onDelete }) {
   function openInOutlook() {
-    const startDate = meeting.date.replace(/-/g, '');
-    const endDate = meeting.date.replace(/-/g, '');
-    const startTime = (meeting.startTime ?? '09:00').replace(':', '') + '00';
-    const endTime = (meeting.endTime ?? '10:00').replace(':', '') + '00';
     const params = new URLSearchParams({
       subject: meeting.title,
       startdt: `${meeting.date}T${meeting.startTime ?? '09:00'}:00`,

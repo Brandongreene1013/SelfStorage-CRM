@@ -4,20 +4,6 @@ import { supabase } from '../lib/supabase';
 export function useMeetings() {
   const [meetings, setMeetings] = useState([]);
 
-  useEffect(() => {
-    loadMeetings();
-  }, []);
-
-  async function loadMeetings() {
-    const { data, error } = await supabase
-      .from('meetings')
-      .select('*')
-      .order('date', { ascending: true });
-    if (!error && data) {
-      setMeetings(data.map(dbToMeeting));
-    }
-  }
-
   function dbToMeeting(row) {
     return {
       id: row.id,
@@ -42,6 +28,20 @@ export function useMeetings() {
       notes: data.notes,
     };
   }
+
+  const loadMeetings = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('meetings')
+      .select('*')
+      .order('date', { ascending: true });
+    if (!error && data) {
+      setMeetings(data.map(dbToMeeting));
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMeetings();
+  }, [loadMeetings]);
 
   const addMeeting = useCallback(async (data) => {
     const { data: row, error } = await supabase

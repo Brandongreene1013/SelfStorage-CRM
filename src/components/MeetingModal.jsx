@@ -27,7 +27,7 @@ export default function MeetingModal({ meeting, defaultDate, clients, onSave, on
         notes: meeting.notes ?? '',
       });
     }
-  }, [meeting]);
+  }, [meeting, defaultDate]);
 
   function handleChange(e) {
     const { name, value } = e.target;

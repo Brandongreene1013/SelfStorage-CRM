@@ -7,6 +7,9 @@ export const PROGRESS_FIELDS = [
   { key: 'conversations',       label: 'Total Conversations',       shortLabel: 'Conversations', accent: 'text-green-400',  bg: 'bg-green-500/10',   border: 'border-green-500/30'   },
   { key: 'additionsToDatabase', label: 'Total Additions to Database', shortLabel: 'DB Adds',    accent: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
   { key: 'bovProposals',        label: 'Total BOV Proposals',       shortLabel: 'BOV Proposals', accent: 'text-purple-400', bg: 'bg-purple-500/10',  border: 'border-purple-500/30'  },
+  { key: 'ownersIdentified',    label: 'Owners Identified',         shortLabel: 'Identified',    accent: 'text-cyan-400',    bg: 'bg-cyan-500/10',    border: 'border-cyan-500/30'    },
+  { key: 'uniqueOwnersWorked',  label: 'Unique Owners Worked',      shortLabel: 'Owners Worked', accent: 'text-amber-400',   bg: 'bg-amber-500/10',   border: 'border-amber-500/30'   },
+  { key: 'totalOwnerActions',   label: 'Total Owner Actions',       shortLabel: 'Actions',       accent: 'text-orange-400',  bg: 'bg-orange-500/10',  border: 'border-orange-500/30'  },
 ];
 
 const DEFAULT_COUNTERS = {
@@ -15,6 +18,9 @@ const DEFAULT_COUNTERS = {
   conversations: 0,
   additionsToDatabase: 0,
   bovProposals: 0,
+  ownersIdentified: 0,
+  uniqueOwnersWorked: 0,
+  totalOwnerActions: 0,
 };
 
 function getTodayStr() {
@@ -29,6 +35,9 @@ function dbToProgress(row) {
     conversations: row.conversations ?? 0,
     additionsToDatabase: row.additions_to_database ?? row.facilities ?? 0,
     bovProposals: row.bov_proposals ?? row.bovs ?? 0,
+    ownersIdentified: row.owners_identified ?? 0,
+    uniqueOwnersWorked: row.unique_owners_worked ?? 0,
+    totalOwnerActions: row.total_owner_actions ?? 0,
   };
 }
 
@@ -44,7 +53,7 @@ export function useDailyProgress() {
     const msg = error.message ?? '';
     return error.code === '42703'
       || error.code === 'PGRST204'
-      || /voicemails|additions_to_database|bov_proposals/i.test(msg);
+      || /voicemails|additions_to_database|bov_proposals|owners_identified|unique_owners_worked|total_owner_actions/i.test(msg);
   }
 
   const loadAll = useCallback(async () => {
@@ -69,7 +78,6 @@ export function useDailyProgress() {
 
   useEffect(() => {
     // Initial Supabase sync; state updates happen after the async fetch resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadAll();
   }, [loadAll]);
 
@@ -84,6 +92,9 @@ export function useDailyProgress() {
         conversations: today.conversations,
         additions_to_database: today.additionsToDatabase,
         bov_proposals: today.bovProposals,
+        owners_identified: today.ownersIdentified,
+        unique_owners_worked: today.uniqueOwnersWorked,
+        total_owner_actions: today.totalOwnerActions,
         // Keep legacy columns populated for older backup/restore exports and
         // any reports that still read the original daily_progress shape.
         facilities: today.additionsToDatabase,

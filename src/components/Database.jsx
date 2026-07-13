@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core';
 import ImportListModal from './ImportListModal';
 import DuplicateReview from './DuplicateReview';
@@ -1069,9 +1069,8 @@ function OwnedPropertiesEditor({ contact, onUpdate }) {
   );
 }
 
-// Same-owner radar banner: this contact matches someone else in the database
-// by phone/email/owner name but sits on a DIFFERENT property — likely one
-// owner with multiple facilities. One click folds the weaker row into the
+// Low-key related-owner hint: same/similar ownership, facility, or market
+// signals on a different property. One click can fold the weaker row into the
 // stronger card as an additional property.
 function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerged }) {
   const [confirmId, setConfirmId] = useState(null);
@@ -1099,43 +1098,46 @@ function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerg
   }
 
   return (
-    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-2">
-      <p className="text-xs font-black text-amber-400 uppercase tracking-wide">🏢 Same owner already in your database?</p>
+    <div className="bg-slate-900/50 border border-slate-800 rounded-lg px-3 py-2 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Possible related record</p>
+        <span className="text-[11px] text-slate-600">{matches.length} match{matches.length === 1 ? '' : 'es'}</span>
+      </div>
       {matches.map(m => {
         const c = m.contact;
         const name = c.ownerName || c.facilityName || 'Unknown';
         const currentIsMaster = keepScore(contact) >= keepScore(c);
         return (
-          <div key={c.id} className="flex flex-wrap items-center gap-2">
+          <div key={c.id} className="flex flex-wrap items-center gap-2 border-t border-slate-800/70 pt-2 first:border-t-0 first:pt-0">
             <div className="flex-1 min-w-[180px]">
-              <p className="text-sm text-white font-semibold truncate">
+              <p className="text-xs text-slate-200 font-semibold truncate">
                 {name}
-                <span className="text-slate-400 font-normal"> — {c.facilityName || c.address || 'no property'}</span>
+                <span className="text-slate-500 font-normal"> · {c.facilityName || c.address || 'no property'}</span>
               </p>
-              <p className="text-xs text-slate-500">
-                {m.reasons.join(' · ')}{listName(c) ? ` · in ${listName(c)}` : ''}
+              <p className="text-[11px] text-slate-600 truncate">
+                {m.reasons.join(' · ')}{listName(c) ? ` · ${listName(c)}` : ''}
               </p>
             </div>
             {confirmId === c.id ? (
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs text-slate-400">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] text-slate-500">
                   {currentIsMaster ? 'Pull their property into this card?' : `Fold this row into ${name}'s card?`}
                 </span>
                 <button
                   onClick={() => fold(m)}
                   disabled={busy}
-                  className="text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg px-2.5 py-1.5 disabled:opacity-50"
+                  className="text-[11px] font-bold bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-md px-2 py-1 disabled:opacity-50"
                 >
                   {busy ? 'Merging…' : 'Yes, merge'}
                 </button>
-                <button onClick={() => setConfirmId(null)} className="text-xs text-slate-500 hover:text-white px-1.5 py-1.5">Cancel</button>
+                <button onClick={() => setConfirmId(null)} className="text-[11px] text-slate-600 hover:text-slate-300 px-1.5 py-1">Cancel</button>
               </div>
             ) : (
               <button
                 onClick={() => setConfirmId(c.id)}
-                className="text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-lg px-2.5 py-1.5 transition-all"
+                className="text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-slate-200 rounded-md px-2 py-1 transition-all"
               >
-                {currentIsMaster ? '+ Pull property in' : '+ Add to their card'}
+                {currentIsMaster ? 'Link property' : 'Add to record'}
               </button>
             )}
           </div>
@@ -1146,7 +1148,7 @@ function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerg
   );
 }
 
-function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteAction, onDeleteCallHistory, onMergeSameOwner, taskApi, ownershipApi, mailerApi }) {
+function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteCallHistory, onMergeSameOwner, taskApi, ownershipApi, mailerApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1950,6 +1952,12 @@ function persistCallPositions() {
   try { localStorage.setItem(CALL_POSITIONS_KEY, JSON.stringify(callQueuePositions)); } catch { /* storage blocked — session memory only */ }
 }
 
+function rememberCallPosition(key, value) {
+  // Module-level cache mirrors localStorage so position survives navigation.
+  callQueuePositions[key] = value;
+  persistCallPositions();
+}
+
 // Sprint 23 — positions remember WHO Brandon was on, not just a row number.
 // Queues shrink and reorder as outcomes get logged (called contacts drop out),
 // so a bare index lands on the wrong contact after leaving and coming back.
@@ -2402,10 +2410,10 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // Position keys for the queue-position memory. The Active List queue is
   // keyed per list so switching lists never resumes into the wrong list's
   // position. Positions + the active session persist to localStorage (Sprint 13).
-  const positionKey = (key) => key === 'activeList' ? `activeList:${activeListId}` : key;
+  const positionKey = useCallback((key) => key === 'activeList' ? `activeList:${activeListId}` : key, [activeListId]);
   const [savedCallSession, setSavedCallSession] = useState(() => readStoredJson(CALL_SESSION_KEY, null));
 
-  function recordCallSession(queueKey, listIdForQueue, index, queue, label) {
+  const recordCallSession = useCallback((queueKey, listIdForQueue, index, queue, label) => {
     const session = {
       queueKey,
       listId: queueKey === 'activeList' ? listIdForQueue : null,
@@ -2417,9 +2425,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     };
     saveCallSession(session);
     setSavedCallSession(session);
-  }
+  }, []);
 
-  function selectQueue(key) {
+  const selectQueue = useCallback((key) => {
     setCallQueueSource(key);
     // Resume where Brandon left off in this queue — by contact, so the saved
     // spot survives the queue shrinking or reordering while he was away.
@@ -2428,7 +2436,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     const index = resolveQueuePosition(callQueuePositions[positionKey(key)], queue);
     setCallQueueIndex(index);
     recordCallSession(key, activeListId, index, queue, def?.label ?? 'Call Mode');
-  }
+  }, [QUEUE_DEFS, activeListId, positionKey, recordCallSession]);
 
   // All Call Mode index changes flow through here so the per-queue position
   // memory stays current no matter how the index moved (next/back, outcome
@@ -2436,8 +2444,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   function setQueueIndex(next) {
     setCallQueueIndex(next);
     if (callQueueSource) {
-      callQueuePositions[positionKey(callQueueSource)] = savedQueuePosition(next, activeQueueDef?.queue ?? []);
-      persistCallPositions();
+      rememberCallPosition(positionKey(callQueueSource), savedQueuePosition(next, activeQueueDef?.queue ?? []));
       recordCallSession(callQueueSource, activeListId, next, activeQueueDef?.queue ?? [], activeQueueDef?.label ?? 'Call Mode');
     }
   }
@@ -2470,8 +2477,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     setCallQueueSource(resumeInfo.queueKey);
     setCallQueueIndex(resumeInfo.resumeIndex);
     const key = resumeInfo.queueKey === 'activeList' ? `activeList:${resumeInfo.listId}` : resumeInfo.queueKey;
-    callQueuePositions[key] = resumeInfo.resumeIndex;
-    persistCallPositions();
+    rememberCallPosition(key, resumeInfo.resumeIndex);
   }
 
   function clearSavedSession() {
@@ -2502,8 +2508,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               ? `activeList:${entryRequest.listId ?? activeListId}`
               : entryRequest.queueKey;
             if (entryRequest.queueKey) {
-              callQueuePositions[key] = 0;
-              persistCallPositions();
+              rememberCallPosition(key, 0);
             }
           } else {
             setCallQueueIndex(0);
@@ -2513,7 +2518,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       }
     }
     onEntryConsumed?.();
-  }, [entryRequest, contacts, activeListId, onEntryConsumed]);
+  }, [entryRequest, contacts, activeListId, selectQueue, onEntryConsumed]);
 
   // In the Master Database view, clients are merged in (unified view, no duplicates)
   const masterView = activeListId === masterListId;
@@ -2598,14 +2603,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     setSubView('callQueue');
     setCallQueueSource('activeList');
     setCallQueueIndex(0);
-    callQueuePositions[`activeList:${listId}`] = 0;
+    rememberCallPosition(`activeList:${listId}`, 0);
     setShowImport(false);
   }
-
-  // Aggregate stats
-  const totalCalled     = contacts.filter(c => c.status !== 'fresh').length;
-  const totalConversations = contacts.filter(c => c.status === 'conversation').length;
-  const totalAppointments  = contacts.filter(c => c.status === 'appointment').length;
 
   return (
     <DndContext

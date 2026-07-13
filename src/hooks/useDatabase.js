@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
 import { buildMergePlan } from '../lib/duplicateReview';
 import { buildSameOwnerMergePlan } from '../lib/ownerRadar';
@@ -942,11 +941,6 @@ export function useDatabase() {
     setDuplicateDismissals((data ?? []).map(d => ({ pairKey: d.pair_key, note: d.note ?? '', createdAt: d.created_at ?? null })));
   }, []);
 
-  useEffect(() => {
-    loadAll();
-    loadDismissals();
-  }, [loadDismissals]);
-
   const dismissDuplicateGroup = useCallback(async (pairKey, contactIds = [], note = '') => {
     const record = { pairKey, note, createdAt: new Date().toISOString() };
     setDuplicateDismissals(prev => [...prev.filter(d => d.pairKey !== pairKey), record]);
@@ -971,7 +965,7 @@ export function useDatabase() {
     return { ok: true };
   }, []);
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     // Bulk imports give hundreds of contacts the SAME created_at, and Postgres
     // breaks ties arbitrarily — so without the id tie-breaker every app reload
     // dealt the queue back in a different order.
@@ -999,7 +993,12 @@ export function useDatabase() {
     }
     if (master) setMasterListId(master.id);
     setLists(loadedLists);
-  }
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+    loadDismissals();
+  }, [loadAll, loadDismissals]);
 
   async function insertListWithFallback(row) {
     let res = await supabase.from('lists').insert([row]).select().single();
