@@ -146,7 +146,7 @@ export default function OwnershipLinksPanel({ record, ownershipApi, onUpdate, co
   }
 
   return (
-    <div className={`bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3 ${compact ? 'mt-3' : ''}`}>
+    <div className={`bg-slate-900/50 border border-slate-800/80 rounded-xl p-3 space-y-2.5 ${compact ? 'mt-3' : ''}`}>
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">
           Properties They Own{linkedProperties.length > 0 ? ` (${linkedProperties.length})` : ''}
@@ -155,11 +155,11 @@ export default function OwnershipLinksPanel({ record, ownershipApi, onUpdate, co
           type="button"
           onClick={() => { setShowAddProperty(v => !v); setMessage(''); setPropertyDraft(BLANK_PROPERTY_DRAFT); }}
           disabled={!hasOwnershipData || !onUpdate}
-          className={`text-xs font-bold rounded-lg px-3 py-1.5 transition-all disabled:opacity-40 ${showAddProperty
-            ? 'text-slate-300 border border-slate-600 hover:text-white'
-            : 'bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400'}`}
+          className={`text-[11px] font-semibold rounded-md px-2 py-1 transition-all disabled:opacity-40 ${showAddProperty
+            ? 'text-slate-400 border border-slate-700 hover:text-slate-200'
+            : 'text-slate-500 hover:text-slate-300 border border-transparent hover:border-slate-700'}`}
         >
-          {showAddProperty ? 'Done' : '+ Add Address'}
+          {showAddProperty ? 'Done' : '+ property'}
         </button>
       </div>
 
@@ -170,7 +170,7 @@ export default function OwnershipLinksPanel({ record, ownershipApi, onUpdate, co
       )}
 
       {showAddProperty && (
-        <div className="bg-slate-800/60 border border-amber-500/30 rounded-lg p-3 space-y-2">
+        <div className="bg-slate-800/40 border border-slate-700/70 rounded-lg p-3 space-y-2">
           <input
             type="text"
             autoFocus
@@ -192,7 +192,7 @@ export default function OwnershipLinksPanel({ record, ownershipApi, onUpdate, co
             <button
               type="button"
               onClick={saveNewProperty}
-              className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-1.5 rounded-lg text-xs transition-all"
+              className="bg-slate-700 hover:bg-slate-600 text-slate-100 font-bold px-3 py-1.5 rounded-lg text-xs transition-all"
             >
               Add
             </button>
@@ -201,7 +201,7 @@ export default function OwnershipLinksPanel({ record, ownershipApi, onUpdate, co
       )}
 
       {linkedProperties.length === 0 && !showAddProperty ? (
-        <p className="text-xs text-slate-500 italic">Nothing logged yet. Hit + Add Address to list everything they own.</p>
+        <p className="text-xs text-slate-600 italic">No related properties logged.</p>
       ) : (
         <div className="space-y-2">
           {linkedProperties.map(property => (

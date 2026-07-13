@@ -11,6 +11,43 @@ export function projectedCommissionAmount(salePrice, commissionPct) {
   return price * (pct / 100);
 }
 
+export function buildCommissionSummary(clients = []) {
+  const summary = {
+    grossPipelineCommission: 0,
+    grossClosedCommission: 0,
+    grossAllCommission: 0,
+    pipelineSaleValue: 0,
+    pricedPipelineDeals: 0,
+    pricedAllDeals: 0,
+    missingCommissionDeals: 0,
+  };
+
+  clients.forEach(client => {
+    const salePrice = numberOrNull(client.desiredSalePrice);
+    const commission = projectedCommissionAmount(client.desiredSalePrice, client.projectedCommissionPct);
+    const hasSalePrice = salePrice !== null && salePrice > 0;
+    const hasCommission = commission !== null && commission > 0;
+    const isPipeline = client.stageId >= 2 && client.stageId <= 9;
+    const isClosed = client.stageId === 9 || client.stageId === 10;
+
+    if (hasCommission) {
+      summary.grossAllCommission += commission;
+      summary.pricedAllDeals += 1;
+      if (isPipeline) {
+        summary.grossPipelineCommission += commission;
+        summary.pricedPipelineDeals += 1;
+      }
+      if (isClosed) summary.grossClosedCommission += commission;
+    } else if (isPipeline) {
+      summary.missingCommissionDeals += 1;
+    }
+
+    if (isPipeline && hasSalePrice) summary.pipelineSaleValue += salePrice;
+  });
+
+  return summary;
+}
+
 export function formatMoney(value, { compact = false } = {}) {
   const n = numberOrNull(value);
   if (n === null) return '';

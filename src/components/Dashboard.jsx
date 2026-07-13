@@ -5,6 +5,7 @@ import RecentActivity from './RecentActivity';
 import NeedsReview from './NeedsReview';
 import ActionCenterModal from './ActionCenterModal';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
+import { buildCommissionSummary, formatMoney } from '../lib/dealValue';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
 
@@ -452,6 +453,51 @@ function WeeklyProductionScorecard({ data }) {
 }
 
 // ─── Daily Production ─────────────────────────────────────────────────────────
+function CommissionCounter({ summary, migrationNeeded }) {
+  const gross = summary.grossPipelineCommission;
+  const saleValue = summary.pipelineSaleValue;
+  const avgRate = saleValue > 0 ? (gross / saleValue) * 100 : 0;
+
+  return (
+    <SectionCard
+      title="Commission Counter"
+      subtitle="Gross projected fees across active pipeline deals"
+      className="border-emerald-500/20 bg-emerald-950/10"
+      actions={
+        <div className="text-right">
+          <p className="text-xs text-slate-600 uppercase tracking-wide">Priced Deals</p>
+          <p className="text-sm font-black text-emerald-400">{summary.pricedPipelineDeals}</p>
+        </div>
+      }
+    >
+      {migrationNeeded && (
+        <p className="mb-3 text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2">
+          Commission fields are not live in Supabase yet. Run <code>sql/client_deal_value_migration.sql</code>, then refresh.
+        </p>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="md:col-span-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4">
+          <p className="text-xs font-bold text-emerald-300 uppercase tracking-wide">Gross Pipeline Commission</p>
+          <p className="text-4xl font-black text-emerald-400 mt-1 leading-none">{formatMoney(gross) || '$0'}</p>
+          <p className="text-xs text-emerald-300/70 mt-2">Fill in deal price + commission % on client cards to move the scoreboard.</p>
+        </div>
+        <div className="rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-3">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Pipeline Sale Value</p>
+          <p className="text-2xl font-black text-white mt-1">{formatMoney(saleValue, { compact: true }) || '$0'}</p>
+          <p className="text-xs text-slate-600 mt-1">{avgRate > 0 ? `${avgRate.toFixed(2)}% blended fee` : 'Add price + %'}</p>
+        </div>
+        <div className="rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-3">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Missing Fees</p>
+          <p className={`text-2xl font-black mt-1 ${summary.missingCommissionDeals > 0 ? 'text-amber-400' : 'text-slate-600'}`}>
+            {summary.missingCommissionDeals}
+          </p>
+          <p className="text-xs text-slate-600 mt-1">active deals without commission math</p>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 function DailyProduction({ today, increment, decrement, setValue, todayLabel, completedTodayCount, callbacksCreatedToday, migrationNeeded }) {
   return (
     <SectionCard
@@ -943,7 +989,7 @@ function DashboardTasks({ taskApi }) {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard({
   clients, contacts = [], meetings = [], onNavigateCalendar,
-  onStartCallMode, onOpenCallQueue, onOpenDatabaseFilter, onOpenContact, onEditClient, onLogClientAction, onDeleteClientAction, onMoveToMasterDB, masterListId, review, taskApi,
+  onStartCallMode, onOpenCallQueue, onOpenDatabaseFilter, onOpenContact, onEditClient, onLogClientAction, onDeleteClientAction, onMoveToMasterDB, masterListId, review, taskApi, dealValueMigrationNeeded,
 }) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
@@ -952,6 +998,7 @@ export default function Dashboard({
   const active      = clients.filter(c => c.stageId >= 2 && c.stageId <= 9).length;
   const totalUnits  = clients.reduce((sum, c) => sum + (c.units ?? 0), 0);
   const totalSqft   = clients.reduce((sum, c) => sum + (c.sqft ?? 0), 0);
+  const commissionSummary = useMemo(() => buildCommissionSummary(clients), [clients]);
   const stageCounts = PIPELINE_STAGES.map(s => ({
     ...s,
     count: clients.filter(c => c.stageId === s.id).length,
@@ -979,6 +1026,7 @@ export default function Dashboard({
     { label: 'Buyers',        value: buyers,      accent: 'text-blue-400' },
     { label: 'Sellers',       value: sellers,     accent: 'text-amber-400' },
     { label: 'Active Deals',  value: active,      accent: 'text-green-400', sub: 'Stages 2–9' },
+    { label: 'Gross Fees',    value: formatMoney(commissionSummary.grossPipelineCommission, { compact: true }) || '$0', accent: 'text-emerald-400', sub: 'Active pipeline' },
     { label: 'In Contract',   value: inContract,  accent: 'text-orange-400' },
     { label: 'Closed',        value: closed,      accent: 'text-purple-400', sub: 'Close + Post-Close' },
   ];
@@ -1030,6 +1078,8 @@ export default function Dashboard({
       />
 
       <WeeklyProductionScorecard data={weeklyProduction} />
+
+      <CommissionCounter summary={commissionSummary} migrationNeeded={dealValueMigrationNeeded} />
 
       <CallbackCommandCenter
         todayCallbacks={todayCallbacks}
@@ -1121,7 +1171,7 @@ export default function Dashboard({
         </div>
         {showReporting ? (
           <div className="space-y-4">
-            <MetricCardGrid metrics={kpiStats} />
+            <MetricCardGrid metrics={kpiStats} cols="grid-cols-2 md:grid-cols-4 xl:grid-cols-7" />
             <PipelineContinuum
               stageCounts={stageCounts}
               totalUnits={totalUnits}

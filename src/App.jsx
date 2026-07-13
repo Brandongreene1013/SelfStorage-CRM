@@ -24,7 +24,7 @@ const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Mailers', 'Analy
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 export default function App() {
-  const { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog } = useCRM();
+  const { clients, dealValueMigrationNeeded, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog } = useCRM();
   const db = useDatabase(); // shared Database state (lifted so contacts can move to/from Clients)
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { calendarEvents } = useCalendarEvents();
@@ -183,9 +183,10 @@ export default function App() {
     setEditingClient(client);
   }
 
-  function handleSaveEdit(data) {
-    updateClient(editingClient.id, data);
-    setEditingClient(null);
+  async function handleSaveEdit(data) {
+    const result = await updateClient(editingClient.id, data);
+    if (result?.ok) setEditingClient(null);
+    return result;
   }
 
   function handleDelete(id) {
@@ -326,6 +327,7 @@ export default function App() {
             onEditClient={handleEdit}
             onLogClientAction={logClientAction}
             onDeleteClientAction={deleteClientAction}
+            dealValueMigrationNeeded={dealValueMigrationNeeded}
             taskApi={taskApi}
             review={{
               items: reviewItems,

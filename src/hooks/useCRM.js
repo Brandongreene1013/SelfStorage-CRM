@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
+import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } from '../lib/dealValue';
 
 function isMissingColumnError(error, columnName) {
   if (!error) return false;
@@ -8,8 +9,32 @@ function isMissingColumnError(error, columnName) {
   return text.includes(columnName) || error.code === 'PGRST204' || error.code === '42703';
 }
 
+function hasDealValueInput(data) {
+  return numberOrNull(data.desiredSalePrice) !== null || numberOrNull(data.projectedCommissionPct) !== null;
+}
+
+function dealValueChanged(previous, next) {
+  if (!previous) return hasDealValueInput(next);
+  return numberOrNull(previous.desiredSalePrice) !== numberOrNull(next.desiredSalePrice)
+    || numberOrNull(previous.projectedCommissionPct) !== numberOrNull(next.projectedCommissionPct);
+}
+
+function buildDealValueLogEntry(data) {
+  const commission = projectedCommissionAmount(data.desiredSalePrice, data.projectedCommissionPct);
+  const priceText = numberOrNull(data.desiredSalePrice) !== null ? formatMoney(data.desiredSalePrice) : 'no sale price';
+  const pctText = numberOrNull(data.projectedCommissionPct) !== null ? formatPercent(data.projectedCommissionPct) : 'no commission %';
+  const feeText = commission !== null ? formatMoney(commission) : '$0';
+  return {
+    type: 'bov',
+    date: new Date().toISOString().slice(0, 10),
+    note: `Commission registered: ${feeText} projected on ${priceText} at ${pctText}`,
+    at: new Date().toISOString(),
+  };
+}
+
 export function useCRM() {
   const [clients, setClients] = useState([]);
+  const [dealValueMigrationNeeded, setDealValueMigrationNeeded] = useState(false);
 
   const loadClients = useCallback(async () => {
     const { data, error } = await supabase
@@ -20,6 +45,11 @@ export function useCRM() {
     if (!error && data) {
       setClients(data.map(dbToClient));
     }
+    const { error: dealValueError } = await supabase
+      .from('clients')
+      .select('desired_sale_price,projected_commission_pct')
+      .limit(1);
+    setDealValueMigrationNeeded(isMissingColumnError(dealValueError, 'desired_sale_price') || isMissingColumnError(dealValueError, 'projected_commission_pct'));
   }, []);
 
   useEffect(() => {
@@ -91,7 +121,10 @@ export function useCRM() {
   }
 
   const addClient = useCallback(async (data) => {
-    let dbRow = clientToDb(data);
+    const payload = hasDealValueInput(data)
+      ? { ...data, actionLog: [...(data.actionLog ?? []), buildDealValueLogEntry(data)] }
+      : data;
+    let dbRow = clientToDb(payload);
     let { data: row, error } = await supabase
       .from('clients')
       .insert([dbRow])
@@ -113,17 +146,27 @@ export function useCRM() {
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
     if (error && (isMissingColumnError(error, 'desired_sale_price') || isMissingColumnError(error, 'projected_commission_pct'))) {
+      setDealValueMigrationNeeded(true);
+      if (hasDealValueInput(data)) {
+        return { error: 'Run sql/client_deal_value_migration.sql in Supabase first. Commission values are not being saved yet.' };
+      }
       const { desired_sale_price: _desiredSalePrice, projected_commission_pct: _projectedCommissionPct, ...withoutDealValue } = dbRow;
       dbRow = withoutDealValue;
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
     if (!error && row) {
       setClients(prev => [...prev, dbToClient(row)]);
+      return { ok: true };
     }
+    return { error: error?.message ?? 'Could not add client.' };
   }, []);
 
   const updateClient = useCallback(async (id, data) => {
-    let dbRow = { ...clientToDb(data), updated_at: new Date().toISOString() };
+    const existing = clients.find(c => c.id === id);
+    const payload = dealValueChanged(existing, data)
+      ? { ...data, actionLog: [...(existing?.actionLog ?? data.actionLog ?? []), buildDealValueLogEntry(data)] }
+      : data;
+    let dbRow = { ...clientToDb(payload), updated_at: new Date().toISOString() };
     let { data: row, error } = await supabase
       .from('clients')
       .update(dbRow)
@@ -141,14 +184,20 @@ export function useCRM() {
       ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
     }
     if (error && (isMissingColumnError(error, 'desired_sale_price') || isMissingColumnError(error, 'projected_commission_pct'))) {
+      setDealValueMigrationNeeded(true);
+      if (hasDealValueInput(data)) {
+        return { error: 'Run sql/client_deal_value_migration.sql in Supabase first. Commission values are not being saved yet.' };
+      }
       const { desired_sale_price: _desiredSalePrice, projected_commission_pct: _projectedCommissionPct, ...withoutDealValue } = dbRow;
       dbRow = withoutDealValue;
       ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
     }
     if (!error && row) {
       setClients(prev => prev.map(c => c.id === id ? dbToClient(row) : c));
+      return { ok: true };
     }
-  }, []);
+    return { error: error?.message ?? 'Could not update client.' };
+  }, [clients]);
 
   const deleteClient = useCallback(async (id) => {
     const { error } = await supabase.from('clients').delete().eq('id', id);
@@ -225,5 +274,5 @@ export function useCRM() {
     });
   }, []);
 
-  return { clients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog };
+  return { clients, dealValueMigrationNeeded, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog };
 }

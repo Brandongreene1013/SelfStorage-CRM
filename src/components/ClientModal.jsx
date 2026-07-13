@@ -25,6 +25,8 @@ const EMPTY = {
 
 export default function ClientModal({ client, onSave, onClose, mailerApi }) {
   const [form, setForm] = useState(EMPTY);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   const isEdit = Boolean(client);
 
   useEffect(() => {
@@ -51,13 +53,15 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
 
   function handleChange(e) {
     const { name, value } = e.target;
+    setError('');
     setForm(prev => ({ ...prev, [name]: value }));
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name.trim()) return;
-    onSave({
+    setSaving(true);
+    const result = await onSave({
       ...form,
       stageId: Number(form.stageId),
       units: form.units === '' ? null : Number(form.units),
@@ -66,6 +70,11 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
       projectedCommissionPct: numberOrNull(form.projectedCommissionPct),
       mailingAddresses: form.mailingAddresses,
     });
+    setSaving(false);
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
     onClose();
   }
 
@@ -330,19 +339,26 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
           </div>
 
           {/* Actions */}
+          {error && (
+            <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
           <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
+              disabled={saving}
               className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white transition-all text-sm font-semibold"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition-all"
+              disabled={saving}
+              className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-950 font-bold text-sm transition-all"
             >
-              {isEdit ? 'Save Changes' : 'Add Client'}
+              {saving ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Client'}
             </button>
           </div>
         </form>
