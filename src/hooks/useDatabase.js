@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../lib/supabase';
 import { buildMergePlan } from '../lib/duplicateReview';
+import { buildSameOwnerMergePlan } from '../lib/ownerRadar';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
 import { DEFAULT_RELATIONSHIP_TYPE, RELATIONSHIP_TYPES } from '../data/constants';
 
@@ -550,6 +551,11 @@ function stripContactMailingAddressesColumn(row) {
   return rest;
 }
 
+function stripContactOwnedPropertiesColumn(row) {
+  const { owned_properties: _ownedProperties, ...rest } = row;
+  return rest;
+}
+
 function mergeCallHistories(existing = [], incoming = []) {
   const merged = [...existing];
   const seen = new Set(merged.map(h => `${h.date ?? ''}|${h.outcome ?? ''}|${h.notes ?? ''}`));
@@ -628,6 +634,24 @@ function mergeImportedContact(existing, incoming, meta) {
   return { updates, addedPhones };
 }
 
+function propertyKey(property = {}) {
+  return [property.facilityName, property.address, property.state]
+    .map(v => (v ?? '').trim().toLowerCase())
+    .join('|');
+}
+
+function mergeOwnedProperties(existing = [], incoming = []) {
+  const merged = Array.isArray(existing) ? [...existing] : [];
+  const seen = new Set(merged.map(propertyKey));
+  (Array.isArray(incoming) ? incoming : []).forEach(property => {
+    const key = propertyKey(property);
+    if (key === '||' || seen.has(key)) return;
+    seen.add(key);
+    merged.push(property);
+  });
+  return merged;
+}
+
 function updatePayloadFromFields(fields) {
   const dbFields = {};
   if (fields.ownerName !== undefined) dbFields.owner_name = fields.ownerName;
@@ -640,6 +664,7 @@ function updatePayloadFromFields(fields) {
   if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
   if (fields.email !== undefined) dbFields.email = fields.email;
   if (fields.linkedinUrl !== undefined) dbFields.linkedin_url = fields.linkedinUrl;
+  if (fields.ownedProperties !== undefined) dbFields.owned_properties = fields.ownedProperties;
   if (fields.address !== undefined) dbFields.address = fields.address;
   if (fields.mailingAddress !== undefined) dbFields.mailing_address = fields.mailingAddress;
   if (fields.mailingAddresses !== undefined) dbFields.mailing_addresses = normalizeMailingAddresses(fields.mailingAddresses);
@@ -822,6 +847,7 @@ function dbToContact(row) {
     alternatePhones: Array.isArray(row.alternate_phones) ? row.alternate_phones : [],
     email: row.email ?? '',
     linkedinUrl: row.linkedin_url ?? '',
+    ownedProperties: Array.isArray(row.owned_properties) ? row.owned_properties : [],
     address: row.address ?? '',
     mailingAddress: row.mailing_address ?? '',
     mailingAddresses: normalizeMailingAddresses(row.mailing_addresses),
@@ -1311,6 +1337,24 @@ export function useDatabase() {
     return { error: error.message };
   }, []);
 
+  // Same-owner radar: fold `weakerId` into `masterId` as the same owner —
+  // the weaker row's facility/address becomes an additional property on the
+  // master, everything else merges, and the weaker row is deleted.
+  const mergeAsSameOwner = useCallback(async (masterId, weakerId) => {
+    const master = contacts.find(c => c.id === masterId);
+    const weaker = contacts.find(c => c.id === weakerId);
+    if (!master || !weaker) return { error: 'Contact not found — refresh and try again.' };
+    const { updates, addedProperties } = buildSameOwnerMergePlan(master, weaker);
+    const res = await updateContactWithFallback(masterId, updates);
+    if (res.error && isMissingColumnError(res.error, 'owned_properties')) {
+      return { error: 'Run sql/contact_owned_properties_migration.sql in Supabase, then retry.' };
+    }
+    if (res.error) return { error: res.error.message };
+    const del = await deleteContact(weakerId);
+    if (del.error) return { error: `Merged, but the old row could not be deleted: ${del.error}` };
+    return { ok: true, addedProperties, masterName: master.ownerName || master.facilityName || 'owner' };
+  }, [contacts, updateContactWithFallback, deleteContact]);
+
   const updateContact = useCallback(async (contactId, fields) => {
     const dbFields = updatePayloadFromFields(fields);
     let { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
@@ -1322,6 +1366,9 @@ export function useDatabase() {
     }
     if (error && fields.linkedinUrl !== undefined && isMissingColumnError(error, 'linkedin_url')) {
       return { error: 'Run sql/contact_linkedin_url_migration.sql in Supabase, then refresh to save LinkedIn links.' };
+    }
+    if (error && fields.ownedProperties !== undefined && isMissingColumnError(error, 'owned_properties')) {
+      return { error: 'Run sql/contact_owned_properties_migration.sql in Supabase, then refresh to save properties.' };
     }
     if (error && (
       isMissingColumnError(error, 'owner_entity')
@@ -1454,6 +1501,7 @@ export function useDatabase() {
     );
     if (existingMaster) {
       if (!options.mergeIfExists) return 'exists';
+      const ownedProperties = mergeOwnedProperties(existingMaster.ownedProperties, contact.ownedProperties);
       const updates = {
         ownerEntity: existingMaster.ownerEntity || contact.ownerEntity || '',
         relationshipType: contact.relationshipType ?? existingMaster.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
@@ -1475,7 +1523,9 @@ export function useDatabase() {
         nextActionNote: contact.nextActionNote ?? existingMaster.nextActionNote ?? '',
         leadTemp: contact.leadTemp ?? existingMaster.leadTemp ?? '',
       };
-      await updateContact(existingMaster.id, updates);
+      if (ownedProperties.length > 0) updates.ownedProperties = ownedProperties;
+      const result = await updateContact(existingMaster.id, updates);
+      if (result?.error) return { error: result.error };
       return 'merged';
     }
 
@@ -1491,6 +1541,7 @@ export function useDatabase() {
       alternate_phones: contact.alternatePhones ?? [],
       email: contact.email ?? '',
       address: contact.address ?? '',
+      owned_properties: contact.ownedProperties ?? [],
       mailing_address: contact.mailingAddress ?? '',
       mailing_addresses: normalizeMailingAddresses(contact.mailingAddresses),
       state: contact.state ?? '',
@@ -1533,6 +1584,12 @@ export function useDatabase() {
       row = retry.data;
       error = retry.error;
     }
+    if (error && isMissingColumnError(error, 'owned_properties')) {
+      payload = stripContactOwnedPropertiesColumn(payload);
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
     if (!error && row) {
       const newContact = dbToContact(row);
       setContacts(prev => [...prev, newContact]);
@@ -1548,6 +1605,7 @@ export function useDatabase() {
     importList,
     importIntoList,
     mergeDuplicateContact,
+    mergeAsSameOwner,
     duplicateDismissals,
     dismissedDuplicateKeys,
     dismissalStorage,

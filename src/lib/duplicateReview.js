@@ -66,7 +66,7 @@ function marketKey(contact) {
 // "Similar" names: exact normalized match, or the shorter name's tokens are a
 // subset of the longer's (so "Teekam" matches "Teekam Holdings"). Requires a
 // meaningful token so "a" never matches everything.
-function nameSimilarity(aKey, bKey) {
+export function nameSimilarity(aKey, bKey) {
   if (!aKey || !bKey) return 'none';
   if (aKey === bKey) return 'same';
   const aTokens = aKey.split(' ');

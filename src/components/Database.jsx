@@ -5,6 +5,8 @@ import DuplicateReview from './DuplicateReview';
 import { findDuplicateGroups } from '../lib/duplicateReview';
 import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
 import { normalizeLinkedinUrl } from '../lib/researchLinks';
+import { findSameOwnerMatches } from '../lib/ownerRadar';
+import { keepScore } from '../lib/duplicateReview';
 import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
 import ClientCard from './ClientCard';
@@ -986,7 +988,165 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
   );
 }
 
-function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteAction, onDeleteCallHistory, taskApi, ownershipApi, mailerApi }) {
+// ── Multi-property owners ─────────────────────────────────────────────────────
+// Additional properties an owner holds beyond the card's primary
+// facility/address. Stored as jsonb on the contact (owned_properties).
+function OwnedPropertiesEditor({ contact, onUpdate }) {
+  const [draft, setDraft] = useState({ facilityName: '', address: '' });
+  const entries = contact.ownedProperties ?? [];
+  const inputCls = 'bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500';
+
+  function commit(rows) { onUpdate?.(contact.id, { ownedProperties: rows }); }
+  function addDraft() {
+    if (!draft.facilityName.trim() && !draft.address.trim()) return;
+    commit([...entries, {
+      facilityName: draft.facilityName.trim(),
+      address: draft.address.trim(),
+      state: '',
+      addedAt: new Date().toISOString(),
+    }]);
+    setDraft({ facilityName: '', address: '' });
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">
+        🏢 Additional Properties{entries.length > 0 ? ` (${entries.length})` : ''}
+      </label>
+      {entries.length > 0 && (
+        <div className="space-y-1 mb-2">
+          {entries.map((p, i) => (
+            <div key={`${p.addedAt ?? ''}-${i}`} className="flex items-center gap-2 bg-slate-900/70 border border-slate-700/70 rounded-lg px-3 py-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-slate-200 truncate">{p.facilityName || 'Unnamed facility'}</p>
+                {p.address && (
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}`}
+                    target="_blank" rel="noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="text-xs text-slate-500 hover:text-amber-400 truncate block"
+                  >
+                    {p.address}
+                  </a>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => commit(entries.filter((_, j) => j !== i))}
+                className="text-slate-600 hover:text-red-400 text-xs flex-shrink-0"
+                title="Remove property"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          value={draft.facilityName}
+          onChange={e => setDraft(d => ({ ...d, facilityName: e.target.value }))}
+          placeholder="Facility name"
+          className={`${inputCls} flex-1 min-w-0`}
+        />
+        <input
+          value={draft.address}
+          onChange={e => setDraft(d => ({ ...d, address: e.target.value }))}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDraft(); } }}
+          placeholder="Address"
+          className={`${inputCls} flex-1 min-w-0`}
+        />
+        <button
+          type="button"
+          onClick={addDraft}
+          disabled={!draft.facilityName.trim() && !draft.address.trim()}
+          className="text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 transition-all disabled:opacity-40 flex-shrink-0"
+        >
+          + Add Property
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Same-owner radar banner: this contact matches someone else in the database
+// by phone/email/owner name but sits on a DIFFERENT property — likely one
+// owner with multiple facilities. One click folds the weaker row into the
+// stronger card as an additional property.
+function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerged }) {
+  const [confirmId, setConfirmId] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const matches = useMemo(
+    () => (onMerge ? findSameOwnerMatches(contact, allContacts).slice(0, 3) : []),
+    [contact, allContacts, onMerge]
+  );
+  if (matches.length === 0) return null;
+
+  const listName = (c) => lists.find(l => l.id === c.listId)?.name ?? '';
+
+  async function fold(match) {
+    // Keep whichever record has more work on it; the other becomes a property.
+    const currentIsMaster = keepScore(contact) >= keepScore(match.contact);
+    const masterId = currentIsMaster ? contact.id : match.contact.id;
+    const weakerId = currentIsMaster ? match.contact.id : contact.id;
+    setBusy(true); setError(null);
+    const res = await onMerge(masterId, weakerId);
+    setBusy(false);
+    setConfirmId(null);
+    if (res?.error) { setError(res.error); return; }
+    onMerged?.(masterId);
+  }
+
+  return (
+    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-2">
+      <p className="text-xs font-black text-amber-400 uppercase tracking-wide">🏢 Same owner already in your database?</p>
+      {matches.map(m => {
+        const c = m.contact;
+        const name = c.ownerName || c.facilityName || 'Unknown';
+        const currentIsMaster = keepScore(contact) >= keepScore(c);
+        return (
+          <div key={c.id} className="flex flex-wrap items-center gap-2">
+            <div className="flex-1 min-w-[180px]">
+              <p className="text-sm text-white font-semibold truncate">
+                {name}
+                <span className="text-slate-400 font-normal"> — {c.facilityName || c.address || 'no property'}</span>
+              </p>
+              <p className="text-xs text-slate-500">
+                {m.reasons.join(' · ')}{listName(c) ? ` · in ${listName(c)}` : ''}
+              </p>
+            </div>
+            {confirmId === c.id ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-400">
+                  {currentIsMaster ? 'Pull their property into this card?' : `Fold this row into ${name}'s card?`}
+                </span>
+                <button
+                  onClick={() => fold(m)}
+                  disabled={busy}
+                  className="text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg px-2.5 py-1.5 disabled:opacity-50"
+                >
+                  {busy ? 'Merging…' : 'Yes, merge'}
+                </button>
+                <button onClick={() => setConfirmId(null)} className="text-xs text-slate-500 hover:text-white px-1.5 py-1.5">Cancel</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmId(c.id)}
+                className="text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-lg px-2.5 py-1.5 transition-all"
+              >
+                {currentIsMaster ? '+ Pull property in' : '+ Add to their card'}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteAction, onDeleteCallHistory, onMergeSameOwner, taskApi, ownershipApi, mailerApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1065,6 +1225,15 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
           {/* ── Owner Research Hub (Sprint 12) ── */}
           <OwnerResearchPanel contact={contact} onAddNote={addResearchNote} />
 
+          {/* ── Same-owner radar: link multi-property owners ── */}
+          <SameOwnerRadar
+            contact={contact}
+            allContacts={allContacts}
+            lists={lists}
+            onMerge={onMergeSameOwner}
+            onMerged={(masterId) => { if (masterId !== contact.id) onClose(); }}
+          />
+
           {/* ── Editable contact fields ── */}
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -1127,6 +1296,7 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
               inputClassName="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
               compact
             />
+            <OwnedPropertiesEditor contact={contact} onUpdate={onUpdate} />
           </div>
 
           <OwnershipLinksPanel contact={contact} ownershipApi={ownershipApi} onUpdate={onUpdate} />
@@ -1292,6 +1462,10 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
   async function handleAddToMasterDB(e) {
     e.stopPropagation();
     const result = await onAddToMasterDB(contact);
+    if (result?.error) {
+      alert('Could not move to Master Database: ' + result.error);
+      return;
+    }
     if (result === 'exists') {
       setAdded(true);
       setTimeout(() => setAdded(false), 2500);
@@ -1319,6 +1493,14 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           {contact._distanceMiles != null && (
             <span className="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2 py-0.5 rounded-md whitespace-nowrap">
               📍 {Math.round(contact._distanceMiles)} mi
+            </span>
+          )}
+          {(contact.ownedProperties?.length ?? 0) > 0 && (
+            <span
+              className="text-xs font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-md whitespace-nowrap"
+              title={contact.ownedProperties.map(p => p.facilityName || p.address).filter(Boolean).join('\n')}
+            >
+              🏢 {contact.ownedProperties.length + 1} properties
             </span>
           )}
           {(() => {
@@ -1990,7 +2172,7 @@ function CallModeQueuePicker({ queues, onSelect, onExit, resumeInfo, onResume, o
 export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, mailerApi, entryRequest, onEntryConsumed }) {
   const {
     lists, contacts, masterListId,
-    importList, importIntoList, mergeDuplicateContact, moveContactToList, createList, addContact,
+    importList, importIntoList, mergeDuplicateContact, mergeAsSameOwner, moveContactToList, createList, addContact,
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB, logContactAction, deleteContactAction, deleteContactCallHistory,
@@ -2683,6 +2865,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               queueLabel={activeQueueDef?.label ?? 'Call Mode'}
               queueReasonText={activeQueueDef?.reason ?? ''}
               locationLabel={callQueueSource === 'activeList' ? locationAnchor?.label : null}
+              allContacts={contacts}
+              lists={lists}
+              onMergeSameOwner={mergeAsSameOwner}
               onExit={() => {
                 const current = (activeQueueDef?.queue ?? [])[callQueueIndex];
                 if (current) setReturnFocusContactId(current.id);
@@ -2895,6 +3080,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         <ContactDetailModal
           contact={contacts.find(c => c.id === openContact.id) ?? openContact}
           lists={lists}
+          allContacts={contacts}
+          onMergeSameOwner={mergeAsSameOwner}
           onClose={() => setOpenContact(null)}
           onStatusChange={handleStatusChangeFromModal}
           onNotesChange={updateContactNotes}
@@ -3107,6 +3294,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
         inputClassName="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
         compact
       />
+      <OwnedPropertiesEditor contact={contact} onUpdate={(id, fields) => onUpdateContact?.(id, fields)} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Relationship Type</label>
@@ -3139,7 +3327,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], lists = [], onMergeSameOwner }) {
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
@@ -3170,7 +3358,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   async function moveCurrentToMaster() {
     if (!current || !onMoveToMaster || !masterListId) return;
     if (current.listId === masterListId) return;
-    await onMoveToMaster(current);
+    const result = await onMoveToMaster(current);
+    if (result?.error) alert('Could not move to Master Database: ' + result.error);
   }
 
   async function deleteCurrentContact() {
@@ -3364,6 +3553,25 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               onSave={(phone) => onUpdateContact?.(current.id, { phone })}
             />
           </div>
+
+          {/* Same-owner radar — always visible so multi-property owners jump
+              out mid-call without opening Edit Details. */}
+          <SameOwnerRadar
+            contact={current}
+            allContacts={allContacts}
+            lists={lists}
+            onMerge={onMergeSameOwner}
+          />
+          {(current.ownedProperties?.length ?? 0) > 0 && !showDetails && (
+            <div className="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-2.5">
+              <p className="text-xs text-slate-500 uppercase font-semibold mb-1">🏢 Also owns</p>
+              {current.ownedProperties.map((p, i) => (
+                <p key={i} className="text-sm text-slate-300 truncate">
+                  {p.facilityName || 'Unnamed facility'}{p.address ? ` — ${p.address}` : ''}
+                </p>
+              ))}
+            </div>
+          )}
 
           {showDetails && (
             <CallModeDetailsPanel
