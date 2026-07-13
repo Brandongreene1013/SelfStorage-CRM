@@ -639,6 +639,7 @@ function updatePayloadFromFields(fields) {
   if (fields.phone !== undefined) dbFields.phone = fields.phone;
   if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
   if (fields.email !== undefined) dbFields.email = fields.email;
+  if (fields.linkedinUrl !== undefined) dbFields.linkedin_url = fields.linkedinUrl;
   if (fields.address !== undefined) dbFields.address = fields.address;
   if (fields.mailingAddress !== undefined) dbFields.mailing_address = fields.mailingAddress;
   if (fields.mailingAddresses !== undefined) dbFields.mailing_addresses = normalizeMailingAddresses(fields.mailingAddresses);
@@ -820,6 +821,7 @@ function dbToContact(row) {
     phone: row.phone ?? '',
     alternatePhones: Array.isArray(row.alternate_phones) ? row.alternate_phones : [],
     email: row.email ?? '',
+    linkedinUrl: row.linkedin_url ?? '',
     address: row.address ?? '',
     mailingAddress: row.mailing_address ?? '',
     mailingAddresses: normalizeMailingAddresses(row.mailing_addresses),
@@ -1317,6 +1319,9 @@ export function useDatabase() {
     }
     if (error && (fields.mailingAddress !== undefined || fields.mailingAddresses !== undefined) && /mailing_address/i.test(error.message ?? '')) {
       return { error: 'Run sql/mailing_address_migration.sql in Supabase, then refresh to save mailing addresses.' };
+    }
+    if (error && fields.linkedinUrl !== undefined && isMissingColumnError(error, 'linkedin_url')) {
+      return { error: 'Run sql/contact_linkedin_url_migration.sql in Supabase, then refresh to save LinkedIn links.' };
     }
     if (error && (
       isMissingColumnError(error, 'owner_entity')

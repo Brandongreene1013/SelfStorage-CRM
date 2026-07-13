@@ -4,6 +4,7 @@ import ImportListModal from './ImportListModal';
 import DuplicateReview from './DuplicateReview';
 import { findDuplicateGroups } from '../lib/duplicateReview';
 import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
+import { normalizeLinkedinUrl } from '../lib/researchLinks';
 import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
 import ClientCard from './ClientCard';
@@ -1101,6 +1102,9 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
               <EditableField label="Email" value={contact.email} placeholder="Click to add email" onChange={field('email')}
                 href={contact.email ? `mailto:${contact.email}` : null} />
             </div>
+            <EditableField label="LinkedIn" value={contact.linkedinUrl} placeholder="Paste LinkedIn profile URL"
+              onChange={(val) => field('linkedinUrl')(normalizeLinkedinUrl(val))}
+              href={contact.linkedinUrl ? normalizeLinkedinUrl(contact.linkedinUrl) : null} />
             <EditableField label="Facility Address" value={contact.address} placeholder="Click to add address" onChange={field('address')}
               href={contact.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}` : null} />
             <div className="flex items-end gap-2">
@@ -3071,6 +3075,9 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
         <EditableField label="Owner Entity" value={contact.ownerEntity} placeholder="ABC Storage LLC / owns personally" onChange={field('ownerEntity')} />
         <EditableField label="Facility Name" value={contact.facilityName} placeholder="Click to add facility name" onChange={field('facilityName')} />
         <EditableEmailTile email={contact.email} onChange={field('email')} />
+        <EditableField label="LinkedIn" value={contact.linkedinUrl} placeholder="Paste LinkedIn profile URL"
+          onChange={(val) => field('linkedinUrl')(normalizeLinkedinUrl(val))}
+          href={contact.linkedinUrl ? normalizeLinkedinUrl(contact.linkedinUrl) : null} />
         <EditableField label="Market" value={contact.market} placeholder="Click to add market" onChange={field('market')} />
         <EditableField label="State" value={contact.state} placeholder="Click to add state" onChange={field('state')} />
       </div>

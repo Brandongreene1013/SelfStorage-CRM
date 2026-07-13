@@ -27,6 +27,14 @@ function g(query) {
   return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 
+// Accepts whatever gets pasted — "linkedin.com/in/xyz", "www.linkedin.com/…",
+// full https URLs — and returns a clean https:// URL, or '' if empty.
+export function normalizeLinkedinUrl(value) {
+  const raw = (value ?? '').trim();
+  if (!raw) return '';
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
 // "Carrollton, TX" out of market/address/state fields, best-effort.
 function cityState(contact) {
   const state = (contact.state ?? '').trim();
@@ -105,7 +113,15 @@ export function buildResearchLinks(contact) {
   if (wp) links.push({ key: 'whitepages', label: 'Whitepages', href: wp, title: 'Whitepages people search' });
   else if (phone) links.push({ key: 'whitepages', label: 'Whitepages', href: g(`site:whitepages.com ${phone}`), title: 'Whitepages by phone' });
 
-  if (owner && !entity) {
+  const savedLinkedin = normalizeLinkedinUrl(contact.linkedinUrl);
+  if (savedLinkedin) {
+    links.push({
+      key: 'linkedin', label: 'LinkedIn ★',
+      href: savedLinkedin,
+      title: 'Open the saved LinkedIn profile',
+      emphasized: true,
+    });
+  } else if (owner && !entity) {
     links.push({
       key: 'linkedin', label: 'LinkedIn',
       href: `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(`${owner} self storage`)}`,
