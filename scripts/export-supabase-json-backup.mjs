@@ -75,11 +75,24 @@ writeFileSync(manifestPath, [
   '',
 ].join('\n'));
 
-if (payload.errors.length > 0) {
-  console.warn('Backup completed with table export errors:');
-  payload.errors.forEach(error => console.warn(`${error.table}: ${error.error}`));
-}
-
 console.log(`BACKUP_JSON=${backupPath}`);
 console.log(`BACKUP_MANIFEST=${manifestPath}`);
+console.log(`TABLE_COUNTS=${JSON.stringify(payload.tableCounts)}`);
+
+// A backup that silently exported nothing is worse than a failed backup —
+// fail the process (and the GitHub workflow) so it alarms instead.
+if (payload.errors.length > 0) {
+  console.error('Backup FAILED — table export errors:');
+  payload.errors.forEach(error => console.error(`${error.table}: ${error.error}`));
+  process.exit(1);
+}
+
+// Core tables can never legitimately be empty once the CRM is in daily use.
+const CORE_TABLES = ['contacts', 'lists', 'clients'];
+const emptyCore = CORE_TABLES.filter(table => (payload.tableCounts[table] ?? 0) === 0);
+if (emptyCore.length > 0) {
+  console.error(`Backup FAILED sanity check — core tables exported 0 rows: ${emptyCore.join(', ')}`);
+  console.error('This usually means an RLS or key problem, not an actually-empty database.');
+  process.exit(1);
+}
 

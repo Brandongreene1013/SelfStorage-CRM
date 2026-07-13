@@ -5,6 +5,10 @@ on:
     - cron: '17 8 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  issues: write
+
 jobs:
   backup:
     name: Encrypted CRM JSON export
@@ -56,6 +60,45 @@ jobs:
         with:
           name: ${{ env.BACKUP_FILE }}
           path: ${{ env.BACKUP_FILE }}
-          retention-days: 14
+          retention-days: 90
           if-no-files-found: error
+
+      # Artifacts expire after 90 days; Mondays (and manual runs) also commit
+      # the encrypted backup to the crm-backups branch, which never expires.
+      - name: Keep a permanent copy on the crm-backups branch
+        run: |
+          set -euo pipefail
+
+          if [ "$(date -u +%u)" != "1" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "Not Monday and not a manual run — skipping permanent copy."
+            exit 0
+          fi
+
+          git config user.name "crm-backup-bot"
+          git config user.email "actions@users.noreply.github.com"
+
+          if git fetch -q origin crm-backups; then
+            git branch -f crm-backups FETCH_HEAD
+          else
+            git branch crm-backups "$(git commit-tree "$(git hash-object -t tree /dev/null)" -m 'Initialize CRM backup archive branch')"
+          fi
+
+          git worktree add ../backup-branch crm-backups
+          cp "$BACKUP_FILE" ../backup-branch/
+          cd ../backup-branch
+          # Stop Vercel from building preview deployments of this data-only branch.
+          printf '{\n  "git": { "deploymentEnabled": false }\n}\n' > vercel.json
+          git add -A
+          git commit -m "Encrypted CRM backup ${BACKUP_FILE}"
+          git push origin crm-backups
+
+      - name: Open an alarm issue if the backup failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "🚨 CRM backup FAILED on $(date -u +%Y-%m-%d)" \
+            --body "The scheduled Supabase backup workflow failed. The CRM database is NOT being backed up until this is fixed. Run link: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 

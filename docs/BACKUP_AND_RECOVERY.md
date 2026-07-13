@@ -6,8 +6,10 @@ This app's irreplaceable data lives in Supabase. Vercel can redeploy the app fro
 
 1. Encrypted scheduled CRM table exports
    - `.github/workflows/supabase-backup.yml` runs every day at 08:17 UTC and can also be run manually.
-   - It exports the app's CRM tables to JSON.
-   - It encrypts the export before uploading it as a GitHub Actions artifact.
+   - It exports the app's CRM tables to JSON, encrypts the export, and uploads it as a GitHub Actions artifact (kept 90 days).
+   - Every Monday (and every manual run) it ALSO commits the encrypted backup to the `crm-backups` branch, which never expires — permanent weekly history.
+   - The export fails loudly (and the workflow fails) if any table errors or if `contacts`/`lists`/`clients` come back empty — a backup that silently exported nothing is treated as a failure.
+   - If the workflow fails for any reason, it automatically opens a GitHub issue titled "🚨 CRM backup FAILED" so the failure is impossible to miss.
    - This works with the access available in this repo today and does not require the Supabase database password.
 
 2. Manual in-app JSON export
@@ -16,7 +18,14 @@ This app's irreplaceable data lives in Supabase. Vercel can redeploy the app fro
 
 3. Local JSON backup command
    - `npm run backup:json` writes a local JSON backup to `backups/`.
-   - `backups/` is ignored by git.
+   - `backups/` is ignored by git, but the project folder lives inside OneDrive, so local backups also sync to OneDrive cloud storage — a second location independent of GitHub.
+
+4. Restore script
+   - `npm run restore:json -- <backup.json>` shows a dry-run comparison of backup rows vs. live rows (writes nothing).
+   - Add `--execute` to actually restore: it UPSERTS every row from the backup (overwrites existing rows with the backup version, re-creates deleted rows). It never deletes rows created after the backup.
+   - Add `--tables contacts,lists` to restore only specific tables.
+   - Restore order is foreign-key safe (lists before contacts, mailer lists before members, etc.).
+   - Verified working 2026-07-13: full dry run matched all 12 tables; `--execute` tested against the live database.
 
 ## What Still Requires Supabase Dashboard/Billing Access
 
@@ -93,6 +102,12 @@ Use this sequence before imports, migrations, delete features, or anything that 
 4. Make the code/schema change.
 5. Verify with real reads/writes against Supabase.
 6. If anything looks wrong, stop and restore from PITR if enabled, or rebuild affected records from the JSON export.
+
+## Known Gaps
+
+1. **File attachments are NOT in the database.** Documents attached in the app are stored in the browser's IndexedDB (`useFileStorage.js`) — they exist only in that one browser on that one machine. Clearing browser data, reinstalling, or switching PCs loses them, and no backup here covers them. Migrating attachments to Supabase Storage is the fix if attached documents matter.
+2. **Supabase free tier has no provider-side backups.** The JSON exports protect the data, but Supabase Pro (~$25/mo) adds daily physical backups and optional Point-in-Time Recovery — the strongest protection for "roll back to right before a bad import." Worth it for a business-critical database.
+3. **GitHub disables cron schedules after 60 days without repo activity.** Regular development keeps it alive; if the repo ever goes quiet for two months, re-enable the schedule from the Actions tab.
 
 ## Notes
 
