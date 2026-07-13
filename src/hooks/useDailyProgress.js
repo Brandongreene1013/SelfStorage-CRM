@@ -139,6 +139,17 @@ export function useDailyProgress() {
     setToday(prev => ({ ...prev, [field]: Math.max(0, (prev[field] ?? 0) - 1) }));
   }, []);
 
+  const addValues = useCallback((values) => {
+    setToday(prev => {
+      const next = { ...prev };
+      Object.entries(values ?? {}).forEach(([field, value]) => {
+        const n = Math.max(0, Math.floor(Number(value) || 0));
+        if (n > 0) next[field] = (next[field] ?? 0) + n;
+      });
+      return next;
+    });
+  }, []);
+
   // Set a counter directly to a typed value
   const setValue = useCallback((field, value) => {
     const n = Math.max(0, Math.floor(Number(value) || 0));
@@ -204,6 +215,7 @@ export function useDailyProgress() {
     log,
     increment,
     decrement,
+    addValues,
     setValue,
     getWeek:        sumCurrentWeek,
     getMonth:       () => sumRange(30),

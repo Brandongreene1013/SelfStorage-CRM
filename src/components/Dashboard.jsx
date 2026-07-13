@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+﻿import { useEffect, useState, useMemo } from 'react';
 import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
 import RecentActivity from './RecentActivity';
@@ -11,8 +11,8 @@ import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './t
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
-// ─── Attack List / Needs Follow-Up / Pipeline Attention builders ─────────────
-// These read the universal tasks table plus Database contacts and Clients —
+// â”€â”€â”€ Attack List / Needs Follow-Up / Pipeline Attention builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// These read the universal tasks table plus Database contacts and Clients â€”
 // no new data source, no new schema. Kept as plain functions (not hooks) so
 // they're easy to reason about and cheap to recompute via useMemo below.
 
@@ -71,7 +71,7 @@ function buildNeedsFollowUp(taskApi, contacts, clients, masterListId) {
   const rows = [];
   contacts.forEach(c => {
     // Master Database is the parked/warehoused bucket, not an active working
-    // list — a lukewarm lead sitting there with an old conversation logged
+    // list â€” a lukewarm lead sitting there with an old conversation logged
     // isn't something Brandon needs nagged about on the Dashboard.
     if (masterListId && c.listId === masterListId) return;
     if (c.status !== 'conversation' && c.status !== 'appointment') return;
@@ -79,7 +79,7 @@ function buildNeedsFollowUp(taskApi, contacts, clients, masterListId) {
     rows.push({
       key: `nf-contact-${c.id}`, kind: 'contact',
       name: c.ownerName || 'Unknown Owner', facilityName: c.facilityName || '',
-      reason: c.status === 'appointment' ? 'Appt set — no follow-up task' : 'Conversation logged — no follow-up task',
+      reason: c.status === 'appointment' ? 'Appt set â€” no follow-up task' : 'Conversation logged â€” no follow-up task',
       contact: c,
     });
   });
@@ -90,7 +90,7 @@ function buildNeedsFollowUp(taskApi, contacts, clients, masterListId) {
     rows.push({
       key: `nf-client-${cl.id}`, kind: 'client',
       name: cl.name, facilityName: cl.facilityName || '',
-      reason: 'Active pipeline stage — no next action',
+      reason: 'Active pipeline stage â€” no next action',
       client: cl,
     });
   });
@@ -117,72 +117,65 @@ function buildPipelineAttention(taskApi, clients, meetings) {
   return rows.slice(0, 8);
 }
 
-// ─── Today Command Header ────────────────────────────────────────────────────
+// â”€â”€â”€ Today Command Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, todayCallbacks, overdueCallbacks, onStartCallMode }) {
   const dateLabel = new Date().toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
   const stats = [
-    { label: 'Calls Today', value: today.calls, accent: 'text-blue-400' },
-    { label: 'VMs Today', value: today.voicemails, accent: 'text-sky-400' },
-    { label: 'Conversations', value: today.conversations, accent: 'text-green-400' },
-    { label: 'DB Adds', value: today.additionsToDatabase, accent: 'text-emerald-400' },
-    { label: 'BOV Proposals', value: today.bovProposals, accent: 'text-purple-400' },
-    { label: 'BOVs Due', value: bovsDueCount, accent: bovsDueCount > 0 ? 'text-purple-400' : 'text-slate-600' },
-    { label: 'Due Today', value: dueTodayCount, accent: dueTodayCount > 0 ? 'text-amber-400' : 'text-slate-600' },
-    { label: 'Overdue', value: overdueCount, accent: overdueCount > 0 ? 'text-red-400' : 'text-slate-600' },
+    { label: 'Due Today', value: dueTodayCount, accent: dueTodayCount > 0 ? 'text-amber-300' : 'text-slate-500' },
+    { label: 'Overdue', value: overdueCount, accent: overdueCount > 0 ? 'text-red-300' : 'text-slate-500' },
+    { label: 'Callbacks', value: todayCallbacks, accent: todayCallbacks > 0 ? 'text-cyan-300' : 'text-slate-500' },
+    { label: 'Overdue CB', value: overdueCallbacks, accent: overdueCallbacks > 0 ? 'text-red-300' : 'text-slate-500' },
+    { label: 'Calls', value: today.calls, accent: today.calls > 0 ? 'text-blue-300' : 'text-slate-500' },
+    { label: 'Convos', value: today.conversations, accent: today.conversations > 0 ? 'text-emerald-300' : 'text-slate-500' },
+    { label: 'BOVs Due', value: bovsDueCount, accent: bovsDueCount > 0 ? 'text-purple-300' : 'text-slate-500' },
+    { label: 'DB Adds', value: today.additionsToDatabase, accent: today.additionsToDatabase > 0 ? 'text-emerald-300' : 'text-slate-500' },
   ];
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700 rounded-2xl p-5">
-      <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
-        <div>
-          <h2 className="text-xl font-black text-white">Today · {dateLabel}</h2>
-          <p className="text-xs text-slate-500 mt-0.5">What Brandon should attack today</p>
+    <div className="bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dashboard</p>
+          <h2 className="text-lg font-black text-white leading-tight">Today · {dateLabel}</h2>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => onStartCallMode('today')}
+            disabled={todayCallbacks === 0}
+            className={`h-9 rounded-lg border px-3 text-xs font-bold transition-all ${
+              todayCallbacks > 0 ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/15' : 'bg-slate-900 border-slate-800 text-slate-600'
+            }`}
+          >
+            {todayCallbacks} callbacks
+          </button>
+          <button
+            onClick={() => onStartCallMode('overdue')}
+            disabled={overdueCallbacks === 0}
+            className={`h-9 rounded-lg border px-3 text-xs font-bold transition-all ${
+              overdueCallbacks > 0 ? 'bg-red-500/10 border-red-500/30 text-red-300 hover:bg-red-500/15' : 'bg-slate-900 border-slate-800 text-slate-600'
+            }`}
+          >
+            {overdueCallbacks} overdue
+          </button>
           <button
             onClick={onStartCallMode}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-black px-5 py-3 rounded-xl text-sm transition-all shadow flex items-center gap-2"
+            className="h-9 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-4 rounded-lg text-xs transition-all"
           >
             Start Call Session
           </button>
-          {/* Callbacks owed — same task-based logic as Call Mode's Today's/
-              Overdue Callbacks queues, so these numbers always match what
-              the queue picker will show. */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onStartCallMode('today')}
-              disabled={todayCallbacks === 0}
-              title="Open today's callback queue"
-              className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition-all ${
-              todayCallbacks > 0 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-slate-800/60 border-slate-700 text-slate-600'
-            }`}>
-              {todayCallbacks} callback{todayCallbacks === 1 ? '' : 's'} due today
-            </button>
-            <button
-              onClick={() => onStartCallMode('overdue')}
-              disabled={overdueCallbacks === 0}
-              title="Open overdue callback queue"
-              className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition-all ${
-              overdueCallbacks > 0 ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-slate-800/60 border-slate-700 text-slate-600'
-            }`}>
-              {overdueCallbacks} overdue callback{overdueCallbacks === 1 ? '' : 's'}
-            </button>
-          </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
         {stats.map(s => (
-          <div key={s.label} className="bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5 text-center">
-            <p className={`text-2xl font-black leading-none ${s.accent}`}>{s.value}</p>
-            <p className="text-xs text-slate-500 mt-1 leading-tight">{s.label}</p>
+          <div key={s.label} className="bg-slate-950/70 px-3 py-2">
+            <p className={`text-xl font-black leading-none tabular-nums ${s.accent}`}>{s.value}</p>
+            <p className="text-[11px] font-semibold text-slate-500 mt-1 leading-tight">{s.label}</p>
           </div>
         ))}
       </div>
     </div>
   );
 }
-
-// ─── Today's Attack List ──────────────────────────────────────────────────────
 function AttackList({ rows, onCallContact, onEditClient, onOpenDatabase }) {
   const actionButton = 'h-9 min-w-[68px] inline-flex items-center justify-center rounded-lg border px-3 text-xs font-bold transition-all';
 
@@ -246,7 +239,7 @@ function AttackList({ rows, onCallContact, onEditClient, onOpenDatabase }) {
   );
 }
 
-// ─── Pipeline Attention ───────────────────────────────────────────────────────
+// â”€â”€â”€ Pipeline Attention â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function CallbackCommandCenter({ todayCallbacks, overdueCallbacks, upcomingCallbacks, followUpCount, appointmentFollowUps, onOpenQueue, onOpenDatabaseFilter }) {
   const cards = [
     { key: 'today', label: "Today's Callbacks", value: todayCallbacks, tone: 'text-amber-400', bg: 'hover:border-amber-500/50', onClick: () => onOpenQueue?.('today') },
@@ -332,7 +325,7 @@ function PipelineAttentionActions({ rows, onEditClient, onLogClientAction, onDel
   );
 }
 
-// ─── Needs Follow-Up (V1) ─────────────────────────────────────────────────────
+// â”€â”€â”€ Needs Follow-Up (V1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function NeedsFollowUp({ rows, onCallContact, onEditClient, onMoveToMasterDB }) {
   if (rows.length === 0) return null;
   return (
@@ -351,13 +344,13 @@ function NeedsFollowUp({ rows, onCallContact, onEditClient, onMoveToMasterDB }) 
             {r.kind === 'contact' && onMoveToMasterDB && (
               <button
                 onClick={() => onMoveToMasterDB(r.contact)}
-                title="Not actionable right now — park this lead in the Master Database and stop nudging me about it"
+                title="Not actionable right now â€” park this lead in the Master Database and stop nudging me about it"
                 className="flex-shrink-0 text-xs font-semibold text-slate-500 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/40 rounded-lg px-2 py-1 transition-all"
               >
                 Move to Master DB
               </button>
             )}
-            <span className="text-xs text-slate-600 flex-shrink-0">{r.kind === 'contact' ? '☎' : '💼'}</span>
+            <span className="text-xs text-slate-600 flex-shrink-0">{r.kind === 'contact' ? 'â˜Ž' : 'ðŸ’¼'}</span>
           </div>
         ))}
       </div>
@@ -365,7 +358,122 @@ function NeedsFollowUp({ rows, onCallContact, onEditClient, onMoveToMasterDB }) 
   );
 }
 
-// ─── Pipeline Continuum Snapshot ──────────────────────────────────────────────
+function PriorityWorkQueue({ attackRows, followUpRows, attentionRows, onCallContact, onEditClient, onStartCallMode, onMoveToMasterDB, onLogClientAction, onDeleteClientAction, taskApi }) {
+  const [actionClient, setActionClient] = useState(null);
+  const rows = [
+    ...attackRows.map(r => ({
+      key: r.key,
+      tone: r.overdue ? 'red' : 'amber',
+      label: r.overdue ? 'Overdue' : 'Due Today',
+      title: r.name,
+      subtitle: r.facilityName,
+      detail: r.reason,
+      phone: r.kind === 'contact' ? r.phone : '',
+      onOpen: () => r.kind === 'contact' ? onCallContact(r.contact) : onEditClient(r.client),
+    })),
+    ...followUpRows.map(r => ({
+      key: r.key,
+      tone: r.kind === 'contact' ? 'emerald' : 'slate',
+      label: r.kind === 'contact' ? 'Follow-up' : 'Pipeline',
+      title: r.name,
+      subtitle: r.facilityName,
+      detail: r.reason,
+      onOpen: () => r.kind === 'contact' ? onCallContact(r.contact) : onEditClient(r.client),
+      onPark: r.kind === 'contact' && onMoveToMasterDB ? () => onMoveToMasterDB(r.contact) : null,
+    })),
+    ...attentionRows.map(r => {
+      const stage = PIPELINE_STAGES.find(s => s.id === r.client.stageId);
+      const meetingText = r.meeting ? `Meeting ${r.meeting.date === todayStr() ? 'today' : r.meeting.date}` : '';
+      return {
+        key: r.key,
+        tone: r.reason === 'Overdue task' ? 'red' : r.reason === 'Task due today' ? 'amber' : 'slate',
+        label: stage?.short ?? 'Deal',
+        title: r.client.name,
+        subtitle: r.client.facilityName,
+        detail: [r.reason, meetingText].filter(Boolean).join(' · '),
+        phone: r.client.phone,
+        onOpen: () => onEditClient(r.client),
+        onLog: () => setActionClient(r.client),
+      };
+    }),
+  ].slice(0, 12);
+
+  const toneClass = {
+    red: 'text-red-300 border-red-500/30 bg-red-500/10',
+    amber: 'text-amber-300 border-amber-500/30 bg-amber-500/10',
+    emerald: 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10',
+    slate: 'text-slate-400 border-slate-700 bg-slate-900',
+  };
+
+  return (
+    <SectionCard
+      title="Priority Work Queue"
+      subtitle={`${rows.length} highest-priority records`}
+      className="p-4"
+      actions={
+        <button onClick={onStartCallMode} className="h-8 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-bold text-amber-300 hover:bg-amber-500/15">
+          Call Mode
+        </button>
+      }
+    >
+      {rows.length === 0 ? (
+        <p className="text-xs text-slate-600 italic py-4 text-center">No urgent work queued.</p>
+      ) : (
+        <div className="divide-y divide-slate-800 border border-slate-800 rounded-lg overflow-hidden">
+          {rows.map(r => (
+            <div key={r.key} className="flex items-center gap-3 bg-slate-950/40 hover:bg-slate-900 px-3 py-2.5">
+              <span className={`w-20 flex-shrink-0 rounded-md border px-2 py-1 text-[10px] font-black text-center ${toneClass[r.tone]}`}>
+                {r.label}
+              </span>
+              <button onClick={r.onOpen} className="flex-1 min-w-0 text-left">
+                <div className="flex items-center gap-2 min-w-0">
+                  <p className="text-sm font-bold text-white truncate">{r.title}</p>
+                  {r.subtitle && <p className="text-xs text-slate-500 truncate">{r.subtitle}</p>}
+                </div>
+                <p className="text-xs text-slate-500 truncate mt-0.5">{r.detail}</p>
+              </button>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {r.phone && (
+                  <a href={`tel:${r.phone}`} className="h-8 inline-flex items-center rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/15">
+                    Call
+                  </a>
+                )}
+                {r.onLog && (
+                  <button onClick={r.onLog} className="h-8 rounded-md border border-slate-700 px-2.5 text-xs font-bold text-slate-400 hover:text-slate-200">
+                    Log
+                  </button>
+                )}
+                {r.onPark && (
+                  <button onClick={r.onPark} className="h-8 rounded-md border border-slate-700 px-2.5 text-xs font-bold text-slate-500 hover:text-emerald-300">
+                    Park
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {actionClient && (
+        <ActionCenterModal
+          name={actionClient.name}
+          subtitle={actionClient.facilityName}
+          actionLog={actionClient.actionLog}
+          onLogAction={(entry) => onLogClientAction?.(actionClient.id, entry)}
+          onDeleteAction={onDeleteClientAction ? (index) => {
+            onDeleteClientAction(actionClient.id, index);
+            setActionClient(prev => prev ? { ...prev, actionLog: (prev.actionLog ?? []).filter((_, idx) => idx !== index) } : prev);
+          } : undefined}
+          taskContext={{ relatedType: 'client', relatedId: actionClient.id, relatedName: actionClient.name, source: 'dashboard' }}
+          onSaveTask={taskApi?.createTask}
+          onClose={() => setActionClient(null)}
+        />
+      )}
+    </SectionCard>
+  );
+}
+
+// â”€â”€â”€ Pipeline Continuum Snapshot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
   const max = Math.max(...stageCounts.map(s => s.count), 1);
 
@@ -396,7 +504,7 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
           <div key={s.id} className="flex-1 flex flex-col items-center gap-1.5 group">
             {/* Count */}
             <span className={`text-sm font-black leading-none ${s.count > 0 ? s.text : 'text-slate-700'}`}>
-              {s.count > 0 ? s.count : '·'}
+              {s.count > 0 ? s.count : 'Â·'}
             </span>
             {/* Bar */}
             <div className="w-full rounded-md transition-all duration-500"
@@ -421,7 +529,7 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
           <div key={s.id} className="flex-1 flex items-center">
             <div className="flex-1 h-px bg-slate-800" />
             {i < stageCounts.length - 1 && (
-              <span className="text-slate-700 text-xs mx-0.5">›</span>
+              <span className="text-slate-700 text-xs mx-0.5">â€º</span>
             )}
           </div>
         ))}
@@ -430,7 +538,7 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
   );
 }
 
-// ─── Weekly Production Scorecard ──────────────────────────────────────────────
+// â”€â”€â”€ Weekly Production Scorecard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function WeeklyProductionScorecard({ data }) {
   const monday = new Date();
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
@@ -438,128 +546,193 @@ function WeeklyProductionScorecard({ data }) {
 
   return (
     <SectionCard
-      title="This Week's Production"
+      title="Weekly Production"
       subtitle={weekLabel}
-      bodyClassName="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3"
+      className="p-4"
+      bodyClassName="grid grid-cols-2 md:grid-cols-4 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800"
     >
       {PROGRESS_FIELDS.map(f => (
-        <div key={f.key} className={`${f.bg} border ${f.border} rounded-xl px-4 py-3 min-w-0`}>
-          <p className={`text-3xl font-black leading-none tabular-nums ${f.accent}`}>{data[f.key] ?? 0}</p>
-          <p className="text-xs font-bold text-slate-300 mt-2 leading-tight">{f.label}</p>
+        <div key={f.key} className="bg-slate-950/60 px-3 py-2.5 min-w-0">
+          <p className={`text-2xl font-black leading-none tabular-nums ${f.accent}`}>{data[f.key] ?? 0}</p>
+          <p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">{f.shortLabel || f.label}</p>
         </div>
       ))}
     </SectionCard>
   );
 }
 
-// ─── Daily Production ─────────────────────────────────────────────────────────
-function CommissionCounter({ summary, migrationNeeded }) {
+function CommissionCounter({ summary, migrationNeeded, active, inContract, closed }) {
   const gross = summary.grossPipelineCommission;
   const saleValue = summary.pipelineSaleValue;
   const avgRate = saleValue > 0 ? (gross / saleValue) * 100 : 0;
+  const metrics = [
+    { label: 'Active Deals', value: active, tone: 'text-emerald-300' },
+    { label: 'In Contract', value: inContract, tone: 'text-orange-300' },
+    { label: 'Closed', value: closed, tone: 'text-purple-300' },
+    { label: 'Missing Fees', value: summary.missingCommissionDeals, tone: summary.missingCommissionDeals > 0 ? 'text-amber-300' : 'text-slate-500' },
+  ];
 
   return (
     <SectionCard
-      title="Commission Counter"
-      subtitle="Gross projected fees across active pipeline deals"
-      className="border-emerald-500/20 bg-emerald-950/10"
-      actions={
-        <div className="text-right">
-          <p className="text-xs text-slate-600 uppercase tracking-wide">Priced Deals</p>
-          <p className="text-sm font-black text-emerald-400">{summary.pricedPipelineDeals}</p>
-        </div>
-      }
+      title="Pipeline Value"
+      subtitle="Projected gross commission"
+      className="p-4 border-emerald-500/20 bg-emerald-950/5"
+      actions={<span className="text-[11px] font-bold text-slate-500">{summary.pricedPipelineDeals} priced</span>}
     >
       {migrationNeeded && (
-        <p className="mb-3 text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2">
-          Commission fields are not live in Supabase yet. Run <code>sql/client_deal_value_migration.sql</code>, then refresh.
+        <p className="mb-3 text-xs text-red-300 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">
+          Run <code>sql/client_deal_value_migration.sql</code> in Supabase, then refresh.
         </p>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div className="md:col-span-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4">
-          <p className="text-xs font-bold text-emerald-300 uppercase tracking-wide">Gross Pipeline Commission</p>
-          <p className="text-4xl font-black text-emerald-400 mt-1 leading-none">{formatMoney(gross) || '$0'}</p>
-          <p className="text-xs text-emerald-300/70 mt-2">Fill in deal price + commission % on client cards to move the scoreboard.</p>
+      <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3">
+        <p className="text-[11px] font-bold text-emerald-200/80 uppercase tracking-wide">Gross Pipeline Commission</p>
+        <p className="text-4xl font-black text-emerald-300 mt-1 leading-none">{formatMoney(gross) || '$0'}</p>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <p className="text-slate-500 font-semibold">Pipeline Sale Value</p>
+            <p className="text-white font-black">{formatMoney(saleValue, { compact: true }) || '$0'}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 font-semibold">Blended Fee</p>
+            <p className="text-white font-black">{avgRate > 0 ? `${avgRate.toFixed(2)}%` : '--'}</p>
+          </div>
         </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-3">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Pipeline Sale Value</p>
-          <p className="text-2xl font-black text-white mt-1">{formatMoney(saleValue, { compact: true }) || '$0'}</p>
-          <p className="text-xs text-slate-600 mt-1">{avgRate > 0 ? `${avgRate.toFixed(2)}% blended fee` : 'Add price + %'}</p>
-        </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-3">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Missing Fees</p>
-          <p className={`text-2xl font-black mt-1 ${summary.missingCommissionDeals > 0 ? 'text-amber-400' : 'text-slate-600'}`}>
-            {summary.missingCommissionDeals}
-          </p>
-          <p className="text-xs text-slate-600 mt-1">active deals without commission math</p>
-        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
+        {metrics.map(m => (
+          <div key={m.label} className="bg-slate-950/60 px-3 py-2">
+            <p className={`text-xl font-black leading-none ${m.tone}`}>{m.value}</p>
+            <p className="text-[11px] text-slate-500 font-semibold mt-1">{m.label}</p>
+          </div>
+        ))}
       </div>
     </SectionCard>
   );
 }
 
-function DailyProduction({ today, increment, decrement, setValue, todayLabel, completedTodayCount, callbacksCreatedToday, migrationNeeded }) {
+function QuickCallLogger({ onLog }) {
+  const [draft, setDraft] = useState({
+    calls: '',
+    voicemails: '',
+    conversations: '',
+    ownersIdentified: '',
+    additionsToDatabase: '',
+    bovProposals: '',
+  });
+
+  const fields = [
+    ['calls', 'Calls'],
+    ['voicemails', 'Voicemails'],
+    ['conversations', 'Conversations'],
+    ['ownersIdentified', 'Owners ID'],
+    ['additionsToDatabase', 'DB Adds'],
+    ['bovProposals', 'BOVs'],
+  ];
+  const hasValue = Object.values(draft).some(v => Number(v) > 0);
+  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm font-black text-slate-100 tabular-nums focus:outline-none focus:border-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+
+  function setField(field, value) {
+    setDraft(prev => ({ ...prev, [field]: value }));
+  }
+
+  function logNow() {
+    if (!hasValue) return;
+    onLog(Object.fromEntries(
+      Object.entries(draft).map(([key, value]) => [key, Math.max(0, Math.floor(Number(value) || 0))])
+    ));
+    setDraft({ calls: '', voicemails: '', conversations: '', ownersIdentified: '', additionsToDatabase: '', bovProposals: '' });
+  }
+
+  return (
+    <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <p className="text-xs font-black text-white uppercase tracking-wide">Manual Activity Logger</p>
+          <p className="text-[11px] text-slate-600">Batch-add today's work to the daily and weekly log</p>
+        </div>
+        <button
+          type="button"
+          onClick={logNow}
+          disabled={!hasValue}
+          className="h-8 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-black rounded-lg px-3 text-xs transition-all"
+        >
+          Add Batch
+        </button>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+        {fields.map(([key, label]) => (
+          <label key={key} className="block">
+            <span className="block text-[11px] font-semibold text-slate-500 mb-1">{label}</span>
+            <input
+              type="number"
+              min="0"
+              value={draft[key]}
+              onChange={e => setField(key, e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') logNow(); }}
+              placeholder="0"
+              className={inputClass}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DailyProduction({ today, increment, decrement, addValues, setValue, todayLabel, completedTodayCount, callbacksCreatedToday, migrationNeeded }) {
   return (
     <SectionCard
-      title="End-of-Day Metrics"
-      subtitle={`${todayLabel} · Saved to the all-time log`}
+      title="Daily Activity"
+      subtitle={`${todayLabel} · autosaved`}
+      className="p-4"
       actions={
-        <div className="flex items-center gap-1.5 bg-slate-800 rounded-lg px-2.5 py-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-xs font-semibold text-green-400">Autosaved</span>
+        <div className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          <span className="text-[11px] font-bold text-emerald-300">Saved</span>
         </div>
       }
     >
-
-      <div className="space-y-2">
+      <div className="space-y-3">
         {migrationNeeded && (
-          <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2">
-            Run <code>sql/daily_progress_scorecard_migration.sql</code> in Supabase, then refresh to save voicemails and scorecard-specific fields.
+          <p className="text-xs text-red-300 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">
+            Run <code>sql/daily_progress_scorecard_migration.sql</code> in Supabase, then refresh to save all scorecard fields.
           </p>
         )}
-        {PROGRESS_FIELDS.map(f => (
-          <div key={f.key}
-            className={`${f.bg} border ${f.border} rounded-lg px-4 py-2.5 flex items-center justify-between`}>
-            <span className={`text-xs font-semibold ${f.accent}`}>{f.label}</span>
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min="0"
-                value={today[f.key] ?? 0}
-                onChange={e => setValue(f.key, e.target.value)}
-                onFocus={e => e.target.select()}
-                className={`text-xl font-black ${f.accent} w-14 text-center tabular-nums bg-slate-800/60 border border-slate-700 rounded-md py-0.5 focus:outline-none focus:border-current [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                title={`Enter today's ${f.shortLabel ?? f.label}`}
-              />
-              <div className="flex gap-1">
-                <button onClick={() => increment(f.key)}
-                  className="w-6 h-6 rounded bg-slate-700/80 hover:bg-green-600/30 border border-slate-600 hover:border-green-600/50 text-slate-300 text-xs font-black transition-all flex items-center justify-center">
-                  +
-                </button>
-                <button onClick={() => decrement(f.key)}
-                  className="w-6 h-6 rounded bg-slate-700/80 hover:bg-red-600/20 border border-slate-600 hover:border-red-600/40 text-slate-500 text-xs font-black transition-all flex items-center justify-center">
-                  −
-                </button>
+        <QuickCallLogger onLog={addValues} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {PROGRESS_FIELDS.map(f => (
+            <div key={f.key} className="bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+              <span className={`text-xs font-semibold ${f.accent}`}>{f.shortLabel || f.label}</span>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => decrement(f.key)} className="w-6 h-6 rounded-md bg-slate-900 border border-slate-700 text-slate-500 hover:text-red-300 hover:border-red-700 text-xs font-black">-</button>
+                <input
+                  type="number"
+                  min="0"
+                  value={today[f.key] ?? 0}
+                  onChange={e => setValue(f.key, e.target.value)}
+                  onFocus={e => e.target.select()}
+                  className={`w-14 bg-slate-900 border border-slate-700 rounded-md py-1 text-center text-sm font-black tabular-nums ${f.accent} focus:outline-none focus:border-current [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                  title={`Enter today's ${f.shortLabel ?? f.label}`}
+                />
+                <button onClick={() => increment(f.key)} className="w-6 h-6 rounded-md bg-slate-900 border border-slate-700 text-slate-400 hover:text-emerald-300 hover:border-emerald-700 text-xs font-black">+</button>
               </div>
             </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2">
+            <p className="text-lg font-black text-emerald-300 leading-none">{completedTodayCount}</p>
+            <p className="text-[11px] text-slate-600 mt-1">Tasks completed</p>
           </div>
-        ))}
-        <div className="flex gap-2 pt-1">
-          <div className="flex-1 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-center">
-            <p className="text-lg font-black text-emerald-400 leading-none">{completedTodayCount}</p>
-            <p className="text-xs text-slate-500 mt-1">Tasks Completed</p>
-          </div>
-          <div className="flex-1 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-center">
-            <p className="text-lg font-black text-purple-400 leading-none">{callbacksCreatedToday}</p>
-            <p className="text-xs text-slate-500 mt-1">Callbacks Created</p>
+          <div className="bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2">
+            <p className="text-lg font-black text-purple-300 leading-none">{callbacksCreatedToday}</p>
+            <p className="text-[11px] text-slate-600 mt-1">Callbacks created</p>
           </div>
         </div>
       </div>
     </SectionCard>
   );
 }
-
-// ─── Productivity Analytics ───────────────────────────────────────────────────
 function DailyActivityIntelligenceReview() {
   const [review, setReview] = useState(null);
   const [counts, setCounts] = useState({});
@@ -634,7 +807,7 @@ function DailyActivityIntelligenceReview() {
   return (
     <SectionCard
       title="Activity Intelligence"
-      subtitle={`Today · ${status.replace('_', ' ')}`}
+      subtitle={`Today Â· ${status.replace('_', ' ')}`}
       actions={
         <button
           onClick={generateDraft}
@@ -717,7 +890,7 @@ function DailyActivityIntelligenceReview() {
 function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsData, selectedMonth, setSelectedMonth }) {
   // Recomputed on every render so it's always accurate regardless of year
   const monthOptions = useMemo(() => {
-    const year = new Date().getFullYear(); // always current year — auto-updates on Jan 1
+    const year = new Date().getFullYear(); // always current year â€” auto-updates on Jan 1
     return Array.from({ length: 12 }, (_, i) => {
       const value = `${year}-${String(i + 1).padStart(2, '0')}`;
       const label = new Date(year, i, 1).toLocaleDateString('default', { month: 'long', year: 'numeric' });
@@ -733,10 +906,10 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
   return (
     <SectionCard
       title="Productivity Analytics"
-      subtitle={`Compounded totals · ${subLabel}`}
+      subtitle={`Compounded totals Â· ${subLabel}`}
       actions={
         <>
-          {/* Month picker — only shown when a specific month is selected */}
+          {/* Month picker â€” only shown when a specific month is selected */}
           {analyticsRange === 'SpecificMonth' && (
             <select
               value={selectedMonth}
@@ -764,7 +937,7 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
               className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
                 analyticsRange === 'SpecificMonth' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'
               }`}>
-              ▾
+              â–¾
             </button>
           </div>
         </>
@@ -782,7 +955,7 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
   );
 }
 
-// ─── Upcoming Meetings ────────────────────────────────────────────────────────
+// â”€â”€â”€ Upcoming Meetings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
   const today = todayStr();
   const upcoming = [...meetings]
@@ -835,10 +1008,10 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-white truncate">
                     {m.title}
-                    {m.source === 'outlook' && <span className="ml-1.5 text-[10px] text-blue-400/80 font-bold">· Outlook</span>}
+                    {m.source === 'outlook' && <span className="ml-1.5 text-[10px] text-blue-400/80 font-bold">Â· Outlook</span>}
                   </p>
                   {client && <p className="text-xs text-amber-400/70 truncate mt-0.5">{client.name}</p>}
-                  {m.location && <p className="text-xs text-slate-500 truncate">📍 {m.location}</p>}
+                  {m.location && <p className="text-xs text-slate-500 truncate">ðŸ“ {m.location}</p>}
                 </div>
               </button>
             );
@@ -853,7 +1026,7 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
   );
 }
 
-// ─── Universal Tasks (Sprint 2) ───────────────────────────────────────────────
+// â”€â”€â”€ Universal Tasks (Sprint 2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function DashboardTasks({ taskApi }) {
   const [quickTitle, setQuickTitle] = useState('');
   const [showFullModal, setShowFullModal] = useState(false);
@@ -900,7 +1073,7 @@ function DashboardTasks({ taskApi }) {
     >
       {migrationNeeded && (
         <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2">
-          Task table needs a one-time SQL migration — run <code>sql/tasks_table_migration.sql</code> in Supabase, then refresh.
+          Task table needs a one-time SQL migration â€” run <code>sql/tasks_table_migration.sql</code> in Supabase, then refresh.
         </p>
       )}
 
@@ -927,7 +1100,7 @@ function DashboardTasks({ taskApi }) {
       {loading ? (
         <LoadingSkeleton rows={3} />
       ) : totalOpen === 0 ? (
-        <EmptyState icon="✅" message="Nothing open. You're caught up." />
+        <EmptyState icon="âœ…" message="Nothing open. You're caught up." />
       ) : (
         <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
           {group('Overdue', overdue, 'text-red-400')}
@@ -941,7 +1114,7 @@ function DashboardTasks({ taskApi }) {
         <div>
           <button onClick={() => setShowCompleted(v => !v)}
             className="text-xs text-slate-600 hover:text-slate-400 transition-colors font-semibold">
-            {showCompleted ? '▾' : '▸'} Completed today ({completedToday.length})
+            {showCompleted ? 'â–¾' : 'â–¸'} Completed today ({completedToday.length})
           </button>
           {showCompleted && (
             <div className="space-y-1 mt-1.5 opacity-60">
@@ -986,10 +1159,10 @@ function DashboardTasks({ taskApi }) {
   );
 }
 
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Dashboard({
   clients, contacts = [], meetings = [], onNavigateCalendar,
-  onStartCallMode, onOpenCallQueue, onOpenDatabaseFilter, onOpenContact, onEditClient, onLogClientAction, onDeleteClientAction, onMoveToMasterDB, masterListId, review, taskApi, dealValueMigrationNeeded,
+  onStartCallMode, onOpenContact, onEditClient, onLogClientAction, onDeleteClientAction, onMoveToMasterDB, masterListId, review, taskApi, dealValueMigrationNeeded,
 }) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
@@ -1004,7 +1177,7 @@ export default function Dashboard({
     count: clients.filter(c => c.stageId === s.id).length,
   }));
 
-  const { today, increment, decrement, setValue, getWeek, getMonth, getYear, getSpecificMonth, migrationNeeded } = useDailyProgress();
+  const { today, increment, decrement, addValues, setValue, getWeek, getMonth, getYear, getSpecificMonth, migrationNeeded } = useDailyProgress();
   const [analyticsRange, setAnalyticsRange] = useState('Week');
   const [selectedMonth, setSelectedMonth] = useState(
     () => new Date().toISOString().slice(0, 7)
@@ -1025,7 +1198,7 @@ export default function Dashboard({
     { label: 'Total Clients', value: clients.length },
     { label: 'Buyers',        value: buyers,      accent: 'text-blue-400' },
     { label: 'Sellers',       value: sellers,     accent: 'text-amber-400' },
-    { label: 'Active Deals',  value: active,      accent: 'text-green-400', sub: 'Stages 2–9' },
+    { label: 'Active Deals',  value: active,      accent: 'text-green-400', sub: 'Stages 2â€“9' },
     { label: 'Gross Fees',    value: formatMoney(commissionSummary.grossPipelineCommission, { compact: true }) || '$0', accent: 'text-emerald-400', sub: 'Active pipeline' },
     { label: 'In Contract',   value: inContract,  accent: 'text-orange-400' },
     { label: 'Closed',        value: closed,      accent: 'text-purple-400', sub: 'Close + Post-Close' },
@@ -1041,21 +1214,17 @@ export default function Dashboard({
     const { overdue = [], dueToday = [] } = taskApi?.groups ?? {};
     return [...overdue, ...dueToday].filter(t => t.taskType === 'bov').length;
   }, [taskApi]);
-  // Callback counts (Sprint 7) — identical logic to Call Mode's Today's /
+  // Callback counts (Sprint 7) â€” identical logic to Call Mode's Today's /
   // Overdue Callbacks queues (open call tasks on contacts, deduped), via the
   // shared builder in tasks/taskUtils.js.
   const todayCallbacks = useMemo(() =>
     buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }).length, [contacts, taskApi]);
   const overdueCallbacks = useMemo(() =>
     buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }).length, [contacts, taskApi]);
-  // Sprint 17 — Dashboard "Upcoming" is bounded to the next 30 days so a
+  // Sprint 17 â€” Dashboard "Upcoming" is bounded to the next 30 days so a
   // callback parked months out doesn't inflate today's attention numbers.
   // The Database queue this card routes into uses the same 30-day window.
-  const upcomingCallbacks = useMemo(() =>
-    buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true, windowDays: 30 }).length, [contacts, taskApi]);
   const completedTodayCount = taskApi?.groups?.completedToday?.length ?? 0;
-  const appointmentFollowUps = followUpRows.filter(r => r.kind === 'contact' && r.contact?.status === 'appointment').length
-    + (taskApi?.tasks ?? []).filter(t => t.status === 'open' && (t.taskType === 'bov' || t.taskType === 'meeting')).length;
   const callbacksCreatedToday = useMemo(() => {
     const today = todayStr();
     return (taskApi?.tasks ?? []).filter(t =>
@@ -1064,9 +1233,7 @@ export default function Dashboard({
   }, [taskApi]);
 
   return (
-    <div className="space-y-4">
-
-      {/* ── Today Command Header ── */}
+    <div className="mx-auto max-w-[1600px] space-y-4">
       <CommandHeader
         today={today}
         overdueCount={overdueCount}
@@ -1077,71 +1244,49 @@ export default function Dashboard({
         onStartCallMode={onStartCallMode}
       />
 
-      <WeeklyProductionScorecard data={weeklyProduction} />
-
-      <CommissionCounter summary={commissionSummary} migrationNeeded={dealValueMigrationNeeded} />
-
-      <CallbackCommandCenter
-        todayCallbacks={todayCallbacks}
-        overdueCallbacks={overdueCallbacks}
-        upcomingCallbacks={upcomingCallbacks}
-        followUpCount={followUpRows.length}
-        appointmentFollowUps={appointmentFollowUps}
-        onOpenQueue={onOpenCallQueue}
-        onOpenDatabaseFilter={onOpenDatabaseFilter}
-      />
-
-      {/* ── Attack List + Pipeline Attention ── */}
-      {attackRows.length > 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <AttackList
-              rows={attackRows}
-              onCallContact={onOpenContact}
-              onEditClient={onEditClient}
-              onOpenDatabase={onStartCallMode}
-            />
-          </div>
-          <div className="space-y-4">
-            <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} onDeleteClientAction={onDeleteClientAction} taskApi={taskApi} />
-            <NeedsFollowUp rows={followUpRows} onCallContact={onOpenContact} onEditClient={onEditClient} onMoveToMasterDB={onMoveToMasterDB} />
-          </div>
-        </div>
-      ) : followUpRows.length > 0 ? (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} onDeleteClientAction={onDeleteClientAction} taskApi={taskApi} />
-          <NeedsFollowUp rows={followUpRows} onCallContact={onOpenContact} onEditClient={onEditClient} onMoveToMasterDB={onMoveToMasterDB} />
-        </div>
-      ) : (
-        <PipelineAttentionActions rows={attentionRows} onEditClient={onEditClient} onLogClientAction={onLogClientAction} onDeleteClientAction={onDeleteClientAction} taskApi={taskApi} />
-      )}
-
-      {/* ── Main Body: Daily work + lighter sidebar ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Left: Tasks + Meetings + Review */}
-        <div className="lg:col-span-2 space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)] gap-4 items-start">
+        <div className="space-y-4 min-w-0">
+          <PriorityWorkQueue
+            attackRows={attackRows}
+            followUpRows={followUpRows}
+            attentionRows={attentionRows}
+            onCallContact={onOpenContact}
+            onEditClient={onEditClient}
+            onStartCallMode={onStartCallMode}
+            onMoveToMasterDB={onMoveToMasterDB}
+            onLogClientAction={onLogClientAction}
+            onDeleteClientAction={onDeleteClientAction}
+            taskApi={taskApi}
+          />
           <DailyProduction
             today={today}
             increment={increment}
             decrement={decrement}
+            addValues={addValues}
             setValue={setValue}
             todayLabel={todayLabel}
             completedTodayCount={completedTodayCount}
             callbacksCreatedToday={callbacksCreatedToday}
             migrationNeeded={migrationNeeded}
           />
-          <DailyActivityIntelligenceReview />
-          <DashboardTasks taskApi={taskApi} />
+          <WeeklyProductionScorecard data={weeklyProduction} />
+        </div>
+
+        <div className="space-y-4 min-w-0">
+          <CommissionCounter
+            summary={commissionSummary}
+            migrationNeeded={dealValueMigrationNeeded}
+            active={active}
+            inContract={inContract}
+            closed={closed}
+          />
           <UpcomingMeetingsWidget
             meetings={meetings}
             clients={clients}
             onNavigate={onNavigateCalendar}
           />
-        </div>
-
-        {/* Right: Review + Recent Activity */}
-        <div className="space-y-4">
+          <DashboardTasks taskApi={taskApi} />
+          <DailyActivityIntelligenceReview />
           {review && (
             <NeedsReview
               items={review.items}
@@ -1151,9 +1296,7 @@ export default function Dashboard({
               onDismiss={review.onDismiss}
             />
           )}
-          <RecentActivity clients={clients} contacts={contacts} />
         </div>
-
       </div>
 
       <div className="border-t border-slate-800 pt-4">
@@ -1190,19 +1333,19 @@ export default function Dashboard({
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
+            <div className="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2">
               <p className="text-xl font-black text-white">{clients.length}</p>
               <p className="text-xs text-slate-500">clients</p>
             </div>
-            <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
+            <div className="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2">
               <p className="text-xl font-black text-green-400">{active}</p>
               <p className="text-xs text-slate-500">active deals</p>
             </div>
-            <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
+            <div className="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2">
               <p className="text-xl font-black text-emerald-400">{completedTodayCount}</p>
               <p className="text-xs text-slate-500">tasks done today</p>
             </div>
-            <div className="bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
+            <div className="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2">
               <p className="text-xl font-black text-purple-400">{callbacksCreatedToday}</p>
               <p className="text-xs text-slate-500">callbacks created</p>
             </div>
@@ -1212,3 +1355,4 @@ export default function Dashboard({
     </div>
   );
 }
+

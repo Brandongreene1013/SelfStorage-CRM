@@ -3328,7 +3328,8 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
 }
 
 function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], lists = [], onMergeSameOwner }) {
-  const current = queue[Math.min(index, Math.max(queue.length - 1, 0))];
+  const queueCurrent = queue[Math.min(index, Math.max(queue.length - 1, 0))];
+  const current = allContacts.find(c => c.id === queueCurrent?.id) ?? queueCurrent;
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
   const [postOutcome, setPostOutcome] = useState(null);

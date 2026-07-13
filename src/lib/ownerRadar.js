@@ -54,6 +54,7 @@ export const SAME_OWNER_REASONS = {
   SIMILAR_ENTITY: 'Similar ownership entity',
   SIMILAR_FACILITY: 'Similar facility name',
   SAME_MARKET: 'Similar location',
+  SAME_PROPERTY: 'Same property',
 };
 
 const FACILITY_NOISE = new Set([
@@ -72,6 +73,19 @@ function hasSharedMeaningfulToken(a, b, noise) {
   const aTokens = meaningfulTokens(a, noise);
   const bSet = new Set(meaningfulTokens(b, noise));
   return aTokens.some(t => bSet.has(t));
+}
+
+function tokenPrefixMatch(aKey, bKey) {
+  const aTokens = aKey.split(' ').filter(t => t.length >= 4);
+  const bTokens = bKey.split(' ').filter(t => t.length >= 4);
+  if (aTokens.length === 0 || bTokens.length === 0) return false;
+  return aTokens.some(a => bTokens.some(b => a.startsWith(b) || b.startsWith(a)));
+}
+
+function ownerSimilarity(aKey, bKey) {
+  const direct = nameSimilarity(aKey, bKey);
+  if (direct !== 'none') return direct;
+  return tokenPrefixMatch(aKey, bKey) ? 'similar' : 'none';
 }
 
 function facilitySimilarity(a, b) {
@@ -124,7 +138,7 @@ export function sameOwnerReasons(a, b) {
   ];
   for (const [left, right] of ownerPairs) {
     if (left.length < 4 || right.length < 4) continue;
-    const sim = nameSimilarity(left, right);
+    const sim = ownerSimilarity(left, right);
     if (sim === 'same') pushUnique(reasons, SAME_OWNER_REASONS.SAME_OWNER_NAME);
     else if (sim === 'similar') pushUnique(reasons, SAME_OWNER_REASONS.SIMILAR_OWNER_NAME);
   }
@@ -132,7 +146,7 @@ export function sameOwnerReasons(a, b) {
   const aEntity = normalizeOwnerName(a.ownerEntity);
   const bEntity = normalizeOwnerName(b.ownerEntity);
   if (aEntity.length >= 4 && bEntity.length >= 4) {
-    const sim = nameSimilarity(aEntity, bEntity);
+    const sim = ownerSimilarity(aEntity, bEntity);
     if (sim === 'same') pushUnique(reasons, SAME_OWNER_REASONS.SAME_ENTITY);
     else if (sim === 'similar') pushUnique(reasons, SAME_OWNER_REASONS.SIMILAR_ENTITY);
   }
@@ -164,7 +178,7 @@ export function findSameOwnerMatches(contact, contacts) {
     if (reasons.length === 0) continue;
     const otherKeys = allPropertyKeys(other);
     const sharesProperty = [...otherKeys].some(k => ownKeys.has(k));
-    if (sharesProperty) continue; // duplicate, not a portfolio signal
+    if (sharesProperty) pushUnique(reasons, SAME_OWNER_REASONS.SAME_PROPERTY);
     if (otherKeys.size === 0 && ownKeys.size === 0) continue; // nothing to link
     matches.push({ contact: other, reasons });
   }
@@ -177,7 +191,8 @@ export function findSameOwnerMatches(contact, contacts) {
     (reasons.includes(SAME_OWNER_REASONS.SIMILAR_OWNER_NAME) ? 2 : 0) +
     (reasons.includes(SAME_OWNER_REASONS.SIMILAR_ENTITY) ? 2 : 0) +
     (reasons.includes(SAME_OWNER_REASONS.SIMILAR_FACILITY) ? 2 : 0) +
-    (reasons.includes(SAME_OWNER_REASONS.SAME_MARKET) ? 1 : 0);
+    (reasons.includes(SAME_OWNER_REASONS.SAME_MARKET) ? 1 : 0) +
+    (reasons.includes(SAME_OWNER_REASONS.SAME_PROPERTY) ? 1 : 0);
   return matches.sort((a, b) => strength(b.reasons) - strength(a.reasons));
 }
 
