@@ -2083,6 +2083,17 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // null = show the queue picker; otherwise one of QUEUE_DEFS' keys below
   const [callQueueSource, setCallQueueSource] = useState(null);
 
+  // Exiting Call Mode drops Brandon back on the card he was working. Without
+  // this the grid re-renders from the top and long lists mean scrolling all
+  // the way back down after every call block.
+  const [returnFocusContactId, setReturnFocusContactId] = useState(null);
+  useEffect(() => {
+    if (subView !== 'contacts' || !returnFocusContactId) return;
+    document.querySelector(`[data-contact-id="${returnFocusContactId}"]`)?.scrollIntoView({ block: 'center' });
+    const timer = setTimeout(() => setReturnFocusContactId(null), 2500);
+    return () => clearTimeout(timer);
+  }, [subView, returnFocusContactId]);
+
   // Filtered contacts
   const filtered = useMemo(() => {
     if (activeListId === null) return [];
@@ -2668,7 +2679,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               queueLabel={activeQueueDef?.label ?? 'Call Mode'}
               queueReasonText={activeQueueDef?.reason ?? ''}
               locationLabel={callQueueSource === 'activeList' ? locationAnchor?.label : null}
-              onExit={() => { setSubView('contacts'); setCallQueueSource(null); }}
+              onExit={() => {
+                const current = (activeQueueDef?.queue ?? [])[callQueueIndex];
+                if (current) setReturnFocusContactId(current.id);
+                setSubView('contacts');
+                setCallQueueSource(null);
+              }}
               onBackToPicker={() => setCallQueueSource(null)}
             />
           )
@@ -2821,8 +2837,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
                 {filtered.map(c => (
-                  <PropertyCard
+                  <div
                     key={c.id}
+                    data-contact-id={c.id}
+                    className={c.id === returnFocusContactId ? 'rounded-xl ring-2 ring-amber-500/70' : undefined}
+                  >
+                  <PropertyCard
                     contact={c}
                     onClick={() => setOpenContact(c)}
                     onAddToMasterDB={addToMasterDB}
@@ -2836,6 +2856,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     taskApi={taskApi}
                     ownershipApi={ownershipApi}
                   />
+                  </div>
                 ))}
                 {/* Clients merged into the Master Database view (unified, no duplicates) */}
                 {clientsInView.map(cl => (
