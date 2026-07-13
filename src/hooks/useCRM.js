@@ -77,8 +77,10 @@ export function useCRM() {
       notes: data.notes,
       stage_id: data.stageId ?? 1,
       storage_class: data.storageClass,
-      documents: data.documents ?? [],
     };
+    // Attachment feature removed 2026-07 — existing documents metadata is left
+    // untouched in the DB rather than wiped on every save.
+    if (data.documents !== undefined) db.documents = data.documents;
     if (data.ownershipGroupId !== undefined) db.ownership_group_id = data.ownershipGroupId || null;
     if (data.nextActionType !== undefined) db.next_action_type = data.nextActionType;
     if (data.nextActionDate !== undefined) db.next_action_date = data.nextActionDate;

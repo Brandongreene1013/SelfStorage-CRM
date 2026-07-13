@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
-import { useFileStorage } from '../hooks/useFileStorage';
 import { formatMoney, formatPercent, projectedCommissionAmount } from '../lib/dealValue';
 import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
@@ -11,9 +10,7 @@ import { RelatedTasks, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE
 
 export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, onDeleteAction, compact = false, taskApi, ownershipApi, mailerApi }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
-  const { openFile } = useFileStorage();
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
-  const docs = client.documents ?? [];
   const [showActionCenter, setShowActionCenter] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
@@ -196,28 +193,6 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       {/* Notes */}
       {showDetails && client.notes && (
         <p className="text-xs text-slate-500 italic line-clamp-2">{client.notes}</p>
-      )}
-
-      {/* Documents */}
-      {showDetails && docs.length > 0 && (
-        <div className="mt-2 pt-2 border-t border-slate-700/60">
-          <p className="text-xs text-slate-600 mb-1 uppercase tracking-wide font-semibold">
-            📎 {docs.length} document{docs.length !== 1 ? 's' : ''}
-          </p>
-          <div className="space-y-0.5">
-            {docs.map(doc => (
-              <button
-                key={doc.id}
-                onClick={() => openFile(doc.id)}
-                className="w-full text-left text-xs text-slate-400 hover:text-amber-400 truncate flex items-center gap-1 transition-colors"
-                title={doc.name}
-              >
-                <span className="flex-shrink-0">↗</span>
-                <span className="truncate">{doc.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
       )}
 
       {/* Next Action display / set button */}

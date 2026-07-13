@@ -1,7 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { useState, useEffect } from 'react';
 import { PIPELINE_STAGES, CLIENT_TYPES, PROPERTY_TYPES } from '../data/constants';
-import { useFileStorage } from '../hooks/useFileStorage';
 import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } from '../lib/dealValue';
 import ModalLayout from './ui/ModalLayout';
 import { AddToMailerButton } from './MailerListPicker';
@@ -25,20 +23,8 @@ const EMPTY = {
   stageId: 1,
 };
 
-function formatSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export default function ClientModal({ client, onSave, onClose, mailerApi }) {
   const [form, setForm] = useState(EMPTY);
-  const [pendingFiles, setPendingFiles] = useState([]);
-  const [existingDocs, setExistingDocs] = useState([]);
-  const [docsToDelete, setDocsToDelete] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef(null);
-  const { saveFile, openFile, deleteFile } = useFileStorage();
   const isEdit = Boolean(client);
 
   useEffect(() => {
@@ -60,7 +46,6 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
         notes: client.notes ?? '',
         stageId: client.stageId ?? 1,
       });
-      setExistingDocs(client.documents ?? []);
     }
   }, [client]);
 
@@ -69,49 +54,19 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
     setForm(prev => ({ ...prev, [name]: value }));
   }
 
-  function handleFileSelect(e) {
-    const files = Array.from(e.target.files);
-    const newPending = files.map(file => ({ localId: uuidv4(), file }));
-    setPendingFiles(prev => [...prev, ...newPending]);
-    e.target.value = '';
-  }
-
-  function removePendingFile(localId) {
-    setPendingFiles(prev => prev.filter(f => f.localId !== localId));
-  }
-
-  function removeExistingDoc(id) {
-    setDocsToDelete(prev => [...prev, id]);
-    setExistingDocs(prev => prev.filter(d => d.id !== id));
-  }
-
-  async function handleSubmit(e) {
+  function handleSubmit(e) {
     e.preventDefault();
     if (!form.name.trim()) return;
-    setUploading(true);
-    try {
-      const newDocs = await Promise.all(pendingFiles.map(async ({ file }) => {
-        const id = uuidv4();
-        await saveFile(id, file);
-        return { id, name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString() };
-      }));
-
-      await Promise.all(docsToDelete.map(id => deleteFile(id)));
-
-      onSave({
-        ...form,
-        stageId: Number(form.stageId),
-        units: form.units === '' ? null : Number(form.units),
-        sqft: form.sqft === '' ? null : Number(form.sqft),
-        desiredSalePrice: numberOrNull(form.desiredSalePrice),
-        projectedCommissionPct: numberOrNull(form.projectedCommissionPct),
-        mailingAddresses: form.mailingAddresses,
-        documents: [...existingDocs, ...newDocs],
-      });
-      onClose();
-    } finally {
-      setUploading(false);
-    }
+    onSave({
+      ...form,
+      stageId: Number(form.stageId),
+      units: form.units === '' ? null : Number(form.units),
+      sqft: form.sqft === '' ? null : Number(form.sqft),
+      desiredSalePrice: numberOrNull(form.desiredSalePrice),
+      projectedCommissionPct: numberOrNull(form.projectedCommissionPct),
+      mailingAddresses: form.mailingAddresses,
+    });
+    onClose();
   }
 
   const inputCls = 'w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 text-sm focus:outline-none focus:border-amber-500 placeholder:text-slate-500';
@@ -374,76 +329,6 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
             />
           </div>
 
-          {/* Documents */}
-          <div>
-            <label className={labelCls}>Documents & BOV Files</label>
-            <div
-              className="border-2 border-dashed border-slate-700 rounded-lg p-4 text-center cursor-pointer hover:border-amber-500 transition-colors"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <div className="text-2xl mb-1">📄</div>
-              <p className="text-xs text-slate-400">Click to upload PDF, DOC, XLS files</p>
-              <p className="text-xs text-slate-600 mt-0.5">BOV reports, appraisals, financials</p>
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,.xls,.xlsx"
-              multiple
-              className="hidden"
-              onChange={handleFileSelect}
-            />
-
-            {/* Existing saved docs */}
-            {existingDocs.length > 0 && (
-              <div className="mt-2 space-y-1">
-                {existingDocs.map(doc => (
-                  <div key={doc.id} className="flex items-center gap-2 bg-slate-800 rounded-lg px-3 py-2">
-                    <span className="text-sm">📎</span>
-                    <button
-                      type="button"
-                      onClick={() => openFile(doc.id)}
-                      className="flex-1 text-xs text-slate-300 hover:text-amber-400 text-left truncate transition-colors"
-                      title="Click to open"
-                    >
-                      {doc.name}
-                    </button>
-                    <span className="text-xs text-slate-600 flex-shrink-0">{formatSize(doc.size)}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeExistingDoc(doc.id)}
-                      className="text-slate-600 hover:text-red-400 transition-colors text-xs flex-shrink-0"
-                      title="Remove"
-                    >
-                      x
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Pending (not yet saved) files */}
-            {pendingFiles.length > 0 && (
-              <div className="mt-2 space-y-1">
-                {pendingFiles.map(({ localId, file }) => (
-                  <div key={localId} className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2">
-                    <span className="text-sm">🆕</span>
-                    <span className="flex-1 text-xs text-slate-400 truncate">{file.name}</span>
-                    <span className="text-xs text-slate-600 flex-shrink-0">{formatSize(file.size)}</span>
-                    <button
-                      type="button"
-                      onClick={() => removePendingFile(localId)}
-                      className="text-slate-600 hover:text-red-400 transition-colors text-xs flex-shrink-0"
-                      title="Remove"
-                    >
-                      x
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <button
@@ -455,10 +340,9 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
             </button>
             <button
               type="submit"
-              disabled={uploading}
-              className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition-all disabled:opacity-60"
+              className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition-all"
             >
-              {uploading ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Client'}
+              {isEdit ? 'Save Changes' : 'Add Client'}
             </button>
           </div>
         </form>
