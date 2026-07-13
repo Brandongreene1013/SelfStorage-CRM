@@ -105,9 +105,10 @@ Use this sequence before imports, migrations, delete features, or anything that 
 
 ## Known Gaps
 
-1. **File attachments are NOT in the database.** Documents attached in the app are stored in the browser's IndexedDB (`useFileStorage.js`) — they exist only in that one browser on that one machine. Clearing browser data, reinstalling, or switching PCs loses them, and no backup here covers them. Migrating attachments to Supabase Storage is the fix if attached documents matter.
-2. **Supabase free tier has no provider-side backups.** The JSON exports protect the data, but Supabase Pro (~$25/mo) adds daily physical backups and optional Point-in-Time Recovery — the strongest protection for "roll back to right before a bad import." Worth it for a business-critical database.
-3. **GitHub disables cron schedules after 60 days without repo activity.** Regular development keeps it alive; if the repo ever goes quiet for two months, re-enable the schedule from the Actions tab.
+1. **Supabase free tier has no provider-side backups.** The JSON exports protect the data, but Supabase Pro (~$25/mo) adds daily physical backups and optional Point-in-Time Recovery — the strongest protection for "roll back to right before a bad import." Worth it for a business-critical database.
+2. **GitHub disables cron schedules after 60 days without repo activity.** Regular development keeps it alive; if the repo ever goes quiet for two months, re-enable the schedule from the Actions tab.
+
+(The browser-only file attachment feature was removed 2026-07-13 — it stored file bytes in IndexedDB with no backup coverage. All CRM data now lives in Supabase, fully covered by the backups above.)
 
 ## Notes
 
