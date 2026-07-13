@@ -117,16 +117,17 @@ function buildPipelineAttention(taskApi, clients, meetings) {
 }
 
 // ─── Today Command Header ────────────────────────────────────────────────────
-function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, meetingsToday, todayCallbacks, overdueCallbacks, onStartCallMode }) {
+function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, todayCallbacks, overdueCallbacks, onStartCallMode }) {
   const dateLabel = new Date().toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
   const stats = [
     { label: 'Calls Today', value: today.calls, accent: 'text-blue-400' },
+    { label: 'VMs Today', value: today.voicemails, accent: 'text-sky-400' },
     { label: 'Conversations', value: today.conversations, accent: 'text-green-400' },
-    { label: 'Appts Set', value: today.firstAppts, accent: 'text-amber-400' },
+    { label: 'DB Adds', value: today.additionsToDatabase, accent: 'text-emerald-400' },
+    { label: 'BOV Proposals', value: today.bovProposals, accent: 'text-purple-400' },
     { label: 'BOVs Due', value: bovsDueCount, accent: bovsDueCount > 0 ? 'text-purple-400' : 'text-slate-600' },
     { label: 'Due Today', value: dueTodayCount, accent: dueTodayCount > 0 ? 'text-amber-400' : 'text-slate-600' },
     { label: 'Overdue', value: overdueCount, accent: overdueCount > 0 ? 'text-red-400' : 'text-slate-600' },
-    { label: 'Meetings Today', value: meetingsToday, accent: meetingsToday > 0 ? 'text-cyan-400' : 'text-slate-600' },
   ];
 
   return (
@@ -168,7 +169,7 @@ function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, meeti
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
         {stats.map(s => (
           <div key={s.label} className="bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2.5 text-center">
             <p className={`text-2xl font-black leading-none ${s.accent}`}>{s.value}</p>
@@ -428,21 +429,48 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
   );
 }
 
-// ─── Daily Production ─────────────────────────────────────────────────────────
-function DailyProduction({ today, increment, decrement, setValue, todayLabel, completedTodayCount, callbacksCreatedToday }) {
+// ─── Weekly Production Scorecard ──────────────────────────────────────────────
+function WeeklyProductionScorecard({ data }) {
+  const monday = new Date();
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const weekLabel = `${monday.toLocaleDateString('default', { month: 'short', day: 'numeric' })} - Today`;
+
   return (
     <SectionCard
-      title="Daily Production"
-      subtitle={`${todayLabel} · Resets at midnight`}
+      title="This Week's Production"
+      subtitle={weekLabel}
+      bodyClassName="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3"
+    >
+      {PROGRESS_FIELDS.map(f => (
+        <div key={f.key} className={`${f.bg} border ${f.border} rounded-xl px-4 py-3 min-w-0`}>
+          <p className={`text-3xl font-black leading-none tabular-nums ${f.accent}`}>{data[f.key] ?? 0}</p>
+          <p className="text-xs font-bold text-slate-300 mt-2 leading-tight">{f.label}</p>
+        </div>
+      ))}
+    </SectionCard>
+  );
+}
+
+// ─── Daily Production ─────────────────────────────────────────────────────────
+function DailyProduction({ today, increment, decrement, setValue, todayLabel, completedTodayCount, callbacksCreatedToday, migrationNeeded }) {
+  return (
+    <SectionCard
+      title="End-of-Day Metrics"
+      subtitle={`${todayLabel} · Saved to the all-time log`}
       actions={
         <div className="flex items-center gap-1.5 bg-slate-800 rounded-lg px-2.5 py-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-xs font-semibold text-green-400">Live</span>
+          <span className="text-xs font-semibold text-green-400">Autosaved</span>
         </div>
       }
     >
 
       <div className="space-y-2">
+        {migrationNeeded && (
+          <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2">
+            Run <code>sql/daily_progress_scorecard_migration.sql</code> in Supabase, then refresh to save voicemails and scorecard-specific fields.
+          </p>
+        )}
         {PROGRESS_FIELDS.map(f => (
           <div key={f.key}
             className={`${f.bg} border ${f.border} rounded-lg px-4 py-2.5 flex items-center justify-between`}>
@@ -455,7 +483,7 @@ function DailyProduction({ today, increment, decrement, setValue, todayLabel, co
                 onChange={e => setValue(f.key, e.target.value)}
                 onFocus={e => e.target.select()}
                 className={`text-xl font-black ${f.accent} w-14 text-center tabular-nums bg-slate-800/60 border border-slate-700 rounded-md py-0.5 focus:outline-none focus:border-current [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                title="Type a number, or use +/−"
+                title={`Enter today's ${f.shortLabel ?? f.label}`}
               />
               <div className="flex gap-1">
                 <button onClick={() => increment(f.key)}
@@ -775,7 +803,7 @@ export default function Dashboard({
     count: clients.filter(c => c.stageId === s.id).length,
   }));
 
-  const { today, increment, decrement, setValue, getWeek, getMonth, getYear, getSpecificMonth } = useDailyProgress();
+  const { today, increment, decrement, setValue, getWeek, getMonth, getYear, getSpecificMonth, migrationNeeded } = useDailyProgress();
   const [analyticsRange, setAnalyticsRange] = useState('Week');
   const [selectedMonth, setSelectedMonth] = useState(
     () => new Date().toISOString().slice(0, 7)
@@ -786,6 +814,7 @@ export default function Dashboard({
     : analyticsRange === 'Month' ? getMonth()
     : analyticsRange === 'Year' ? getYear()
     : getSpecificMonth(selectedMonth);
+  const weeklyProduction = getWeek();
 
   const todayLabel = new Date().toLocaleDateString('default', {
     weekday: 'long', month: 'short', day: 'numeric',
@@ -810,7 +839,6 @@ export default function Dashboard({
     const { overdue = [], dueToday = [] } = taskApi?.groups ?? {};
     return [...overdue, ...dueToday].filter(t => t.taskType === 'bov').length;
   }, [taskApi]);
-  const meetingsToday = meetings.filter(m => m.date === todayStr()).length;
   // Callback counts (Sprint 7) — identical logic to Call Mode's Today's /
   // Overdue Callbacks queues (open call tasks on contacts, deduped), via the
   // shared builder in tasks/taskUtils.js.
@@ -842,11 +870,12 @@ export default function Dashboard({
         overdueCount={overdueCount}
         dueTodayCount={dueTodayCount}
         bovsDueCount={bovsDueCount}
-        meetingsToday={meetingsToday}
         todayCallbacks={todayCallbacks}
         overdueCallbacks={overdueCallbacks}
         onStartCallMode={onStartCallMode}
       />
+
+      <WeeklyProductionScorecard data={weeklyProduction} />
 
       <CallbackCommandCenter
         todayCallbacks={todayCallbacks}
@@ -888,6 +917,16 @@ export default function Dashboard({
 
         {/* Left: Tasks + Meetings + Review */}
         <div className="lg:col-span-2 space-y-4">
+          <DailyProduction
+            today={today}
+            increment={increment}
+            decrement={decrement}
+            setValue={setValue}
+            todayLabel={todayLabel}
+            completedTodayCount={completedTodayCount}
+            callbacksCreatedToday={callbacksCreatedToday}
+            migrationNeeded={migrationNeeded}
+          />
           <DashboardTasks taskApi={taskApi} />
           <UpcomingMeetingsWidget
             meetings={meetings}
@@ -933,16 +972,7 @@ export default function Dashboard({
               totalUnits={totalUnits}
               totalSqft={totalSqft}
             />
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <DailyProduction
-                today={today}
-                increment={increment}
-                decrement={decrement}
-                setValue={setValue}
-                todayLabel={todayLabel}
-                completedTodayCount={completedTodayCount}
-                callbacksCreatedToday={callbacksCreatedToday}
-              />
+            <div className="grid grid-cols-1 gap-4">
               <ProductivityAnalytics
                 analyticsRange={analyticsRange}
                 setAnalyticsRange={setAnalyticsRange}

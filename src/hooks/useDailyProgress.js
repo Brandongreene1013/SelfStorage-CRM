@@ -2,14 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 export const PROGRESS_FIELDS = [
-  { key: 'calls',         label: 'Calls Logged',        accent: 'text-blue-400',   bg: 'bg-blue-500/10',   border: 'border-blue-500/30'   },
-  { key: 'facilities',    label: 'Facilities Reached',   accent: 'text-cyan-400',   bg: 'bg-cyan-500/10',   border: 'border-cyan-500/30'   },
-  { key: 'conversations', label: 'Conversations',         accent: 'text-green-400',  bg: 'bg-green-500/10',  border: 'border-green-500/30'  },
-  { key: 'firstAppts',    label: '1st Appts Set',        accent: 'text-amber-400',  bg: 'bg-amber-500/10',  border: 'border-amber-500/30'  },
-  { key: 'bovs',          label: 'BOVs Set',              accent: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30' },
+  { key: 'calls',               label: 'Total Calls Made',          shortLabel: 'Calls',        accent: 'text-blue-400',    bg: 'bg-blue-500/10',    border: 'border-blue-500/30'    },
+  { key: 'voicemails',          label: 'Total Voicemails Left',     shortLabel: 'Voicemails',   accent: 'text-sky-400',     bg: 'bg-sky-500/10',     border: 'border-sky-500/30'     },
+  { key: 'conversations',       label: 'Total Conversations',       shortLabel: 'Conversations', accent: 'text-green-400',  bg: 'bg-green-500/10',   border: 'border-green-500/30'   },
+  { key: 'additionsToDatabase', label: 'Total Additions to Database', shortLabel: 'DB Adds',    accent: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
+  { key: 'bovProposals',        label: 'Total BOV Proposals',       shortLabel: 'BOV Proposals', accent: 'text-purple-400', bg: 'bg-purple-500/10',  border: 'border-purple-500/30'  },
 ];
 
-const DEFAULT_COUNTERS = { calls: 0, facilities: 0, conversations: 0, firstAppts: 0, bovs: 0 };
+const DEFAULT_COUNTERS = {
+  calls: 0,
+  voicemails: 0,
+  conversations: 0,
+  additionsToDatabase: 0,
+  bovProposals: 0,
+};
 
 function getTodayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -19,10 +25,10 @@ function dbToProgress(row) {
   return {
     date: row.date,
     calls: row.calls ?? 0,
-    facilities: row.facilities ?? 0,
+    voicemails: row.voicemails ?? 0,
     conversations: row.conversations ?? 0,
-    firstAppts: row.first_appts ?? 0,
-    bovs: row.bovs ?? 0,
+    additionsToDatabase: row.additions_to_database ?? row.facilities ?? 0,
+    bovProposals: row.bov_proposals ?? row.bovs ?? 0,
   };
 }
 
@@ -31,12 +37,17 @@ export function useDailyProgress() {
   const [today, setToday] = useState({ date: todayStr, ...DEFAULT_COUNTERS });
   const [log, setLog] = useState({});
   const [loaded, setLoaded] = useState(false);
+  const [migrationNeeded, setMigrationNeeded] = useState(false);
 
-  useEffect(() => {
-    loadAll();
-  }, []);
+  function isMissingScorecardColumn(error) {
+    if (!error) return false;
+    const msg = error.message ?? '';
+    return error.code === '42703'
+      || error.code === 'PGRST204'
+      || /voicemails|additions_to_database|bov_proposals/i.test(msg);
+  }
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     const { data, error } = await supabase
       .from('daily_progress')
       .select('*');
@@ -54,20 +65,43 @@ export function useDailyProgress() {
       if (todayRow) setToday(todayRow);
     }
     setLoaded(true);
-  }
+  }, [todayStr]);
+
+  useEffect(() => {
+    // Initial Supabase sync; state updates happen after the async fetch resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadAll();
+  }, [loadAll]);
 
   // Upsert today's row whenever it changes (debounced via useEffect)
   useEffect(() => {
     if (!loaded) return;
     const timer = setTimeout(async () => {
-      await supabase.from('daily_progress').upsert({
+      const payload = {
         date: today.date,
         calls: today.calls,
-        facilities: today.facilities,
+        voicemails: today.voicemails,
         conversations: today.conversations,
-        first_appts: today.firstAppts,
-        bovs: today.bovs,
-      }, { onConflict: 'date' });
+        additions_to_database: today.additionsToDatabase,
+        bov_proposals: today.bovProposals,
+        // Keep legacy columns populated for older backup/restore exports and
+        // any reports that still read the original daily_progress shape.
+        facilities: today.additionsToDatabase,
+        bovs: today.bovProposals,
+      };
+      const { error } = await supabase.from('daily_progress').upsert(payload, { onConflict: 'date' });
+      if (isMissingScorecardColumn(error)) {
+        setMigrationNeeded(true);
+        await supabase.from('daily_progress').upsert({
+          date: today.date,
+          calls: today.calls,
+          conversations: today.conversations,
+          facilities: today.additionsToDatabase,
+          bovs: today.bovProposals,
+        }, { onConflict: 'date' });
+        return;
+      }
+      setMigrationNeeded(false);
     }, 500);
     return () => clearTimeout(timer);
   }, [today, loaded]);
@@ -116,6 +150,27 @@ export function useDailyProgress() {
     return result;
   }
 
+  function sumCurrentWeek() {
+    const result = { ...DEFAULT_COUNTERS };
+    const now = new Date();
+    const day = now.getDay();
+    const daysSinceMonday = (day + 6) % 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - daysSinceMonday);
+    for (let i = 0; i <= daysSinceMonday; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const ds = d.toISOString().slice(0, 10);
+      const src = ds === today.date ? today : log[ds];
+      if (src) {
+        Object.keys(DEFAULT_COUNTERS).forEach(k => {
+          result[k] += src[k] ?? 0;
+        });
+      }
+    }
+    return result;
+  }
+
   // yearMonth = "2025-04"
   function getSpecificMonth(yearMonth) {
     const result = { ...DEFAULT_COUNTERS };
@@ -139,9 +194,10 @@ export function useDailyProgress() {
     increment,
     decrement,
     setValue,
-    getWeek:        () => sumRange(7),
+    getWeek:        sumCurrentWeek,
     getMonth:       () => sumRange(30),
     getYear:        () => sumRange(365),
     getSpecificMonth,
+    migrationNeeded,
   };
 }

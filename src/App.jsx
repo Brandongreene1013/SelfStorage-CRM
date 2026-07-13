@@ -3,7 +3,6 @@ import { useCRM } from './hooks/useCRM';
 import { useDatabase } from './hooks/useDatabase';
 import { useMeetings } from './hooks/useMeetings';
 import { useCalendarEvents } from './hooks/useCalendarEvents';
-import { useDailyProgress } from './hooks/useDailyProgress';
 import { useTasks } from './hooks/useTasks';
 import { useOwnership } from './hooks/useOwnership';
 import { useMailerLists } from './hooks/useMailerLists';
@@ -29,7 +28,6 @@ export default function App() {
   const db = useDatabase(); // shared Database state (lifted so contacts can move to/from Clients)
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { calendarEvents } = useCalendarEvents();
-  const { increment: incrementProgress } = useDailyProgress();
   const taskApi = useTasks(); // universal task/next-action engine (Sprint 2)
   const ownershipApi = useOwnership();
   const [backupStatus, setBackupStatus] = useState('');
@@ -176,17 +174,6 @@ export default function App() {
     if (!contact || !db.masterListId) return;
     db.moveContactToList(contact.id, db.masterListId);
   }, [db]);
-
-  // When a call is logged from Database, auto-increment dashboard counters
-  const handleCallLogged = useCallback((outcome) => {
-    incrementProgress('calls');
-    if (outcome === 'conversation') incrementProgress('conversations');
-    if (outcome === 'appointment') incrementProgress('firstAppts');
-    // Any non-fresh outcome means we reached a facility (got through)
-    if (outcome === 'conversation' || outcome === 'appointment' || outcome === 'voicemail') {
-      incrementProgress('facilities');
-    }
-  }, [incrementProgress]);
 
   const [editingClient, setEditingClient] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -407,7 +394,6 @@ export default function App() {
         {view === 'Database' && (
           <Database
             db={db}
-            onCallLogged={handleCallLogged}
             onContactToClients={handleContactToClients}
             clients={clients}
             clientHandlers={{
