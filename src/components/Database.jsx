@@ -2551,25 +2551,11 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       alert('Pick a callback date before logging Call Back.');
       return;
     }
-    const callDate = activityDate || new Date().toISOString().slice(0, 10);
     const loggedNote = status === 'callback'
       ? appendDateToLogNote(note, 'Callback date', callbackDate)
       : note;
-    const updatedCallHistory = [
-      ...(contact.callHistory ?? []),
-      { date: callDate, outcome: status, notes: loggedNote ?? '' },
-    ];
     await updateContactStatus(contact.id, status, loggedNote, activityDate);
     if (status === 'callback' && callbackDate) await updateContactCallback(contact.id, callbackDate);
-    if (masterListId && contact.listId !== masterListId) {
-      await addToMasterDB({
-        ...contact,
-        status,
-        callHistory: updatedCallHistory,
-        lastCalled: callDate,
-        callbackDate: status === 'callback' ? callbackDate : contact.callbackDate,
-      }, { mergeIfExists: true });
-    }
     if (status === 'callback') {
       taskApi?.createTask({
         title: 'Call back',
@@ -3197,6 +3183,26 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 // ─── Call Queue ────────────────────────────────────────────────────────────────
 const OFFER_FOLLOWUP_STATUSES = ['voicemail', 'conversation', 'appointment'];
 const DEFAULT_COMPLETE_STATUSES = ['conversation', 'appointment', 'not_interested', 'callback'];
+const CALLABLE_QUEUE_STATUSES = ['fresh', 'callback', 'no_answer', 'voicemail'];
+const OUTCOME_SHORTCUTS = {
+  no_answer: 'X',
+  voicemail: 'V',
+  conversation: 'C',
+  appointment: 'A',
+  not_interested: 'I',
+  callback: 'K',
+};
+const CALL_MODE_SHORTCUTS = [
+  ['X', 'No answer'],
+  ['V', 'Voicemail'],
+  ['C', 'Conversation'],
+  ['A', 'Appt'],
+  ['K/B', 'Callback'],
+  ['S', 'Save'],
+  ['M', 'Master DB'],
+  ['N/→', 'Next'],
+  ['←', 'Back'],
+];
 const CALLBACK_PRESETS = [
   { label: 'Tomorrow', days: 1 },
   { label: '2 days', days: 2 },
@@ -3397,11 +3403,13 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const [showDetails, setShowDetails] = useState(false);
   const [showContactDetails, setShowContactDetails] = useState(false);
   const [sidePanel, setSidePanel] = useState('tasks');
+  const [movedMasterId, setMovedMasterId] = useState(null);
   const contactNote = current?.notes ?? '';
   const noteText = noteDraft.contactId === current?.id ? noteDraft.text : contactNote;
   const hasNoteChanges = noteText !== contactNote;
   const noteSaved = noteSavedFor === current?.id;
-  const activePostOutcome = postOutcome?.contactId === current?.id ? postOutcome : null;
+  const activePostOutcome = postOutcome;
+  const masterStatus = current?.listId === masterListId ? 'in' : movedMasterId === current?.id ? 'moved' : 'available';
 
   async function saveNotes() {
     if (!current) return;
@@ -3421,6 +3429,20 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     if (current.listId === masterListId) return;
     const result = await onMoveToMaster(current);
     if (result?.error) alert('Could not move to Master Database: ' + result.error);
+    else setMovedMasterId(current.id);
+  }
+
+  async function moveSnapshotToMaster(outcome = activePostOutcome) {
+    const contact = outcome?.contactSnapshot;
+    if (!contact || !onMoveToMaster || !masterListId) return true;
+    if (contact.listId === masterListId || outcome.movedToMaster) return true;
+    const result = await onMoveToMaster(contact);
+    if (result?.error) {
+      alert('Could not move to Master Database: ' + result.error);
+      return false;
+    }
+    setPostOutcome(prev => prev?.contactId === contact.id ? { ...prev, movedToMaster: true } : prev);
+    return true;
   }
 
   async function deleteCurrentContact() {
@@ -3444,18 +3466,30 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
       alert('Pick a callback date before logging Call Back.');
       return;
     }
+    const contactSnapshot = {
+      ...current,
+      notes: noteText,
+      status,
+      callbackDate: status === 'callback' ? callbackDate : current.callbackDate,
+    };
     await onOutcome(current, status, noteText, activityDate);
     const offerFollowUp = OFFER_FOLLOWUP_STATUSES.includes(status);
     const hasQueueTask = !!current.queueTaskId;
     if (offerFollowUp || hasQueueTask) {
       setPostOutcome({
         contactId: current.id,
+        contactSnapshot,
         status,
+        noteText,
+        queueTaskId: current.queueTaskId,
+        queueTaskTitle: current.queueTaskTitle,
+        movedToMaster: current.listId === masterListId,
         completeExisting: hasQueueTask && DEFAULT_COMPLETE_STATUSES.includes(status),
       });
       return;
     }
     setPostOutcome(null);
+    setNoteDraft({ contactId: null, text: '' });
     setIndex(Math.min(queue.length - 1, index + 1));
   }
 
@@ -3468,10 +3502,14 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
       if (isTypingTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
       const key = e.key.toLowerCase();
       if (key === 'n' || key === 'arrowright') { e.preventDefault(); go(1); }
-      if (key === 'b' || key === 'arrowleft') { e.preventDefault(); go(-1); }
-      if (key === 'x') handleOutcome('no_answer');
-      if (key === 'v') handleOutcome('voicemail');
-      if (key === 'c') handleOutcome('callback');
+      if (key === 'arrowleft') { e.preventDefault(); go(-1); }
+      if (key === 's') { e.preventDefault(); saveNotes(); }
+      if (key === 'x') { e.preventDefault(); handleOutcome('no_answer'); }
+      if (key === 'v') { e.preventDefault(); handleOutcome('voicemail'); }
+      if (key === 'c') { e.preventDefault(); handleOutcome('conversation'); }
+      if (key === 'a') { e.preventDefault(); handleOutcome('appointment'); }
+      if (key === 'i') { e.preventDefault(); handleOutcome('not_interested'); }
+      if (key === 'k' || key === 'b') { e.preventDefault(); handleOutcome('callback'); }
       if (key === 'e') { e.preventDefault(); setShowDetails(v => !v); }
       if (key === 'm') { e.preventDefault(); moveCurrentToMaster(); }
     }
@@ -3509,27 +3547,36 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     .reverse()
     .slice(0, 4);
 
-  async function finalizePostOutcome(followUpKind) {
-    if (activePostOutcome?.completeExisting && current?.queueTaskId) {
-      await taskApi?.completeTask(current.queueTaskId);
+  async function finalizePostOutcome({ addFollowUp = false, moveToMaster = false } = {}) {
+    const outcome = activePostOutcome;
+    if (!outcome) return;
+    const contact = outcome.contactSnapshot;
+    if (moveToMaster) {
+      const moved = await moveSnapshotToMaster(outcome);
+      if (!moved) return;
     }
-    if (followUpKind) {
+    if (outcome.completeExisting && outcome.queueTaskId) {
+      await taskApi?.completeTask(outcome.queueTaskId);
+    }
+    if (addFollowUp && OFFER_FOLLOWUP_STATUSES.includes(outcome.status)) {
       const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + (followUpKind === 'appointment' ? 1 : 2));
+      dueDate.setDate(dueDate.getDate() + (outcome.status === 'appointment' ? 1 : 2));
       await taskApi?.createTask({
-        title: followUpKind === 'voicemail' ? 'Follow up after voicemail' : followUpKind === 'appointment' ? 'Follow up after appointment' : 'Follow up after conversation',
-        description: noteText.trim(),
-        taskType: followUpKind === 'appointment' ? 'meeting' : 'call',
-        priority: followUpKind === 'appointment' ? 'high' : 'normal',
+        title: outcome.status === 'voicemail' ? 'Follow up after voicemail' : outcome.status === 'appointment' ? 'Follow up after appointment' : 'Follow up after conversation',
+        description: (outcome.noteText ?? '').trim(),
+        taskType: outcome.status === 'appointment' ? 'meeting' : 'call',
+        priority: outcome.status === 'appointment' ? 'high' : 'normal',
         dueDate: dueDate.toISOString().slice(0, 10),
         relatedType: 'contact',
-        relatedId: current.id,
-        relatedName: contactDisplayName(current),
+        relatedId: contact.id,
+        relatedName: contactDisplayName(contact),
         source: 'database',
       });
     }
     setPostOutcome(null);
-    setIndex(Math.min(queue.length - 1, index + 1));
+    setNoteDraft({ contactId: null, text: '' });
+    const wasRemovedFromQueue = moveToMaster || !CALLABLE_QUEUE_STATUSES.includes(outcome.status);
+    setIndex(Math.min(queue.length - 1, index + (wasRemovedFromQueue ? 0 : 1)));
   }
 
   return (
@@ -3642,6 +3689,121 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             )}
           </div>
 
+          <div className="sticky top-2 z-20 bg-slate-950/95 border border-slate-800 rounded-2xl p-4 shadow-2xl shadow-slate-950/30">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Dialer Controls</p>
+                <p className="text-sm font-bold text-white">Log the call, decide the next step, keep moving.</p>
+              </div>
+              <StatusBadge variant={STATUS_VARIANT[current.status] ?? 'slate'} pill={false} className="font-bold">
+                {STATUS_LABELS[current.status] ?? 'Fresh'}
+              </StatusBadge>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+              {CALL_OUTCOMES.map(o => (
+                <button key={o.status} onClick={() => handleOutcome(o.status)}
+                  className={`relative border rounded-xl px-3 py-3 text-xs font-bold transition-all text-center ${o.color}`}>
+                  <span className="absolute right-2 top-2 rounded bg-slate-950/50 px-1.5 py-0.5 text-[10px] text-slate-300">{OUTCOME_SHORTCUTS[o.status]}</span>
+                  <span className="text-base block">{o.icon}</span>
+                  <span className="block mt-0.5">{o.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Activity Date</label>
+                <input type="date" value={activityDate} onInput={e => setActivityDate(e.target.value)} onChange={e => setActivityDate(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Callback Date</label>
+                <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)}
+                  className="bg-slate-800 border border-amber-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
+              </div>
+              <button onClick={saveNotes} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all">Save Note</button>
+              <button onClick={() => go(-1)} disabled={index === 0} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
+              <button onClick={() => go(1)} disabled={index >= queue.length - 1} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2 whitespace-nowrap">Next Contact</button>
+              <button onClick={() => setConfirmDelete(true)} className="text-sm text-red-500 hover:text-red-400 transition-all font-semibold px-2 py-2">Delete</button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-slate-600 mr-1">Callback:</span>
+              {CALLBACK_PRESETS.map(p => (
+                <button
+                  key={p.label}
+                  onClick={() => setCallbackDate(datePlusDays(p.days))}
+                  className="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-700 text-slate-400 hover:border-purple-500/40 hover:text-purple-300 transition-all"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {CALL_MODE_SHORTCUTS.map(([key, label]) => (
+                <span key={`${key}-${label}`} className="rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 text-[11px] text-slate-500">
+                  <span className="font-black text-slate-300">{key}</span> {label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {activePostOutcome && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-3 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div>
+                  <p className="text-sm text-amber-300 font-black">
+                    Post-call decision: {STATUS_LABELS[activePostOutcome.status] ?? activePostOutcome.status}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {contactDisplayName(activePostOutcome.contactSnapshot)} is locked here until you choose the next step.
+                  </p>
+                </div>
+                <span className={`rounded-lg border px-2.5 py-1 text-xs font-black ${
+                  activePostOutcome.contactSnapshot?.listId === masterListId || activePostOutcome.movedToMaster
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                    : 'border-slate-700 bg-slate-900 text-slate-400'
+                }`}>
+                  {activePostOutcome.contactSnapshot?.listId === masterListId || activePostOutcome.movedToMaster ? 'In Master DB' : 'Not in Master DB'}
+                </span>
+              </div>
+
+              {activePostOutcome.queueTaskId && (
+                <label className="flex items-center gap-2 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={activePostOutcome.completeExisting}
+                    onChange={e => setPostOutcome(p => p ? ({ ...p, completeExisting: e.target.checked }) : p)}
+                  />
+                  Complete existing callback task ({activePostOutcome.queueTaskTitle || 'Call back'})
+                </label>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+                {activePostOutcome.contactSnapshot?.listId !== masterListId && !activePostOutcome.movedToMaster && (
+                  <button onClick={() => finalizePostOutcome({ moveToMaster: true })}
+                    className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 font-black px-4 py-2.5 rounded-xl text-xs transition-all">
+                    Move to Master DB + Next
+                  </button>
+                )}
+                {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) && (
+                  <button onClick={() => finalizePostOutcome({ addFollowUp: true })}
+                    className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-black px-4 py-2.5 rounded-xl text-xs transition-all">
+                    Add Follow-Up + Next
+                  </button>
+                )}
+                {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) && activePostOutcome.contactSnapshot?.listId !== masterListId && !activePostOutcome.movedToMaster && (
+                  <button onClick={() => finalizePostOutcome({ moveToMaster: true, addFollowUp: true })}
+                    className="bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 font-black px-4 py-2.5 rounded-xl text-xs transition-all">
+                    Master DB + Follow-Up + Next
+                  </button>
+                )}
+                <button onClick={() => finalizePostOutcome()}
+                  className="border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold px-4 py-2.5 rounded-xl text-xs transition-all">
+                  {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) ? 'Skip Task + Next' : 'Continue'}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="border border-slate-800 rounded-xl overflow-hidden">
             <button
               onClick={() => setShowContactDetails(v => !v)}
@@ -3728,70 +3890,6 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             )}
           </div>
 
-          <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-              {CALL_OUTCOMES.map(o => (
-                <button key={o.status} onClick={() => handleOutcome(o.status)}
-                  className={`border rounded-xl px-3 py-3 text-xs font-bold transition-all text-center ${o.color}`}>
-                  <span className="text-base block">{o.icon}</span>
-                  <span className="block mt-0.5">{o.label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="mt-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Activity Date</label>
-                <input type="date" value={activityDate} onInput={e => setActivityDate(e.target.value)} onChange={e => setActivityDate(e.target.value)}
-                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Callback Date</label>
-                <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)}
-                  className="bg-slate-800 border border-amber-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
-              </div>
-              <button onClick={saveNotes} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all">Save Note</button>
-              <button onClick={() => setConfirmDelete(true)} className="text-sm text-red-500 hover:text-red-400 transition-all font-semibold px-2 py-2">Delete</button>
-              <button onClick={() => go(-1)} disabled={index === 0} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
-              <button onClick={() => go(1)} disabled={index >= queue.length - 1} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2 whitespace-nowrap">Next Contact</button>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-slate-600 mr-1">Callback:</span>
-              {CALLBACK_PRESETS.map(p => (
-                <button
-                  key={p.label}
-                  onClick={() => setCallbackDate(datePlusDays(p.days))}
-                  className="text-xs font-semibold px-2 py-1 rounded-lg border border-slate-700 text-slate-400 hover:border-purple-500/40 hover:text-purple-300 transition-all"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            {activePostOutcome && (
-              <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 space-y-3">
-                {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) && (
-                  <p className="text-sm text-amber-300 font-semibold">Add a follow-up task before moving on?</p>
-                )}
-                {current.queueTaskId && (
-                  <label className="flex items-center gap-2 text-xs text-slate-300">
-                    <input
-                      type="checkbox"
-                      checked={activePostOutcome.completeExisting}
-                      onChange={e => setPostOutcome(p => ({ ...p, completeExisting: e.target.checked }))}
-                    />
-                    Complete existing callback task ({current.queueTaskTitle || 'Call back'})
-                  </label>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) && (
-                    <button onClick={() => finalizePostOutcome(activePostOutcome.status)} className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-4 py-2 rounded-lg text-xs">Add Task + Next</button>
-                  )}
-                  <button onClick={() => finalizePostOutcome(null)} className="text-xs text-slate-400 hover:text-white px-3 py-2">
-                    {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) ? 'Skip Task' : 'Continue'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         <aside className="space-y-4">
@@ -3888,14 +3986,18 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           </div>
 
           {masterListId && (
-            current.listId === masterListId ? (
+            masterStatus === 'moved' ? (
+              <div className="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-black px-4 py-3 rounded-2xl text-sm text-center">
+                Moved to Master Database
+              </div>
+            ) : masterStatus === 'in' ? (
               <div className="w-full bg-amber-500/10 border border-amber-500/30 text-amber-400/80 font-black px-4 py-3 rounded-2xl text-sm text-center">
-                ⭐ In Master Database
+                In Master Database
               </div>
             ) : (
               <button onClick={moveCurrentToMaster}
                 className="w-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 font-black px-4 py-3 rounded-2xl text-sm transition-all">
-                ⭐ Move to Master Database
+                Move to Master Database
               </button>
             )
           )}
@@ -3905,7 +4007,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               Promote to Client / Pipeline
             </button>
           )}
-          <p className="text-xs text-slate-600 px-1">Shortcuts: &larr; / &rarr; move through queue. N next, B back, X no answer, V voicemail, C callback, E edit details, M move to Master DB.</p>
+          <p className="text-xs text-slate-600 px-1">Shortcuts: X no answer, V voicemail, C conversation, A appt, K/B callback, S save, M master, N/right next, left back, E edit.</p>
         </aside>
       </div>
       {confirmDelete && (
