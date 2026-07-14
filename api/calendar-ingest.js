@@ -3,6 +3,7 @@
 // by attendee/organizer email when possible. Never writes back to Outlook,
 // never creates a client.
 import { createClient } from '@supabase/supabase-js';
+import { normalizeDisplayText, normalizeMeetingText } from './_textNormalize.js';
 
 const supabase = createClient(
   process.env.SUPABASE_URL || 'https://rpoiphoqwgvbiyygfjrm.supabase.co',
@@ -33,12 +34,12 @@ export default async function handler(req, res) {
 
   const row = {
     event_id: eventId,
-    subject: subject ?? '(no subject)',
+    subject: normalizeMeetingText(subject) || '(no subject)',
     start_at: start,
     end_at: end ?? null,
-    location: location ?? null,
-    attendees: Array.isArray(attendees) ? attendees : [],
-    organizer: organizer ?? null,
+    location: normalizeMeetingText(location) || null,
+    attendees: Array.isArray(attendees) ? attendees.map(normalizeDisplayText).filter(Boolean) : [],
+    organizer: normalizeDisplayText(organizer) || null,
     client_id: clientId,
     updated_at: new Date().toISOString(),
   };

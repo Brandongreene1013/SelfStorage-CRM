@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { normalizeDisplayText, normalizeMeetingText } from '../lib/textNormalize';
 
 export function useMeetings() {
   const [meetings, setMeetings] = useState([]);
@@ -7,25 +8,25 @@ export function useMeetings() {
   function dbToMeeting(row) {
     return {
       id: row.id,
-      title: row.title,
+      title: normalizeMeetingText(row.title) || 'Untitled meeting',
       date: row.date,
       startTime: row.start_time,
       endTime: row.end_time,
       clientId: row.client_id,
-      location: row.location,
-      notes: row.notes,
+      location: normalizeMeetingText(row.location),
+      notes: normalizeDisplayText(row.notes),
     };
   }
 
   function meetingToDb(data) {
     return {
-      title: data.title,
+      title: normalizeMeetingText(data.title) || 'Untitled meeting',
       date: data.date,
       start_time: data.startTime,
       end_time: data.endTime,
       client_id: data.clientId ?? null,
-      location: data.location,
-      notes: data.notes,
+      location: normalizeMeetingText(data.location),
+      notes: normalizeDisplayText(data.notes),
     };
   }
 

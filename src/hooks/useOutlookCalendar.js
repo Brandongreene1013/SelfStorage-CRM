@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PublicClientApplication, InteractionRequiredAuthError } from '@azure/msal-browser';
+import { normalizeDisplayText, normalizeMeetingText } from '../lib/textNormalize';
 
 const CLIENT_ID = '16d921c2-2a04-4a95-8a96-5c84a1d3e9b3';
 
@@ -42,15 +43,15 @@ function graphEventToMeeting(event) {
 
   return {
     id:        `outlook_${event.id}`,
-    title:     event.subject ?? '(No title)',
+    title:     normalizeMeetingText(event.subject) || '(No title)',
     date,
     startTime,
     endTime,
-    location:  event.location?.displayName ?? '',
-    notes:     event.bodyPreview ?? '',
+    location:  normalizeMeetingText(event.location?.displayName),
+    notes:     normalizeDisplayText(event.bodyPreview),
     isOutlook: true,
     outlookUrl: event.webLink ?? '',
-    organizer: event.organizer?.emailAddress?.name ?? '',
+    organizer: normalizeDisplayText(event.organizer?.emailAddress?.name),
     isOnline:  !!event.isOnlineMeeting,
     onlineMeetingUrl: event.onlineMeeting?.joinUrl ?? '',
   };

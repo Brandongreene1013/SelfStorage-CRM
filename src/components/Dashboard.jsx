@@ -6,6 +6,7 @@ import NeedsReview from './NeedsReview';
 import ActionCenterModal from './ActionCenterModal';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 import { buildCommissionSummary, formatMoney } from '../lib/dealValue';
+import { normalizeDisplayText, normalizeMeetingText } from '../lib/textNormalize';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
 
@@ -71,7 +72,7 @@ function buildNeedsFollowUp(taskApi, contacts, clients, masterListId) {
   const rows = [];
   contacts.forEach(c => {
     // Master Database is the parked/warehoused bucket, not an active working
-    // list â€” a lukewarm lead sitting there with an old conversation logged
+    // list - a lukewarm lead sitting there with an old conversation logged
     // isn't something Brandon needs nagged about on the Dashboard.
     if (masterListId && c.listId === masterListId) return;
     if (c.status !== 'conversation' && c.status !== 'appointment') return;
@@ -79,7 +80,7 @@ function buildNeedsFollowUp(taskApi, contacts, clients, masterListId) {
     rows.push({
       key: `nf-contact-${c.id}`, kind: 'contact',
       name: c.ownerName || 'Unknown Owner', facilityName: c.facilityName || '',
-      reason: c.status === 'appointment' ? 'Appt set â€” no follow-up task' : 'Conversation logged â€” no follow-up task',
+      reason: c.status === 'appointment' ? 'Appt set - no follow-up task' : 'Conversation logged - no follow-up task',
       contact: c,
     });
   });
@@ -90,7 +91,7 @@ function buildNeedsFollowUp(taskApi, contacts, clients, masterListId) {
     rows.push({
       key: `nf-client-${cl.id}`, kind: 'client',
       name: cl.name, facilityName: cl.facilityName || '',
-      reason: 'Active pipeline stage â€” no next action',
+      reason: 'Active pipeline stage - no next action',
       client: cl,
     });
   });
@@ -344,13 +345,13 @@ function NeedsFollowUp({ rows, onCallContact, onEditClient, onMoveToMasterDB }) 
             {r.kind === 'contact' && onMoveToMasterDB && (
               <button
                 onClick={() => onMoveToMasterDB(r.contact)}
-                title="Not actionable right now â€” park this lead in the Master Database and stop nudging me about it"
+                title="Not actionable right now - park this lead in the Master Database and stop nudging me about it"
                 className="flex-shrink-0 text-xs font-semibold text-slate-500 hover:text-emerald-400 border border-slate-700 hover:border-emerald-500/40 rounded-lg px-2 py-1 transition-all"
               >
                 Move to Master DB
               </button>
             )}
-            <span className="text-xs text-slate-600 flex-shrink-0">{r.kind === 'contact' ? 'â˜Ž' : 'ðŸ’¼'}</span>
+            <span className="text-xs text-slate-600 flex-shrink-0">{r.kind === 'contact' ? 'Call' : 'Deal'}</span>
           </div>
         ))}
       </div>
@@ -364,7 +365,6 @@ function BrokerCommandCenter({
   attentionRows,
   today,
   weeklyProduction,
-  commissionSummary,
   active,
   inContract,
   closed,
@@ -427,12 +427,6 @@ function BrokerCommandCenter({
 
   const topMoves = rankedMoves.slice(0, 3);
   const signalRows = rankedMoves.slice(3, 8);
-  const gross = commissionSummary.grossPipelineCommission;
-  const onMarketGross = commissionSummary.grossOnMarketCommission;
-  const saleValue = commissionSummary.pipelineSaleValue;
-  const onMarketSaleValue = commissionSummary.onMarketSaleValue;
-  const avgRate = saleValue > 0 ? (gross / saleValue) * 100 : 0;
-  const onMarketAvgRate = onMarketSaleValue > 0 ? (onMarketGross / onMarketSaleValue) * 100 : 0;
   const briefItems = [
     { label: 'Calls', value: today.calls, tone: 'text-blue-300' },
     { label: 'Convos', value: today.conversations, tone: 'text-emerald-300' },
@@ -451,6 +445,12 @@ function BrokerCommandCenter({
     { label: 'Callbacks', value: todayCallbacks, tone: todayCallbacks > 0 ? 'text-cyan-300' : 'text-slate-600' },
     { label: 'Overdue CB', value: overdueCallbacks, tone: overdueCallbacks > 0 ? 'text-red-300' : 'text-slate-600' },
   ];
+  const pipelineItems = [
+    { label: 'Active deals', value: active, tone: active > 0 ? 'text-emerald-300' : 'text-slate-700' },
+    { label: 'In contract', value: inContract, tone: inContract > 0 ? 'text-orange-300' : 'text-slate-700' },
+    { label: 'Closed', value: closed, tone: closed > 0 ? 'text-purple-300' : 'text-slate-700' },
+    { label: 'Needs attention', value: attentionRows.length, tone: attentionRows.length > 0 ? 'text-amber-300' : 'text-slate-700' },
+  ];
 
   const toneClass = {
     red: 'text-red-300 border-red-500/30 bg-red-500/10',
@@ -462,7 +462,7 @@ function BrokerCommandCenter({
   return (
     <SectionCard
       title="Broker Command Center"
-      subtitle="Today, money, and the next three moves"
+      subtitle="Today, next actions, and relationship signals"
       className="p-4"
       actions={
         <button onClick={onStartCallMode} className="h-8 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-bold text-amber-300 hover:bg-amber-500/15">
@@ -499,29 +499,27 @@ function BrokerCommandCenter({
               </div>
             </div>
 
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/10 p-4">
-              <div className="flex items-start justify-between gap-3">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+              <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-black uppercase tracking-widest text-emerald-200/70">Money Radar</p>
-                  <p className="text-4xl font-black text-emerald-300 leading-none mt-2">{formatMoney(gross) || '$0'}</p>
-                  <p className="text-xs text-slate-500 mt-2">Gross pipeline commission · {commissionSummary.pricedPipelineDeals} priced</p>
+                  <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Pipeline Attention</p>
+                  <p className="text-sm font-bold text-white mt-1">Deal movement without the dollar figures</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-500">Active</p>
-                  <p className="text-2xl font-black text-white leading-none">{active}</p>
-                </div>
+                <span className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-bold text-slate-400">Discreet</span>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-3 py-2">
-                  <p className="text-[11px] font-bold text-sky-200/80 uppercase tracking-wide">On-market</p>
-                  <p className="text-2xl font-black text-sky-300 mt-1 leading-none">{formatMoney(onMarketGross) || '$0'}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">{commissionSummary.pricedOnMarketDeals} priced · {formatMoney(onMarketSaleValue, { compact: true }) || '$0'}</p>
-                </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Blend / stage</p>
-                  <p className="text-lg font-black text-white mt-1">{avgRate > 0 ? `${avgRate.toFixed(2)}%` : '--'}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">{onMarketAvgRate > 0 ? `${onMarketAvgRate.toFixed(2)}% on-market` : `${inContract} in contract · ${closed} closed`}</p>
-                </div>
+              <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
+                {pipelineItems.map(item => (
+                  <div key={item.label} className="bg-slate-950/70 px-3 py-2 min-w-0">
+                    <p className={`text-2xl font-black leading-none tabular-nums ${item.tone}`}>{item.value}</p>
+                    <p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">{item.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Current focus</p>
+                <p className="mt-1 text-xs text-slate-400 line-clamp-2">
+                  {attentionRows[0]?.reason ? `${attentionRows[0].reason}: ${attentionRows[0].client?.name ?? 'Open pipeline item'}` : 'No urgent pipeline gaps showing right now.'}
+                </p>
               </div>
             </div>
           </div>
@@ -673,7 +671,7 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
           <div key={s.id} className="flex-1 flex flex-col items-center gap-1.5 group">
             {/* Count */}
             <span className={`text-sm font-black leading-none ${s.count > 0 ? s.text : 'text-slate-700'}`}>
-              {s.count > 0 ? s.count : 'Â·'}
+              {s.count > 0 ? s.count : '-'}
             </span>
             {/* Bar */}
             <div className="w-full rounded-md transition-all duration-500"
@@ -698,7 +696,7 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
           <div key={s.id} className="flex-1 flex items-center">
             <div className="flex-1 h-px bg-slate-800" />
             {i < stageCounts.length - 1 && (
-              <span className="text-slate-700 text-xs mx-0.5">â€º</span>
+              <span className="text-slate-700 text-xs mx-0.5">&gt;</span>
             )}
           </div>
         ))}
@@ -1001,7 +999,7 @@ function DailyActivityIntelligenceReview() {
   return (
     <SectionCard
       title="Activity Intelligence"
-      subtitle={`Today Â· ${status.replace('_', ' ')}`}
+      subtitle={`Today · ${status.replace('_', ' ')}`}
       actions={
         <button
           onClick={generateDraft}
@@ -1100,10 +1098,10 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
   return (
     <SectionCard
       title="Productivity Analytics"
-      subtitle={`Compounded totals Â· ${subLabel}`}
+      subtitle={`Compounded totals · ${subLabel}`}
       actions={
         <>
-          {/* Month picker â€” only shown when a specific month is selected */}
+          {/* Month picker - only shown when a specific month is selected */}
           {analyticsRange === 'SpecificMonth' && (
             <select
               value={selectedMonth}
@@ -1131,7 +1129,7 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
               className={`px-2 py-1 rounded-md text-xs font-semibold transition-all ${
                 analyticsRange === 'SpecificMonth' ? 'bg-amber-500 text-slate-900 shadow' : 'text-slate-400 hover:text-white'
               }`}>
-              â–¾
+              v
             </button>
           </div>
         </>
@@ -1157,6 +1155,37 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
     .sort((a, b) => (a.date + (a.startTime ?? '')).localeCompare(b.date + (b.startTime ?? '')))
     .slice(0, 5);
   const todayCount = meetings.filter(m => m.date === today).length;
+  const tomorrow = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  function meetingDateLabel(date) {
+    if (date === today) return 'Today';
+    if (date === tomorrow) return 'Tomorrow';
+    return new Date(`${date}T12:00:00`).toLocaleDateString('default', { month: 'short', day: 'numeric' });
+  }
+
+  function meetingTimeLabel(m) {
+    if (m.allDay) return 'All day';
+    if (m.startTime) return normalizeDisplayText(m.startTime);
+    return '';
+  }
+
+  function meetingSecondaryLine(m, client) {
+    const location = normalizeMeetingText(m.location);
+    const organizer = normalizeDisplayText(m.organizer);
+    const fallback = m.isOnline || /teams|zoom|meet/i.test(location) ? 'Microsoft Teams' : '';
+    const secondary = [client?.name, location || fallback, organizer]
+      .map(v => normalizeMeetingText(v))
+      .filter(Boolean)
+      .filter((v, idx, arr) => arr.findIndex(x => x.toLowerCase() === v.toLowerCase()) === idx)
+      .filter(v => v.toLowerCase() !== normalizeMeetingText(m.title).toLowerCase())
+      .slice(0, 2)
+      .join(' · ');
+    return secondary;
+  }
 
   return (
     <SectionCard
@@ -1184,29 +1213,33 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
           {upcoming.map(m => {
             const client = clients.find(c => c.id === m.clientId);
             const isToday = m.date === today;
-            const isTomorrow = m.date === (() => {
-              const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10);
-            })();
-            const dateLabel = isToday ? 'Today' : isTomorrow ? 'Tomorrow'
-              : new Date(m.date + 'T12:00:00').toLocaleDateString('default', { month: 'short', day: 'numeric' });
-
-            return (
-              <button key={m.id} onClick={onNavigate}
-                className="w-full text-left flex items-start gap-3 px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700/50 hover:border-slate-600 transition-all">
-                <div className={`flex-shrink-0 rounded-lg px-2 py-1 min-w-[46px] text-center ${
-                  isToday ? 'bg-amber-500/20 border border-amber-500/40' : 'bg-slate-700 border border-slate-600'
+            const dateLabel = meetingDateLabel(m.date);
+            const title = normalizeMeetingText(m.title) || 'Untitled meeting';
+            const timeLabel = meetingTimeLabel(m);
+            const secondary = meetingSecondaryLine(m, client);
+            const clickableClass = 'w-full text-left flex items-start gap-3 px-3 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700/50 hover:border-slate-600 transition-all';
+            const content = (
+              <>
+                <div className={`flex-shrink-0 rounded-lg px-2 py-1 min-w-[54px] text-center ${
+                  isToday ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-slate-700/70 border border-slate-600/80'
                 }`}>
-                  <p className={`text-xs font-black leading-none ${isToday ? 'text-amber-400' : 'text-slate-300'}`}>{dateLabel}</p>
-                  {m.startTime && <p className={`text-xs mt-0.5 ${isToday ? 'text-amber-400/70' : 'text-slate-500'}`}>{m.startTime}</p>}
+                  <p className={`text-xs font-black leading-none ${isToday ? 'text-amber-300' : 'text-slate-300'}`}>{dateLabel}</p>
+                  {timeLabel && <p className={`text-xs mt-0.5 ${isToday ? 'text-amber-300/70' : 'text-slate-500'}`}>{timeLabel}</p>}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">
-                    {m.title}
-                    {m.source === 'outlook' && <span className="ml-1.5 text-[10px] text-blue-400/80 font-bold">Â· Outlook</span>}
-                  </p>
-                  {client && <p className="text-xs text-amber-400/70 truncate mt-0.5">{client.name}</p>}
-                  {m.location && <p className="text-xs text-slate-500 truncate">ðŸ“ {m.location}</p>}
+                  <p className="text-xs font-semibold text-white truncate" title={title}>{title}</p>
+                  {secondary && <p className="text-xs text-slate-500 truncate mt-0.5" title={secondary}>{secondary}</p>}
                 </div>
+              </>
+            );
+
+            return m.outlookUrl ? (
+              <a key={m.id} href={m.outlookUrl} target="_blank" rel="noopener noreferrer" className={clickableClass} title={title}>
+                {content}
+              </a>
+            ) : (
+              <button key={m.id} onClick={onNavigate} className={clickableClass} title={title}>
+                {content}
               </button>
             );
           })}
@@ -1267,7 +1300,7 @@ function DashboardTasks({ taskApi }) {
     >
       {migrationNeeded && (
         <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2">
-          Task table needs a one-time SQL migration â€” run <code>sql/tasks_table_migration.sql</code> in Supabase, then refresh.
+          Task table needs a one-time SQL migration - run <code>sql/tasks_table_migration.sql</code> in Supabase, then refresh.
         </p>
       )}
 
@@ -1294,7 +1327,7 @@ function DashboardTasks({ taskApi }) {
       {loading ? (
         <LoadingSkeleton rows={3} />
       ) : totalOpen === 0 ? (
-        <EmptyState icon="âœ…" message="Nothing open. You're caught up." />
+        <EmptyState icon="Done" message="Nothing open. You're caught up." />
       ) : (
         <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
           {group('Overdue', overdue, 'text-red-400')}
@@ -1308,7 +1341,7 @@ function DashboardTasks({ taskApi }) {
         <div>
           <button onClick={() => setShowCompleted(v => !v)}
             className="text-xs text-slate-600 hover:text-slate-400 transition-colors font-semibold">
-            {showCompleted ? 'â–¾' : 'â–¸'} Completed today ({completedToday.length})
+            {showCompleted ? 'v' : '>'} Completed today ({completedToday.length})
           </button>
           {showCompleted && (
             <div className="space-y-1 mt-1.5 opacity-60">
@@ -1392,7 +1425,7 @@ export default function Dashboard({
     { label: 'Total Clients', value: clients.length },
     { label: 'Buyers',        value: buyers,      accent: 'text-blue-400' },
     { label: 'Sellers',       value: sellers,     accent: 'text-amber-400' },
-    { label: 'Active Deals',  value: active,      accent: 'text-green-400', sub: 'Stages 2â€“9' },
+    { label: 'Active Deals',  value: active,      accent: 'text-green-400', sub: 'Stages 2-9' },
     { label: 'Gross Fees',    value: formatMoney(commissionSummary.grossPipelineCommission, { compact: true }) || '$0', accent: 'text-emerald-400', sub: 'Active pipeline' },
     { label: 'In Contract',   value: inContract,  accent: 'text-orange-400' },
     { label: 'Closed',        value: closed,      accent: 'text-purple-400', sub: 'Close + Post-Close' },
@@ -1446,7 +1479,6 @@ export default function Dashboard({
             attentionRows={attentionRows}
             today={today}
             weeklyProduction={weeklyProduction}
-            commissionSummary={commissionSummary}
             active={active}
             inContract={inContract}
             closed={closed}
@@ -1479,13 +1511,6 @@ export default function Dashboard({
         </div>
 
         <div className="space-y-4 min-w-0">
-          <CommissionCounter
-            summary={commissionSummary}
-            migrationNeeded={dealValueMigrationNeeded}
-            active={active}
-            inContract={inContract}
-            closed={closed}
-          />
           <UpcomingMeetingsWidget
             meetings={meetings}
             clients={clients}
@@ -1503,6 +1528,16 @@ export default function Dashboard({
             />
           )}
         </div>
+      </div>
+
+      <div className="pt-4" data-dashboard-financial-section>
+        <CommissionCounter
+          summary={commissionSummary}
+          migrationNeeded={dealValueMigrationNeeded}
+          active={active}
+          inContract={inContract}
+          closed={closed}
+        />
       </div>
 
       <div className="border-t border-slate-800 pt-4">
