@@ -358,11 +358,35 @@ function NeedsFollowUp({ rows, onCallContact, onEditClient, onMoveToMasterDB }) 
   );
 }
 
-function PriorityWorkQueue({ attackRows, followUpRows, attentionRows, onCallContact, onEditClient, onStartCallMode, onMoveToMasterDB, onLogClientAction, onDeleteClientAction, taskApi }) {
+function BrokerCommandCenter({
+  attackRows,
+  followUpRows,
+  attentionRows,
+  today,
+  weeklyProduction,
+  commissionSummary,
+  active,
+  inContract,
+  closed,
+  todayCallbacks,
+  overdueCallbacks,
+  overdueCount,
+  dueTodayCount,
+  completedTodayCount,
+  callbacksCreatedToday,
+  onCallContact,
+  onEditClient,
+  onStartCallMode,
+  onMoveToMasterDB,
+  onLogClientAction,
+  onDeleteClientAction,
+  taskApi,
+}) {
   const [actionClient, setActionClient] = useState(null);
-  const rows = [
+  const rankedMoves = [
     ...attackRows.map(r => ({
       key: r.key,
+      rank: r.overdue ? 0 : 1,
       tone: r.overdue ? 'red' : 'amber',
       label: r.overdue ? 'Overdue' : 'Due Today',
       title: r.name,
@@ -373,6 +397,7 @@ function PriorityWorkQueue({ attackRows, followUpRows, attentionRows, onCallCont
     })),
     ...followUpRows.map(r => ({
       key: r.key,
+      rank: r.kind === 'contact' ? 2 : 3,
       tone: r.kind === 'contact' ? 'emerald' : 'slate',
       label: r.kind === 'contact' ? 'Follow-up' : 'Pipeline',
       title: r.name,
@@ -384,8 +409,10 @@ function PriorityWorkQueue({ attackRows, followUpRows, attentionRows, onCallCont
     ...attentionRows.map(r => {
       const stage = PIPELINE_STAGES.find(s => s.id === r.client.stageId);
       const meetingText = r.meeting ? `Meeting ${r.meeting.date === todayStr() ? 'today' : r.meeting.date}` : '';
+      const rank = r.reason === 'Overdue task' ? 0 : r.reason === 'Task due today' ? 1 : r.reason === 'No next action' ? 3 : 4;
       return {
         key: r.key,
+        rank,
         tone: r.reason === 'Overdue task' ? 'red' : r.reason === 'Task due today' ? 'amber' : 'slate',
         label: stage?.short ?? 'Deal',
         title: r.client.name,
@@ -396,7 +423,34 @@ function PriorityWorkQueue({ attackRows, followUpRows, attentionRows, onCallCont
         onLog: () => setActionClient(r.client),
       };
     }),
-  ].slice(0, 12);
+  ].sort((a, b) => a.rank - b.rank).slice(0, 8);
+
+  const topMoves = rankedMoves.slice(0, 3);
+  const signalRows = rankedMoves.slice(3, 8);
+  const gross = commissionSummary.grossPipelineCommission;
+  const onMarketGross = commissionSummary.grossOnMarketCommission;
+  const saleValue = commissionSummary.pipelineSaleValue;
+  const onMarketSaleValue = commissionSummary.onMarketSaleValue;
+  const avgRate = saleValue > 0 ? (gross / saleValue) * 100 : 0;
+  const onMarketAvgRate = onMarketSaleValue > 0 ? (onMarketGross / onMarketSaleValue) * 100 : 0;
+  const briefItems = [
+    { label: 'Calls', value: today.calls, tone: 'text-blue-300' },
+    { label: 'Convos', value: today.conversations, tone: 'text-emerald-300' },
+    { label: 'Owners ID', value: today.ownersIdentified, tone: 'text-cyan-300' },
+    { label: 'DB Adds', value: today.additionsToDatabase, tone: 'text-amber-300' },
+  ];
+  const weekItems = [
+    { label: 'Week calls', value: weeklyProduction.calls, tone: 'text-blue-300' },
+    { label: 'Week convos', value: weeklyProduction.conversations, tone: 'text-emerald-300' },
+    { label: 'Tasks done', value: completedTodayCount, tone: 'text-purple-300' },
+    { label: 'Callbacks made', value: callbacksCreatedToday, tone: 'text-cyan-300' },
+  ];
+  const alertItems = [
+    { label: 'Overdue tasks', value: overdueCount, tone: overdueCount > 0 ? 'text-red-300' : 'text-slate-600' },
+    { label: 'Due today', value: dueTodayCount, tone: dueTodayCount > 0 ? 'text-amber-300' : 'text-slate-600' },
+    { label: 'Callbacks', value: todayCallbacks, tone: todayCallbacks > 0 ? 'text-cyan-300' : 'text-slate-600' },
+    { label: 'Overdue CB', value: overdueCallbacks, tone: overdueCallbacks > 0 ? 'text-red-300' : 'text-slate-600' },
+  ];
 
   const toneClass = {
     red: 'text-red-300 border-red-500/30 bg-red-500/10',
@@ -407,8 +461,8 @@ function PriorityWorkQueue({ attackRows, followUpRows, attentionRows, onCallCont
 
   return (
     <SectionCard
-      title="Priority Work Queue"
-      subtitle={`${rows.length} highest-priority records`}
+      title="Broker Command Center"
+      subtitle="Today, money, and the next three moves"
       className="p-4"
       actions={
         <button onClick={onStartCallMode} className="h-8 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-bold text-amber-300 hover:bg-amber-500/15">
@@ -416,43 +470,158 @@ function PriorityWorkQueue({ attackRows, followUpRows, attentionRows, onCallCont
         </button>
       }
     >
-      {rows.length === 0 ? (
-        <p className="text-xs text-slate-600 italic py-4 text-center">No urgent work queued.</p>
-      ) : (
-        <div className="divide-y divide-slate-800 border border-slate-800 rounded-lg overflow-hidden">
-          {rows.map(r => (
-            <div key={r.key} className="flex items-center gap-3 bg-slate-950/40 hover:bg-slate-900 px-3 py-2.5">
-              <span className={`w-20 flex-shrink-0 rounded-md border px-2 py-1 text-[10px] font-black text-center ${toneClass[r.tone]}`}>
-                {r.label}
-              </span>
-              <button onClick={r.onOpen} className="flex-1 min-w-0 text-left">
-                <div className="flex items-center gap-2 min-w-0">
-                  <p className="text-sm font-bold text-white truncate">{r.title}</p>
-                  {r.subtitle && <p className="text-xs text-slate-500 truncate">{r.subtitle}</p>}
+      <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1.05fr)_minmax(340px,0.95fr)] gap-4">
+        <div className="space-y-3 min-w-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Today's Brief</p>
+                  <p className="text-sm font-bold text-white mt-1">Production pulse</p>
                 </div>
-                <p className="text-xs text-slate-500 truncate mt-0.5">{r.detail}</p>
-              </button>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                {r.phone && (
-                  <a href={`tel:${r.phone}`} className="h-8 inline-flex items-center rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/15">
-                    Call
-                  </a>
-                )}
-                {r.onLog && (
-                  <button onClick={r.onLog} className="h-8 rounded-md border border-slate-700 px-2.5 text-xs font-bold text-slate-400 hover:text-slate-200">
-                    Log
-                  </button>
-                )}
-                {r.onPark && (
-                  <button onClick={r.onPark} className="h-8 rounded-md border border-slate-700 px-2.5 text-xs font-bold text-slate-500 hover:text-emerald-300">
-                    Park
-                  </button>
-                )}
+                <span className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-bold text-slate-400">Live</span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
+                {briefItems.map(item => (
+                  <div key={item.label} className="bg-slate-950/70 px-3 py-2 min-w-0">
+                    <p className={`text-2xl font-black leading-none tabular-nums ${item.value > 0 ? item.tone : 'text-slate-700'}`}>{item.value}</p>
+                    <p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">{item.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {weekItems.map(item => (
+                  <div key={item.label} className="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 min-w-0">
+                    <p className={`text-lg font-black leading-none tabular-nums ${item.value > 0 ? item.tone : 'text-slate-700'}`}>{item.value}</p>
+                    <p className="text-[11px] text-slate-600 mt-1 truncate">{item.label}</p>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
+
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/10 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-widest text-emerald-200/70">Money Radar</p>
+                  <p className="text-4xl font-black text-emerald-300 leading-none mt-2">{formatMoney(gross) || '$0'}</p>
+                  <p className="text-xs text-slate-500 mt-2">Gross pipeline commission · {commissionSummary.pricedPipelineDeals} priced</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-bold text-slate-500">Active</p>
+                  <p className="text-2xl font-black text-white leading-none">{active}</p>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-3 py-2">
+                  <p className="text-[11px] font-bold text-sky-200/80 uppercase tracking-wide">On-market</p>
+                  <p className="text-2xl font-black text-sky-300 mt-1 leading-none">{formatMoney(onMarketGross) || '$0'}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">{commissionSummary.pricedOnMarketDeals} priced · {formatMoney(onMarketSaleValue, { compact: true }) || '$0'}</p>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Blend / stage</p>
+                  <p className="text-lg font-black text-white mt-1">{avgRate > 0 ? `${avgRate.toFixed(2)}%` : '--'}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">{onMarketAvgRate > 0 ? `${onMarketAvgRate.toFixed(2)}% on-market` : `${inContract} in contract · ${closed} closed`}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Top Moves</p>
+                <p className="text-sm font-bold text-white">The next three things worth doing</p>
+              </div>
+              <span className="text-[11px] font-bold text-slate-600">{rankedMoves.length} signals</span>
+            </div>
+            {topMoves.length === 0 ? (
+              <p className="text-xs text-slate-600 italic py-5 text-center">No urgent work queued. Use Call Mode to create fresh momentum.</p>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+                {topMoves.map((r, idx) => (
+                  <div key={r.key} className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <span className="text-[11px] font-black text-slate-600">0{idx + 1}</span>
+                      <span className={`rounded-md border px-2 py-1 text-[10px] font-black ${toneClass[r.tone]}`}>{r.label}</span>
+                    </div>
+                    <button onClick={r.onOpen} className="w-full text-left min-w-0">
+                      <p className="text-sm font-black text-white truncate">{r.title}</p>
+                      {r.subtitle && <p className="text-xs text-slate-500 truncate mt-0.5">{r.subtitle}</p>}
+                      <p className="text-xs text-slate-400 line-clamp-2 mt-2 min-h-[2rem]">{r.detail || 'Open and decide the next action.'}</p>
+                    </button>
+                    <div className="mt-3 flex items-center gap-1.5">
+                      {r.phone && (
+                        <a href={`tel:${r.phone}`} className="h-8 inline-flex items-center rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/15">
+                          Call
+                        </a>
+                      )}
+                      <button onClick={r.onOpen} className="h-8 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 text-xs font-bold text-amber-300 hover:bg-amber-500/15">
+                        Open
+                      </button>
+                      {r.onLog && (
+                        <button onClick={r.onLog} className="h-8 rounded-md border border-slate-700 px-2.5 text-xs font-bold text-slate-400 hover:text-slate-200">
+                          Log
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      )}
+
+        <div className="space-y-3 min-w-0">
+          <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+            <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Relationship Signals</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {alertItems.map(item => (
+                <div key={item.label} className="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2">
+                  <p className={`text-2xl font-black leading-none tabular-nums ${item.tone}`}>{item.value}</p>
+                  <p className="text-[11px] text-slate-500 mt-1">{item.label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={() => onStartCallMode?.('today')} className="h-8 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2.5 text-xs font-bold text-cyan-300 hover:bg-cyan-500/15">
+                Work callbacks
+              </button>
+              <button onClick={onStartCallMode} className="h-8 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 text-xs font-bold text-amber-300 hover:bg-amber-500/15">
+                Start calls
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Watchlist</p>
+              <p className="text-[11px] font-bold text-slate-600">Next 5</p>
+            </div>
+            {signalRows.length === 0 ? (
+              <p className="text-xs text-slate-600 italic py-4 text-center">No secondary signals right now.</p>
+            ) : (
+              <div className="mt-3 divide-y divide-slate-800 border border-slate-800 rounded-lg overflow-hidden">
+                {signalRows.map(r => (
+                  <div key={r.key} className="flex items-center gap-3 bg-slate-950/40 hover:bg-slate-900 px-3 py-2.5">
+                    <span className={`w-20 flex-shrink-0 rounded-md border px-2 py-1 text-[10px] font-black text-center ${toneClass[r.tone]}`}>
+                      {r.label}
+                    </span>
+                    <button onClick={r.onOpen} className="flex-1 min-w-0 text-left">
+                      <p className="text-xs font-bold text-white truncate">{r.title}</p>
+                      <p className="text-xs text-slate-500 truncate mt-0.5">{r.detail}</p>
+                    </button>
+                    {r.onPark && (
+                      <button onClick={r.onPark} className="h-8 rounded-md border border-slate-700 px-2.5 text-xs font-bold text-slate-500 hover:text-emerald-300">
+                        Park
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {actionClient && (
         <ActionCenterModal
@@ -1271,10 +1440,22 @@ export default function Dashboard({
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)] gap-4 items-start">
         <div className="space-y-4 min-w-0">
-          <PriorityWorkQueue
+          <BrokerCommandCenter
             attackRows={attackRows}
             followUpRows={followUpRows}
             attentionRows={attentionRows}
+            today={today}
+            weeklyProduction={weeklyProduction}
+            commissionSummary={commissionSummary}
+            active={active}
+            inContract={inContract}
+            closed={closed}
+            todayCallbacks={todayCallbacks}
+            overdueCallbacks={overdueCallbacks}
+            overdueCount={overdueCount}
+            dueTodayCount={dueTodayCount}
+            completedTodayCount={completedTodayCount}
+            callbacksCreatedToday={callbacksCreatedToday}
             onCallContact={onOpenContact}
             onEditClient={onEditClient}
             onStartCallMode={onStartCallMode}
