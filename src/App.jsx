@@ -18,10 +18,48 @@ import Analyst from './components/Analyst';
 import { PIPELINE_STAGES } from './data/constants';
 import { SearchToolbar, FilterPills, EmptyState, PageHeader, Button } from './components/ui';
 import { downloadCrmBackup } from './lib/crmBackupExport';
+import { buildCommissionSummary, formatMoney } from './lib/dealValue';
 import './index.css';
 
 const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
+
+function PipelineValueHeader({ clients }) {
+  const summary = buildCommissionSummary(clients);
+  const blendedFee = summary.pipelineSaleValue > 0
+    ? (summary.grossPipelineCommission / summary.pipelineSaleValue) * 100
+    : 0;
+  const onMarketFee = summary.onMarketSaleValue > 0
+    ? (summary.grossOnMarketCommission / summary.onMarketSaleValue) * 100
+    : 0;
+
+  return (
+    <div className="hidden lg:grid min-w-[520px] grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] overflow-hidden rounded-xl border border-slate-800 bg-slate-950/70">
+      <div className="border-r border-slate-800 px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-black uppercase tracking-wide text-emerald-300/80">Pipeline Value</p>
+          <span className="text-[10px] font-bold text-slate-500">{summary.pricedPipelineDeals} priced</span>
+        </div>
+        <p className="mt-1 text-lg font-black leading-none text-emerald-300">{formatMoney(summary.grossPipelineCommission) || '$0'}</p>
+        <p className="mt-1 text-[11px] text-slate-500">
+          {formatMoney(summary.pipelineSaleValue, { compact: true }) || '$0'} sale value
+          {blendedFee > 0 ? ` · ${blendedFee.toFixed(2)}% fee` : ''}
+        </p>
+      </div>
+      <div className="px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-black uppercase tracking-wide text-sky-300/80">On-Market Potential</p>
+          <span className="text-[10px] font-bold text-slate-500">{summary.pricedOnMarketDeals} priced</span>
+        </div>
+        <p className="mt-1 text-lg font-black leading-none text-sky-300">{formatMoney(summary.grossOnMarketCommission) || '$0'}</p>
+        <p className="mt-1 text-[11px] text-slate-500">
+          {formatMoney(summary.onMarketSaleValue, { compact: true }) || '$0'} sale value
+          {onMarketFee > 0 ? ` · ${onMarketFee.toFixed(2)}% fee` : ''}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const { clients, dealValueMigrationNeeded, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog } = useCRM();
@@ -295,9 +333,12 @@ export default function App() {
                   ))}
                 </select>
               )}
-              <span className="ml-auto text-xs text-slate-500 hidden sm:block">
-                {visibleClients.length} / {clients.length} clients
-              </span>
+              <div className="ml-auto flex flex-col items-end gap-2">
+                <span className="text-xs text-slate-500 hidden sm:block">
+                  {visibleClients.length} / {clients.length} clients
+                </span>
+                {view === 'Pipeline' && <PipelineValueHeader clients={visibleClients} />}
+              </div>
             </>
           }
         >
