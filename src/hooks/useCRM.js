@@ -6,7 +6,7 @@ import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } f
 function isMissingColumnError(error, columnName) {
   if (!error) return false;
   const text = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`;
-  return text.includes(columnName) || error.code === 'PGRST204' || error.code === '42703';
+  return text.includes(columnName);
 }
 
 function hasDealValueInput(data) {
@@ -145,6 +145,11 @@ export function useCRM() {
       dbRow = withoutMailingAddresses;
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
+    if (error && isMissingColumnError(error, 'action_log')) {
+      const { action_log: _actionLog, ...withoutActionLog } = dbRow;
+      dbRow = withoutActionLog;
+      ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
+    }
     if (error && (isMissingColumnError(error, 'desired_sale_price') || isMissingColumnError(error, 'projected_commission_pct'))) {
       setDealValueMigrationNeeded(true);
       if (hasDealValueInput(data)) {
@@ -181,6 +186,11 @@ export function useCRM() {
     if (error && isMissingColumnError(error, 'mailing_addresses')) {
       const { mailing_addresses: _mailingAddresses, ...withoutMailingAddresses } = dbRow;
       dbRow = withoutMailingAddresses;
+      ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
+    }
+    if (error && isMissingColumnError(error, 'action_log')) {
+      const { action_log: _actionLog, ...withoutActionLog } = dbRow;
+      dbRow = withoutActionLog;
       ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
     }
     if (error && (isMissingColumnError(error, 'desired_sale_price') || isMissingColumnError(error, 'projected_commission_pct'))) {

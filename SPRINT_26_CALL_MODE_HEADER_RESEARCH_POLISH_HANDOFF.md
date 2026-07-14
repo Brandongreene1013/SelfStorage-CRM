@@ -8,7 +8,9 @@ This was intentionally brief and limited to Call Mode layout/research polish.
 
 Touched:
 - `src/components/Database.jsx`
+- `src/hooks/useCRM.js`
 - `src/lib/researchLinks.js`
+- `sql/pipeline_commission_support_migration.sql`
 
 Not touched:
 - Analyst underwriting
@@ -27,6 +29,7 @@ Not touched:
 - Call Mode's collapsed Contact Details drawer now supports additional mailing addresses, not just the primary mailing address.
 - Add Contact modal now supports additional mailing addresses at creation time.
 - Existing Client edit and Contact Detail surfaces already supported additional mailing addresses and remain wired to the same `MailingAddressList` component.
+- Commission-save audit found the live database has the commission columns but is missing adjacent client/contact support columns (`action_log`, `mailing_addresses`, and client ownership link). Added one consolidated repair SQL and tightened the frontend missing-column detector so unrelated missing columns are not mislabeled as the commission migration.
 
 ## 4. Why It Matters
 On a call, Brandon needs the property address and quick owner lookup immediately, without opening the details drawer or switching to the full Research tab. Duplicate ownership is still useful, but it is secondary to knowing who he is calling and where the property is.
@@ -43,6 +46,7 @@ To verify:
 6. Confirm same-owner/also-owns content appears lower, near the bottom of the call card.
 7. Open Contact Details in Call Mode and confirm additional mailing addresses can be added/removed.
 8. Open Add Contact and confirm additional mailing addresses can be entered before saving.
+9. If commission saves still show a migration warning, run `sql/pipeline_commission_support_migration.sql` in Supabase, refresh, and re-test.
 
 ## 6. Follow-Up
 - If Whitepages URL patterns change, update `buildWhitepagesLink()` in `src/lib/researchLinks.js`.
