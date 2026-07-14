@@ -32,6 +32,17 @@ Daily activity email delivery uses either direct Resend email or a webhook:
 - Optional recipient override: `ACTIVITY_REVIEW_EMAIL`
 - Legacy fallback: `ACTIVITY_EMAIL_WEBHOOK_URL`
 
+Setup helper:
+```powershell
+npm run configure:daily-email
+vercel --prod
+```
+
+After deployment, send a safe live test email:
+```powershell
+Invoke-WebRequest -UseBasicParsing "https://self-storage-crm.vercel.app/api/daily-activity?mode=email-test"
+```
+
 ## Start Here
 For any coding session, read these first:
 1. `AGENTS.md`

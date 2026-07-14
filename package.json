@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "backup:db": "node scripts/backup-database.mjs",
     "backup:json": "node scripts/export-supabase-json-backup.mjs",
-    "restore:json": "node scripts/restore-supabase-json-backup.mjs"
+    "restore:json": "node scripts/restore-supabase-json-backup.mjs",
+    "configure:daily-email": "node scripts/configure-daily-email-env.mjs"
   },
   "dependencies": {
     "@azure/msal-browser": "^5.6.1",

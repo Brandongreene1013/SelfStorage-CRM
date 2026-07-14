@@ -34,6 +34,33 @@ export default async function handler(req, res) {
   }
 
   try {
+    if (mode === 'email-test') {
+      const analysis = {
+        activityDate,
+        generatedAt: new Date().toISOString(),
+        counts: {
+          ownersIdentified: 1,
+          uniqueOwnersWorked: 1,
+          totalOwnerActions: 1,
+          conversations: 1,
+          additionsToDatabase: 0,
+          bovProposals: 0,
+          calls: 1,
+          voicemails: 0,
+        },
+        importantItems: [{
+          label: 'Daily Activity Intelligence',
+          type: 'email-test',
+          reason: 'Email delivery test',
+          note: 'If you received this, the nightly debrief email sender is configured correctly.',
+        }],
+        slippedItems: [],
+        evidence: [],
+      };
+      const email = await sendActivityEmail(analysis, 'review');
+      return res.status(200).json({ ok: true, activityDate, email });
+    }
+
     if (mode === 'review-due') {
       if (hourEastern < 17) return res.status(200).json({ ok: true, skipped: true, reason: 'before_5pm_et', activityDate, hourEastern });
       const { data: existing } = await supabase

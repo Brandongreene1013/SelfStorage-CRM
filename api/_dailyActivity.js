@@ -33,6 +33,13 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function activityEmailRecipients() {
+  return String(process.env.ACTIVITY_REVIEW_EMAIL || BRANDON_EMAIL)
+    .split(',')
+    .map(email => email.trim())
+    .filter(Boolean);
+}
+
 function dateFromEntry(entry) {
   return (entry.date || entry.at || entry.createdAt || '').slice(0, 10);
 }
@@ -332,7 +339,7 @@ export function renderActivityEmail(analysis, mode = 'review') {
 
 export async function sendActivityEmail(analysis, mode = 'review') {
   const email = renderActivityEmail(analysis, mode);
-  const to = process.env.ACTIVITY_REVIEW_EMAIL || BRANDON_EMAIL;
+  const to = activityEmailRecipients();
   const resendKey = process.env.RESEND_API_KEY || process.env.ACTIVITY_RESEND_API_KEY;
   const from = process.env.ACTIVITY_EMAIL_FROM || process.env.RESEND_FROM_EMAIL;
 
@@ -399,7 +406,7 @@ export async function sendActivityEmail(analysis, mode = 'review') {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      to,
+      to: to.length === 1 ? to[0] : to,
       mode,
       ...email,
       analysis,
