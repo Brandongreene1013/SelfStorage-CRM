@@ -966,28 +966,26 @@ function DailyProduction({ today, increment, decrement, addValues, setValue, tod
             <span className="text-[11px] font-bold text-emerald-300">Saved</span>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
           {fields.map(([key, label]) => {
             const f = PROGRESS_FIELDS.find(item => item.key === key);
             return (
-            <div key={key} className="bg-slate-950/60 px-2 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-semibold text-slate-500 truncate">{label}</span>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => decrement(key)} className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-600 hover:text-red-300 text-[9px] font-black">-</button>
-                  <button onClick={() => increment(key)} className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-500 hover:text-emerald-300 text-[9px] font-black">+</button>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
+            <div key={key} className="bg-slate-950/60 px-4 py-3">
+              <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 leading-tight">{label}</span>
+              <div className="mt-2 flex items-center justify-between gap-3">
                 <input
                   type="number"
                   min="0"
                   value={today[key] ?? 0}
                   onChange={e => setValue(key, e.target.value)}
                   onFocus={e => e.target.select()}
-                  className={`mt-1 w-full bg-transparent text-xl font-black tabular-nums ${f?.accent ?? 'text-slate-100'} focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                  className={`min-w-0 flex-1 bg-transparent text-3xl font-black leading-none tabular-nums ${f?.accent ?? 'text-slate-100'} focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                   title={`Enter today's ${label}`}
                 />
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => decrement(key)} title={`Subtract one ${label}`} className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 text-slate-600 hover:text-red-300 hover:border-red-500/30 text-xs font-black transition-all">-</button>
+                  <button onClick={() => increment(key)} title={`Add one ${label}`} className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 text-slate-500 hover:text-emerald-300 hover:border-emerald-500/30 text-xs font-black transition-all">+</button>
+                </div>
               </div>
             </div>
           )})}
