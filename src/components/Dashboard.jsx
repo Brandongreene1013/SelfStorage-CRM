@@ -565,6 +565,9 @@ function CommissionCounter({ summary, migrationNeeded, active, inContract, close
   const gross = summary.grossPipelineCommission;
   const saleValue = summary.pipelineSaleValue;
   const avgRate = saleValue > 0 ? (gross / saleValue) * 100 : 0;
+  const onMarketGross = summary.grossOnMarketCommission;
+  const onMarketSaleValue = summary.onMarketSaleValue;
+  const onMarketAvgRate = onMarketSaleValue > 0 ? (onMarketGross / onMarketSaleValue) * 100 : 0;
   const metrics = [
     { label: 'Active Deals', value: active, tone: 'text-emerald-300' },
     { label: 'In Contract', value: inContract, tone: 'text-orange-300' },
@@ -597,6 +600,28 @@ function CommissionCounter({ summary, migrationNeeded, active, inContract, close
             <p className="text-white font-black">{avgRate > 0 ? `${avgRate.toFixed(2)}%` : '--'}</p>
           </div>
         </div>
+      </div>
+      <div className="mt-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold text-sky-200/80 uppercase tracking-wide">On-Market Potential Gross Commission</p>
+            <p className="text-2xl font-black text-sky-300 mt-1 leading-none">{formatMoney(onMarketGross) || '$0'}</p>
+          </div>
+          <span className="text-[11px] font-bold text-sky-200/70 whitespace-nowrap">
+            {summary.pricedOnMarketDeals} priced
+          </span>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <p className="text-slate-500 font-semibold">On-Market Sale Value</p>
+            <p className="text-white font-black">{formatMoney(onMarketSaleValue, { compact: true }) || '$0'}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 font-semibold">Blended Fee</p>
+            <p className="text-white font-black">{onMarketAvgRate > 0 ? `${onMarketAvgRate.toFixed(2)}%` : '--'}</p>
+          </div>
+        </div>
+        <p className="text-[11px] text-slate-500 mt-2">Exclusive Listing and later</p>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
         {metrics.map(m => (
