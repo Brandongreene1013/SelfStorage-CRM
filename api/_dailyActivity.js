@@ -340,8 +340,8 @@ export function renderActivityEmail(analysis, mode = 'review') {
 export async function sendActivityEmail(analysis, mode = 'review') {
   const email = renderActivityEmail(analysis, mode);
   const to = activityEmailRecipients();
-  const resendKey = process.env.RESEND_API_KEY || process.env.ACTIVITY_RESEND_API_KEY;
-  const from = process.env.ACTIVITY_EMAIL_FROM || process.env.RESEND_FROM_EMAIL;
+  const resendKey = String(process.env.RESEND_API_KEY || process.env.ACTIVITY_RESEND_API_KEY || '').trim();
+  const from = String(process.env.ACTIVITY_EMAIL_FROM || process.env.RESEND_FROM_EMAIL || '').trim();
 
   if (resendKey) {
     if (!from) {
