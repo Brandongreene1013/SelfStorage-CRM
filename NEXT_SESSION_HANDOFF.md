@@ -1,60 +1,136 @@
-# Storage Hero CRM — Handoff for Next Chat
+# Storage Hunters CRM — Handoff for Next Chat
 
 You are working in this repo:
+`C:\Users\brand\OneDrive\Desktop\Storage Hunters CRM`
+
+GitHub repo:
 https://github.com/Brandongreene1013/SelfStorage-CRM
 
 Live production app:
 https://self-storage-crm.vercel.app/
 
-Current production/default branch:
-claude/storage-investment-crm-vV018
+Production/default branch:
+`claude/storage-investment-crm-vV018`
 
-Latest commit on that branch: see `git log` — Sprint 7 ("Sprint 7: Add safe QA and call mode polish") is the most recent sprint.
+Latest production commit as of the last synced production check:
+`04e4f5d` — Redesign dashboard command center
 
-Project context:
-Storage Hero is a custom self-storage investment sales CRM / operating system for Brandon Greene at RIPCO. Used daily for sourcing owners, cold calling, logging outcomes, creating follow-ups, promoting owners into pipeline, scheduling meetings, and winning exclusive listings. Not a generic CRM — read `CLAUDE.md` at the repo root before doing anything, it has stack/deployment/convention details that override defaults.
+## Read First
+Before code changes, read:
+1. `AGENTS.md`
+2. `CODEX_ONBOARDING.md`
+3. `CLAUDE.md`
+4. `SPRINT_HANDOFF_INDEX.md`
+5. The most relevant sprint handoff for the requested work.
 
---------------------------------------------------
-SPRINT HISTORY (read the handoff docs at repo root, most recent first)
---------------------------------------------------
+The repo moved far beyond the old Sprint 7 handoff. Do not rely on stale summaries that say Sprint 7 is latest.
 
-- `SPRINT_7_SAFE_QA_CALL_MODE_POLISH_HANDOFF.md` — Safe QA tooling + Call Mode polish. `scripts/qa-seed.mjs` (seed/status/cleanup) creates and safely deletes QA-prefixed test data so Call Mode/tasks/queues can be tested without touching real owners (see `QA_CALL_MODE_TESTING.md`). Call Mode now remembers queue position per queue for the session; the Dashboard command header shows Today's/Overdue callback counts (same shared logic as the picker, via `buildCallbackTaskQueue` in `tasks/taskUtils.js`); picker/queue copy clarified; Dashboard button renamed "Start Call Session".
-- `SPRINT_6_CALL_MODE_QUEUE_PICKER_HANDOFF.md` — Call Mode now opens a queue picker first (Active List / Today's Callbacks / Overdue Callbacks / Follow-Up Needed / All Contacts), each with live counts and a stated reason. Today's/Overdue Callbacks are built from the universal tasks table (taskType `call`, relatedType `contact`), deduped, sorted by due date. Logging an outcome on a task-sourced contact now offers a "Complete existing callback task" checkbox (pre-checked for Conversation/Appt Set/Not Interested/Call Back). Task editing shipped — clicking any task row (Dashboard Tasks panel, RelatedTasks in ClientCard/contact detail/Call Mode sidebar) opens it in edit mode via `taskApi.updateTask`, fixing a real bug where `taskType` edits were silently dropped.
-- `SPRINT_5_DASHBOARD_COMMAND_CENTER_HANDOFF.md` — Dashboard rebuilt into a "Today Command Center": header with today's counts, Today's Attack List (task-driven, ranked overdue→due-today), Pipeline Attention, Needs Follow-Up, one-click "Start Calling".
-- `SPRINT_4_CALL_MODE_HANDOFF.md` — original Call Mode / broker calling workspace inside Database.
-- `SPRINT_3_NEXT_ACTION_CONSOLIDATION_HANDOFF.md` — universal tasks became the single source of truth for "next action" across Dashboard/Clients/Database/Pipeline.
+## Current Project Shape
+Storage Hunters CRM is Brandon Greene's custom self-storage brokerage operating system. It covers owner sourcing, imports, cold calling, Call Mode, follow-up tasks, pipeline management, mailer lists, ownership/property relationship tracking, calendar sync, backups, and AI underwriting.
 
-Post-Sprint-6 fix (commit 297b3cb, not yet in a numbered sprint doc): Needs Follow-Up was nagging about contacts already parked in the Master Database list (e.g. a real contact "Larry Crees" who's lukewarm, not actively worked). Fixed by excluding Master-Database-list contacts from that section's logic, and added a one-click "Move to Master DB" button on each Needs Follow-Up contact row so any similar false positive from an active list can be dismissed without leaving the Dashboard.
+The live UI still says `Storage Hero` in several places. That rename gap is known and should be handled deliberately, not fixed piecemeal during unrelated work.
 
---------------------------------------------------
-KNOWN ISSUES / RECURRING FLAGS — READ BEFORE STARTING NEW WORK
---------------------------------------------------
+## Current Verification Snapshot — 2026-07-14
+Local:
+- `git status --short --branch` clean on `claude/storage-investment-crm-vV018`.
+- Branch synced with `origin/claude/storage-investment-crm-vV018` and `origin/main`.
+- `npm run build` passes.
+- `npm run lint` passes.
+- Vite still warns that the main chunk is larger than 500 kB.
 
-1. **QA seed/cleanup tooling now exists (Sprint 7)** — use `node scripts/qa-seed.mjs seed|status|cleanup` and follow `QA_CALL_MODE_TESTING.md` for any testing that logs outcomes or creates tasks. Never test against real contacts anymore. Note the script writes to the one shared Supabase project (there is no separate QA environment), so QA records are visible in the live app until cleanup runs.
-2. **Queue position now persists per queue within a session (Sprint 7).** A full page reload deliberately resets it. Cross-reload resume (localStorage) remains unbuilt by choice.
-3. **Appt Set outcomes don't create a Calendar meeting** — flagged as a "nice to have if clean" in Sprint 6, not built since it needs real Calendar integration.
-4. Lint baseline sits at 55 problems (46 errors, 9 warnings) — pre-existing categories (API `process` globals, React Compiler hook findings in a few untouched files, unused vars, one empty block in `useOutlookCalendar.js`). Every sprint has confirmed no *new* category was introduced; don't try to "fix the baseline" as a side effect of an unrelated sprint — track lint count explicitly if asked to clean it up.
-5. Local dev: the user (Brandon) often already has his own `npm run dev` running on port 5173. If Claude Code's preview tool can't bind port 5173, temporarily edit `.claude/launch.json`'s `storage-hero-dev` entry to use `--port 5180 --strictPort`, test, then **restore it to port 5173 exactly as it was** before finishing — don't leave that file's port changed in the final diff/commit.
-6. Do not touch without explicit sprint instruction: `api/analyst.js`, `api/_financialModel.js`, `src/data/financialModel.js`, `src/lib/excelModel.js`, `public/model-template.xlsm`, TractIQ OAuth/secrets flow, Supabase service-role key logic.
+Production read-only smoke check:
+- Live URL loads.
+- Dashboard, Pipeline, Clients, Database, Mailers, Analyst, and Calendar all mount.
+- No captured console errors during the tab smoke check.
+- Observed live shell:
+  - Pipeline: `12 / 12` clients.
+  - Database: `931` all contacts and `140` Master Database contacts.
+  - Mailers: existing mailer lists render.
+  - Calendar: July 2026 upcoming events render.
+  - Dashboard top counters showed zero at check time; confirm with Brandon if that conflicts with expected logged activity.
 
---------------------------------------------------
-CONVENTIONS THAT HAVE BEEN FOLLOWED (see CLAUDE.md for full detail)
---------------------------------------------------
+## Latest Sprint Docs
+The handoff collection is now current through Sprint 26:
+- `SPRINT_HANDOFF_INDEX.md`
+- `SPRINT_20_CALL_MODE_INLINE_EDITING_PWA_HANDOFF.md`
+- `SPRINT_21_OWNERSHIP_PANEL_MULTI_PROPERTY_HANDOFF.md`
+- `SPRINT_22_DISTANCE_SORT_AND_CALL_MODE_FIXES_HANDOFF.md`
+- `SPRINT_23_MAILERS_ACTIONS_UI_POLISH_HANDOFF.md`
+- `SPRINT_24_BACKUP_CALL_MODE_DATA_OPS_HANDOFF.md`
+- `SPRINT_25_DASHBOARD_INTELLIGENCE_AND_OWNER_RADAR_HANDOFF.md`
+- `SPRINT_26_CALL_MODE_HEADER_RESEARCH_POLISH_HANDOFF.md` is the current brief in-progress handoff for Call Mode header polish and multiple mailing address exposure.
 
-- Commit messages end with `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` — this is the project's CLAUDE.md standing instruction and has been used even when a sprint brief asked for a different co-author line (e.g. Codex), since CLAUDE.md explicitly says its instructions override.
-- Each sprint gets its own `SPRINT_N_<NAME>_HANDOFF.md` at the repo root, written to be specific (not "improved X") — what changed, why it matters for Brandon's actual brokerage workflow, what wasn't built and why, recommended next sprint.
-- Build + lint are run and reported every sprint; lint failures are expected (baseline), the bar is "no new category."
-- Verification is done live against the real Supabase-backed local dev server (there's no separate QA environment yet — see known issue #1), using the Preview tool's `preview_eval`/`preview_snapshot` to drive the app and confirm real data behaves correctly, followed by manual cleanup of anything mutated.
-- Push only when work is done and verified; production branch (`claude/storage-investment-crm-vV018`) auto-deploys via Vercel on push.
+Older sprint docs from Sprint 1-19 remain at repo root.
 
---------------------------------------------------
-SUGGESTED WAY TO OPEN THE NEXT CHAT
---------------------------------------------------
+## Current Major Systems
+- Dashboard command center:
+  - `src/components/Dashboard.jsx`
+  - `src/hooks/useDailyProgress.js`
+  - `api/daily-activity.js`
+  - `api/_dailyActivity.js`
+- Database / Call Mode:
+  - `src/components/Database.jsx`
+  - `src/hooks/useDatabase.js`
+- Universal task engine:
+  - `src/hooks/useTasks.js`
+  - `src/components/tasks/`
+- Ownership / property workflow:
+  - `src/hooks/useOwnership.js`
+  - `src/components/OwnershipLinksPanel.jsx`
+  - `src/lib/ownerRadar.js`
+- Mailer Lists:
+  - `src/components/MailerLists.jsx`
+  - `src/components/MailerListPicker.jsx`
+  - `src/hooks/useMailerLists.js`
+- Backups / recovery:
+  - `.github/workflows/supabase-backup.yml`
+  - `scripts/export-supabase-json-backup.mjs`
+  - `scripts/restore-supabase-json-backup.mjs`
+  - `docs/BACKUP_AND_RECOVERY.md`
+- Analyst:
+  - `api/analyst.js`
+  - `src/components/Analyst.jsx`
+  - `src/data/financialModel.js`
+  - `api/_financialModel.js`
+  - `src/lib/excelModel.js`
 
-Paste this file's content (or just reference it: "read NEXT_SESSION_HANDOFF.md at the repo root") plus whatever new sprint objective or bug report Brandon has. If it's a fresh feature sprint, the recommended next focus (from Sprint 7's handoff) is, in priority order:
+## Hard Rules / Risk Areas
+- There is no staging environment. Pushes to production/main deploy live.
+- Use guarded QA records for any workflow that mutates Supabase. Clean them up before finishing.
+- Do not touch these unless explicitly asked:
+  - `api/analyst.js`
+  - `api/_financialModel.js`
+  - `src/data/financialModel.js`
+  - `src/lib/excelModel.js`
+  - `public/model-template.xlsm`
+  - TractIQ OAuth / refresh-token logic
+  - `app_secrets`
+  - backup encryption secrets
+- Vercel serverless functions in `/api` cannot reliably import from `../src`; keep copied API/shared logic in sync manually.
+- Schema changes require a `.sql` file under `sql/` and live verification after Brandon runs it in Supabase.
 
-1. Make the Dashboard callback pills clickable deep links straight into their Call Mode queue.
-2. Revisit Appt Set → Calendar meeting creation if a clean integration path exists (deferred since Sprint 6).
-3. Clean up the pre-existing Active-List index clamp in `Database.jsx`'s `handleCallOutcome` (see Sprint 7 handoff §13).
+## Data Safety
+Backups are now a first-class part of the project:
+- Manual in-app Backup button.
+- `npm run backup:json`
+- `npm run restore:json -- <backup.json>` dry run.
+- `npm run restore:json -- <backup.json> --execute` to restore/upsert.
+- GitHub Actions encrypted backup workflow with 90-day artifacts and permanent weekly `crm-backups` branch history.
 
-If it's a bug report or UX complaint instead (like the Needs Follow-Up fix above), treat it the way that one was handled: find the actual root cause in the relevant `build*` function or component, fix it directly, verify live against real data, clean up any test mutations immediately, then commit with a plain-language message (no sprint number needed for a small fix).
+Before risky imports, delete flows, migrations, or mass updates:
+1. Run/download a backup.
+2. Confirm backup artifact exists.
+3. Make the change.
+4. Verify against live Supabase with guarded records.
+
+## Recommended Next Work
+1. Finish the Storage Hero -> Storage Hunters CRM rename intentionally.
+2. Confirm Dashboard daily counters against Brandon's real activity expectations.
+3. Polish Owners / Properties search/filtering and owner radar UX.
+4. Add `lead_source_notes` if source context is needed.
+5. Consider code-splitting the large bundle.
+
+## Opening Prompt Suggestion
+For a future coding session, say:
+
+`Read AGENTS.md, CODEX_ONBOARDING.md, CLAUDE.md, NEXT_SESSION_HANDOFF.md, and SPRINT_HANDOFF_INDEX.md, then work from the relevant sprint handoff for this task.`

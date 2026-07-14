@@ -1,16 +1,82 @@
-# React + Vite
+# Storage Hunters CRM
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Custom CRM and deal-analysis operating system for Brandon Greene, a self-storage investment sales broker at Ripco Real Estate Corp.
 
-Currently, two official plugins are available:
+The app supports owner sourcing, list imports, cold calling, Call Mode, follow-up tasks, pipeline management, ownership/property relationship tracking, mailer lists, calendar sync, daily production tracking, backup/recovery, and AI underwriting.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Production
+- Live app: https://self-storage-crm.vercel.app/
+- GitHub repo: https://github.com/Brandongreene1013/SelfStorage-CRM
+- Production branch: `claude/storage-investment-crm-vV018`
+- Deployment: Vercel, auto-deploys from production branch / `main`
 
-## React Compiler
+There is no staging environment. Do not push until build/lint and relevant live checks are done.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Stack
+- React 19
+- Vite
+- Tailwind 4
+- Supabase
+- Vercel serverless functions in `/api`
+- Anthropic Messages API for the Analyst
 
-## Expanding the ESLint configuration
+## Start Here
+For any coding session, read these first:
+1. `AGENTS.md`
+2. `CODEX_ONBOARDING.md`
+3. `CLAUDE.md`
+4. `NEXT_SESSION_HANDOFF.md`
+5. `SPRINT_HANDOFF_INDEX.md`
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+The sprint handoff index is the current map of project history. Older summaries that stop at Sprint 7 or Sprint 2 are stale.
+
+## Local Development
+```powershell
+npm install
+npm run dev
+```
+
+Vite runs the frontend only. For full local API behavior, use Vercel dev with the required production env vars.
+
+## Verification
+```powershell
+npm run build
+npm run lint
+```
+
+Current known build status as of 2026-07-14:
+- Build passes.
+- Lint passes.
+- Vite still warns that the main bundle is larger than 500 kB.
+
+## Protected Areas
+Do not touch these without an explicit task:
+- `api/analyst.js`
+- `api/_financialModel.js`
+- `src/data/financialModel.js`
+- `src/lib/excelModel.js`
+- `public/model-template.xlsm`
+- TractIQ OAuth / refresh-token flow
+- `app_secrets`
+- backup encryption secrets
+
+## Data Safety
+CRM data lives in Supabase and is business-critical.
+
+Backup tools:
+```powershell
+npm run backup:json
+npm run restore:json -- <backup.json>
+npm run restore:json -- <backup.json> --execute
+```
+
+See `docs/BACKUP_AND_RECOVERY.md` and `docs/DATA_SAFETY_CHECKLIST.md`.
+
+## Current Documentation Map
+- `NEXT_SESSION_HANDOFF.md` — current short handoff for the next chat.
+- `SPRINT_HANDOFF_INDEX.md` — complete sprint history map.
+- `SPRINT_1...SPRINT_25...` — individual sprint handoffs.
+- `sql/` — migrations Brandon must run manually in Supabase when schema changes are needed.
+
+## Branding Note
+The product is mid-rename from `Storage Hero` to `Storage Hunters CRM`. Some live UI and code strings still say `Storage Hero`; handle that as a deliberate rename sprint, not incidental cleanup.

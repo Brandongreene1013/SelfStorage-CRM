@@ -170,10 +170,9 @@ const supabase = createClient('<url from src/lib/supabase.js>', '<anon key>');
 - Commit messages end with `Co-Authored-By: <your model name> <noreply@anthropic.com>`
   (match whatever convention the rest of the log uses — check `git log`).
 - Before committing, run `npm run build` (must pass clean) and `npm run lint`
-  — compare against the current baseline (currently 58 problems / 49 errors,
-  9 warnings; this baseline drifts as work lands, so re-check it fresh rather
-  than trusting this document's number) and don't introduce new lint errors,
-  but don't waste time fixing unrelated pre-existing ones either.
+  — as of 2026-07-14 lint passes cleanly in the current checkout. Re-check it
+  fresh rather than trusting old sprint docs that mention a failing baseline,
+  and don't introduce new lint errors.
 - No AI "model training" happens anywhere in this project — "teaching the
   Analyst" always means editing `api/analyst.js`'s system prompt/code, never
   fine-tuning a model.
@@ -197,10 +196,19 @@ re-litigate or accidentally redo.
 ## What to do first
 1. Read `CLAUDE.md` (repo root) — the canonical, actively-maintained project
    context file.
-2. Read `SPRINT_1_UI_SYSTEM_HANDOFF.md` and `SPRINT_2_TASK_ENGINE_HANDOFF.md`
-   in full.
-3. Run `git log --oneline -30` — don't assume this document is exhaustive;
+2. Read `NEXT_SESSION_HANDOFF.md` and `SPRINT_HANDOFF_INDEX.md` for the current
+   production status and the full sprint documentation map.
+3. For task-specific work, read the most relevant sprint handoff(s), especially
+   the newest files if the work touches Dashboard, Database, Call Mode,
+   Mailers, ownership/property workflows, backups, or daily activity.
+4. Run `git log --oneline -30` — don't assume this document is exhaustive;
    the repo moves fast and sometimes gets touched by parallel sessions.
-4. Ask Brandon what he wants to prioritize next rather than assuming a
+5. Ask Brandon what he wants to prioritize next rather than assuming a
    roadmap — both prior sprint handoffs include "recommended next steps"
    sections, but those are engineering suggestions, not committed plans.
+
+## Current documentation note (2026-07-14)
+This onboarding file still preserves early Sprint 1/2 context because those
+design decisions matter, but the current project is documented through Sprint
+25. Use `SPRINT_HANDOFF_INDEX.md` and `NEXT_SESSION_HANDOFF.md` as the current
+map before relying on older "recent history" sections.

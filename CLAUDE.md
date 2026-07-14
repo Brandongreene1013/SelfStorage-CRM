@@ -36,3 +36,8 @@ Run `node scripts/tractiq-auth.mjs` (one-time browser OAuth), then seed `tractiq
 
 ## Local dev
 - `npm install` then `npm run dev` (frontend only; `/api` functions don't run under Vite). For full local API, use `vercel dev` with the env vars above. Most iteration: edit → push → Vercel builds.
+
+## Current handoff map
+- `NEXT_SESSION_HANDOFF.md` is the short current-state handoff for the next chat.
+- `SPRINT_HANDOFF_INDEX.md` is the sprint documentation map through the latest documented production work.
+- Individual `SPRINT_*_HANDOFF.md` files explain what changed, what was verified, what remains risky, and what should not be touched casually.

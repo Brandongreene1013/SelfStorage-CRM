@@ -4,7 +4,7 @@ import ImportListModal from './ImportListModal';
 import DuplicateReview from './DuplicateReview';
 import { findDuplicateGroups } from '../lib/duplicateReview';
 import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
-import { normalizeLinkedinUrl } from '../lib/researchLinks';
+import { buildWhitepagesLink, normalizeLinkedinUrl } from '../lib/researchLinks';
 import { findSameOwnerMatches } from '../lib/ownerRadar';
 import { keepScore } from '../lib/duplicateReview';
 import { LastActionLine } from './ActionLog';
@@ -1724,11 +1724,11 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
 // ─── Add Contact Modal ────────────────────────────────────────────────────────
 function AddContactModal({ listName, onSave, onClose }) {
   const [form, setForm] = useState({
-    ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', mailingAddress: '', state: '', notes: '',
+    ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', mailingAddress: '', mailingAddresses: [], state: '', notes: '',
   });
 
   function set(key, val) { setForm(prev => ({ ...prev, [key]: val })); }
-  const blankForm = { ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', mailingAddress: '', state: '', notes: '' };
+  const blankForm = { ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', mailingAddress: '', mailingAddresses: [], state: '', notes: '' };
 
   function handleSave() {
     if (!form.ownerName.trim() && !form.facilityName.trim()) return;
@@ -1778,6 +1778,16 @@ function AddContactModal({ listName, onSave, onClose }) {
               />
             </div>
           ))}
+
+          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Additional Mailing Addresses</p>
+            <MailingAddressList
+              addresses={form.mailingAddresses}
+              onChange={(rows) => set('mailingAddresses', rows)}
+              inputClassName="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+              compact
+            />
+          </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Relationship Type</label>
@@ -3251,6 +3261,56 @@ function HeaderInlineField({ value, placeholder, onSave, textClassName, inputCla
 // Sprint 20 — full contact editing without leaving Call Mode. Reuses the same
 // editors as ContactDetailModal (EditableField, relationship/lead-source
 // selects, OwnershipLinksPanel) so behavior stays identical in both surfaces.
+function CallModePropertySubheader({ contact }) {
+  const [copied, setCopied] = useState(false);
+  const address = (contact.address ?? '').trim();
+  const whitepages = buildWhitepagesLink(contact);
+  if (!address && !whitepages) return null;
+
+  async function copyAddress() {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+      {address && (
+        <p className="min-w-0 flex-1 text-slate-300 font-semibold leading-snug select-text">
+          {address}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-1.5 flex-shrink-0">
+        {address && (
+          <button
+            type="button"
+            onClick={copyAddress}
+            className="text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 transition-all"
+          >
+            {copied ? 'Copied' : 'Copy Address'}
+          </button>
+        )}
+        {whitepages && (
+          <a
+            href={whitepages.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={whitepages.title}
+            className="text-xs font-bold bg-slate-700/70 hover:bg-slate-700 border border-slate-600 text-slate-200 rounded-lg px-2.5 py-1.5 transition-all"
+          >
+            Whitepages
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerApi }) {
   function field(key) {
     return (val) => onUpdateContact?.(contact.id, { [key]: val });
@@ -3535,6 +3595,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 textClassName="text-base text-slate-400"
                 inputClassName="text-base text-slate-200 mt-1"
               />
+              <CallModePropertySubheader contact={current} />
               {current.queueReason && (
                 <p className="text-xs text-amber-400/80 mt-1.5 font-semibold">Why they're up: {current.queueReason}</p>
               )}
@@ -3554,25 +3615,6 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               onSave={(phone) => onUpdateContact?.(current.id, { phone })}
             />
           </div>
-
-          {/* Same-owner radar — always visible so multi-property owners jump
-              out mid-call without opening Edit Details. */}
-          <SameOwnerRadar
-            contact={current}
-            allContacts={allContacts}
-            lists={lists}
-            onMerge={onMergeSameOwner}
-          />
-          {(current.ownedProperties?.length ?? 0) > 0 && !showDetails && (
-            <div className="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-2.5">
-              <p className="text-xs text-slate-500 uppercase font-semibold mb-1">🏢 Also owns</p>
-              {current.ownedProperties.map((p, i) => (
-                <p key={i} className="text-sm text-slate-300 truncate">
-                  {p.facilityName || 'Unnamed facility'}{p.address ? ` — ${p.address}` : ''}
-                </p>
-              ))}
-            </div>
-          )}
 
           {showDetails && (
             <CallModeDetailsPanel
@@ -3638,6 +3680,17 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                     />
                   ) : null}
                 />
+                <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-slate-400 uppercase mb-2">Additional Mailing Addresses</p>
+                  <MailingAddressList
+                    addresses={current.mailingAddresses}
+                    onChange={(rows) => onUpdateContact?.(current.id, { mailingAddresses: rows })}
+                    mailerApi={mailerApi}
+                    member={{ type: 'contact', id: current.id, name: current.ownerName || current.facilityName || 'Unknown' }}
+                    inputClassName="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                    compact
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -3654,6 +3707,25 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               placeholder="What did they say? Motivation, objections, timing, pricing expectations..."
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 resize-none"
             />
+          </div>
+
+          <div className="space-y-3">
+            <SameOwnerRadar
+              contact={current}
+              allContacts={allContacts}
+              lists={lists}
+              onMerge={onMergeSameOwner}
+            />
+            {(current.ownedProperties?.length ?? 0) > 0 && !showDetails && (
+              <div className="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-2.5">
+                <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Also owns</p>
+                {current.ownedProperties.map((p, i) => (
+                  <p key={i} className="text-sm text-slate-300 truncate">
+                    {p.facilityName || 'Unnamed facility'}{p.address ? ` - ${p.address}` : ''}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4">

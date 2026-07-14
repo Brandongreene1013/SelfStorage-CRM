@@ -35,10 +35,24 @@ export function normalizeLinkedinUrl(value) {
   return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
 }
 
-// "Carrollton, TX" out of market/address/state fields, best-effort.
+function addressCityState(address) {
+  const parts = (address ?? '').split(',').map(p => p.trim()).filter(Boolean);
+  if (parts.length < 2) return { city: '', state: '' };
+
+  const last = parts[parts.length - 1];
+  const city = parts.length >= 3 ? parts[parts.length - 2] : '';
+  const stateMatch = last.match(/\b([A-Z]{2})\b/i);
+  return {
+    city,
+    state: stateMatch ? stateMatch[1].toUpperCase() : '',
+  };
+}
+
+// "Carrollton, TX" out of address/market/state fields, best-effort.
 function cityState(contact) {
-  const state = (contact.state ?? '').trim();
-  let city = (contact.city ?? '').trim();
+  const fromAddress = addressCityState(contact.address);
+  const state = (fromAddress.state || contact.state || '').trim();
+  let city = (contact.city || fromAddress.city || '').trim();
   if (!city && contact.market?.includes(',')) city = contact.market.split(',')[0].trim();
   return { city, state };
 }
@@ -61,6 +75,13 @@ function whitepagesUrl(contact, city, state) {
     contact.phone ?? '',
   ].filter(Boolean).join(' ');
   return bits === 'site:whitepages.com' ? null : g(bits);
+}
+
+export function buildWhitepagesLink(contact) {
+  if (!contact) return null;
+  const { city, state } = cityState(contact);
+  const href = whitepagesUrl(contact, city, state);
+  return href ? { key: 'whitepages', label: 'Whitepages', href, title: 'Whitepages people search' } : null;
 }
 
 // Returns [{ key, label, href, title }] — only links there's enough data for.
@@ -109,8 +130,8 @@ export function buildResearchLinks(contact) {
     });
   }
 
-  const wp = whitepagesUrl(contact, city, state);
-  if (wp) links.push({ key: 'whitepages', label: 'Whitepages', href: wp, title: 'Whitepages people search' });
+  const wp = buildWhitepagesLink(contact);
+  if (wp) links.push(wp);
   else if (phone) links.push({ key: 'whitepages', label: 'Whitepages', href: g(`site:whitepages.com ${phone}`), title: 'Whitepages by phone' });
 
   const savedLinkedin = normalizeLinkedinUrl(contact.linkedinUrl);
