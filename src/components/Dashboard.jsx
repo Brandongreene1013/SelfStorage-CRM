@@ -7,7 +7,7 @@ import ActionCenterModal from './ActionCenterModal';
 import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 import { buildCommissionSummary, formatMoney } from '../lib/dealValue';
 import { normalizeDisplayText, normalizeMeetingText } from '../lib/textNormalize';
-import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState } from './ui';
+import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState, ModalLayout } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -706,22 +706,42 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
 }
 
 // â”€â”€â”€ Weekly Production Scorecard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function WeeklyProductionScorecard({ data }) {
+function WeeklyProductionScorecard({ data, completedTodayCount, callbacksCreatedToday }) {
   const monday = new Date();
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
   const weekLabel = `${monday.toLocaleDateString('default', { month: 'short', day: 'numeric' })} - Today`;
+  const fields = [
+    ['calls', 'Calls'],
+    ['conversations', 'Conversations'],
+    ['voicemails', 'Voicemails'],
+    ['ownersIdentified', 'Owners Identified'],
+    ['additionsToDatabase', 'Database Adds'],
+    ['bovProposals', 'BOVs Sent'],
+    ['uniqueOwnersWorked', 'Owners Worked'],
+    ['totalOwnerActions', 'Actions Logged'],
+  ];
+  const systemStats = [
+    ['Tasks Completed', completedTodayCount],
+    ['Callbacks Created', callbacksCreatedToday],
+  ];
 
   return (
     <SectionCard
       title="Weekly Production"
       subtitle={weekLabel}
-      className="p-4"
-      bodyClassName="grid grid-cols-2 md:grid-cols-4 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800"
+      className="p-3"
+      bodyClassName="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800"
     >
-      {PROGRESS_FIELDS.map(f => (
-        <div key={f.key} className="bg-slate-950/60 px-3 py-2.5 min-w-0">
-          <p className={`text-2xl font-black leading-none tabular-nums ${f.accent}`}>{data[f.key] ?? 0}</p>
-          <p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">{f.shortLabel || f.label}</p>
+      {fields.map(([key, label]) => (
+        <div key={key} className="bg-slate-950/60 px-3 py-2 min-w-0">
+          <p className="text-lg font-black leading-none tabular-nums text-slate-100">{data[key] ?? 0}</p>
+          <p className="text-[10px] font-semibold text-slate-500 mt-1 truncate">{label}</p>
+        </div>
+      ))}
+      {systemStats.map(([label, value]) => (
+        <div key={label} className="bg-slate-950/60 px-3 py-2 min-w-0">
+          <p className="text-lg font-black leading-none tabular-nums text-slate-100">{value ?? 0}</p>
+          <p className="text-[10px] font-semibold text-slate-500 mt-1 truncate">{label}</p>
         </div>
       ))}
     </SectionCard>
@@ -810,15 +830,19 @@ function QuickCallLogger({ onLog }) {
     ownersIdentified: '',
     additionsToDatabase: '',
     bovProposals: '',
+    uniqueOwnersWorked: '',
+    totalOwnerActions: '',
   });
 
   const fields = [
     ['calls', 'Calls'],
-    ['voicemails', 'Voicemails'],
     ['conversations', 'Conversations'],
-    ['ownersIdentified', 'Owners ID'],
+    ['voicemails', 'Voicemails'],
     ['additionsToDatabase', 'DB Adds'],
-    ['bovProposals', 'BOVs'],
+    ['ownersIdentified', 'Owners ID'],
+    ['bovProposals', 'BOVs Sent'],
+    ['uniqueOwnersWorked', 'Owners Worked'],
+    ['totalOwnerActions', 'Actions'],
   ];
   const hasValue = Object.values(draft).some(v => Number(v) > 0);
   const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm font-black text-slate-100 tabular-nums focus:outline-none focus:border-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
@@ -832,7 +856,16 @@ function QuickCallLogger({ onLog }) {
     onLog(Object.fromEntries(
       Object.entries(draft).map(([key, value]) => [key, Math.max(0, Math.floor(Number(value) || 0))])
     ));
-    setDraft({ calls: '', voicemails: '', conversations: '', ownersIdentified: '', additionsToDatabase: '', bovProposals: '' });
+    setDraft({
+      calls: '',
+      voicemails: '',
+      conversations: '',
+      ownersIdentified: '',
+      additionsToDatabase: '',
+      bovProposals: '',
+      uniqueOwnersWorked: '',
+      totalOwnerActions: '',
+    });
   }
 
   return (
@@ -851,7 +884,7 @@ function QuickCallLogger({ onLog }) {
           Add Batch
         </button>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {fields.map(([key, label]) => (
           <label key={key} className="block">
             <span className="block text-[11px] font-semibold text-slate-500 mb-1">{label}</span>
@@ -871,17 +904,53 @@ function QuickCallLogger({ onLog }) {
   );
 }
 
+function ManualActivityModal({ onLog, onClose }) {
+  return (
+    <ModalLayout onClose={onClose} size="lg">
+      <div className="flex items-center justify-between p-5 border-b border-slate-800">
+        <div>
+          <h2 className="text-base font-black text-white">Manual Activity Logger</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Record work that happened outside Call Mode.</p>
+        </div>
+        <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">x</button>
+      </div>
+      <div className="p-5">
+        <QuickCallLogger
+          onLog={(values) => {
+            onLog(values);
+            onClose();
+          }}
+        />
+      </div>
+    </ModalLayout>
+  );
+}
+
 function DailyProduction({ today, increment, decrement, addValues, setValue, todayLabel, completedTodayCount, callbacksCreatedToday, migrationNeeded }) {
+  const [showLogger, setShowLogger] = useState(false);
+  const fields = [
+    ['calls', 'Calls'],
+    ['conversations', 'Conversations'],
+    ['voicemails', 'Voicemails'],
+    ['additionsToDatabase', 'DB Adds'],
+    ['ownersIdentified', 'Owners ID'],
+    ['bovProposals', 'BOVs'],
+    ['uniqueOwnersWorked', 'Owners Worked'],
+    ['totalOwnerActions', 'Actions'],
+  ];
+
   return (
     <SectionCard
       title="Daily Activity"
       subtitle={`${todayLabel} · autosaved`}
       className="p-4"
       actions={
-        <div className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-          <span className="text-[11px] font-bold text-emerald-300">Saved</span>
-        </div>
+        <button
+          onClick={() => setShowLogger(true)}
+          className="h-8 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-black text-amber-300 hover:bg-amber-500/15 transition-all"
+        >
+          Manual Activity Logger
+        </button>
       }
     >
       <div className="space-y-3">
@@ -890,26 +959,38 @@ function DailyProduction({ today, increment, decrement, addValues, setValue, tod
             Run <code>sql/daily_progress_scorecard_migration.sql</code> in Supabase, then refresh to save all scorecard fields.
           </p>
         )}
-        <QuickCallLogger onLog={addValues} />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {PROGRESS_FIELDS.map(f => (
-            <div key={f.key} className="bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
-              <span className={`text-xs font-semibold ${f.accent}`}>{f.shortLabel || f.label}</span>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+          <p className="text-xs text-slate-500">What work have I completed today?</p>
+          <div className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span className="text-[11px] font-bold text-emerald-300">Saved</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
+          {fields.map(([key, label]) => {
+            const f = PROGRESS_FIELDS.find(item => item.key === key);
+            return (
+            <div key={key} className="bg-slate-950/60 px-2 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-semibold text-slate-500 truncate">{label}</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => decrement(key)} className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-600 hover:text-red-300 text-[9px] font-black">-</button>
+                  <button onClick={() => increment(key)} className="w-4 h-4 rounded bg-slate-900 border border-slate-800 text-slate-500 hover:text-emerald-300 text-[9px] font-black">+</button>
+                </div>
+              </div>
               <div className="flex items-center gap-1.5">
-                <button onClick={() => decrement(f.key)} className="w-6 h-6 rounded-md bg-slate-900 border border-slate-700 text-slate-500 hover:text-red-300 hover:border-red-700 text-xs font-black">-</button>
                 <input
                   type="number"
                   min="0"
-                  value={today[f.key] ?? 0}
-                  onChange={e => setValue(f.key, e.target.value)}
+                  value={today[key] ?? 0}
+                  onChange={e => setValue(key, e.target.value)}
                   onFocus={e => e.target.select()}
-                  className={`w-14 bg-slate-900 border border-slate-700 rounded-md py-1 text-center text-sm font-black tabular-nums ${f.accent} focus:outline-none focus:border-current [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                  title={`Enter today's ${f.shortLabel ?? f.label}`}
+                  className={`mt-1 w-full bg-transparent text-xl font-black tabular-nums ${f?.accent ?? 'text-slate-100'} focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                  title={`Enter today's ${label}`}
                 />
-                <button onClick={() => increment(f.key)} className="w-6 h-6 rounded-md bg-slate-900 border border-slate-700 text-slate-400 hover:text-emerald-300 hover:border-emerald-700 text-xs font-black">+</button>
               </div>
             </div>
-          ))}
+          )})}
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div className="bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2">
@@ -921,6 +1002,7 @@ function DailyProduction({ today, increment, decrement, addValues, setValue, tod
             <p className="text-[11px] text-slate-600 mt-1">Callbacks created</p>
           </div>
         </div>
+        {showLogger && <ManualActivityModal onLog={addValues} onClose={() => setShowLogger(false)} />}
       </div>
     </SectionCard>
   );
@@ -1259,11 +1341,19 @@ function DashboardTasks({ taskApi }) {
   const [showFullModal, setShowFullModal] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [filter, setFilter] = useState('open');
 
   if (!taskApi) return null;
   const { loading, migrationNeeded, groups, createTask, completeTask, deleteTask } = taskApi;
   const { overdue, dueToday, upcoming, noDueDate, completedToday } = groups;
   const totalOpen = overdue.length + dueToday.length + upcoming.length + noDueDate.length;
+  const filters = [
+    ['open', 'Open', totalOpen],
+    ['overdue', 'Overdue', overdue.length],
+    ['today', 'Today', dueToday.length],
+    ['upcoming', 'Upcoming', upcoming.length],
+    ['completed', 'Done', completedToday.length],
+  ];
 
   async function quickAdd() {
     const title = quickTitle.trim();
@@ -1272,14 +1362,29 @@ function DashboardTasks({ taskApi }) {
     await createTask({ title, taskType: 'general', dueDate: new Date().toISOString().slice(0, 10), source: 'dashboard' });
   }
 
-  function group(label, items, tone) {
+  function visibleGroups() {
+    if (filter === 'overdue') return [['Overdue', overdue, 'text-red-400']];
+    if (filter === 'today') return [['Due Today', dueToday, 'text-amber-400']];
+    if (filter === 'upcoming') return [['Upcoming', upcoming, 'text-slate-400'], ['No Due Date', noDueDate, 'text-slate-500']];
+    if (filter === 'completed') return [['Recently Completed', completedToday, 'text-emerald-400']];
+    return [
+      ['Overdue', overdue, 'text-red-400'],
+      ['Due Today', dueToday, 'text-amber-400'],
+      ['Upcoming', upcoming, 'text-slate-400'],
+      ['No Due Date', noDueDate, 'text-slate-500'],
+    ];
+  }
+
+  function group(label, items, tone, completed = false) {
     if (items.length === 0) return null;
     return (
       <div>
         <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${tone}`}>{label} ({items.length})</p>
         <div className="space-y-1.5">
           {items.map(t => (
-            <TaskRow key={t.id} task={t} onComplete={completeTask} onDelete={deleteTask} onEdit={setEditingTask} />
+            completed
+              ? <div key={t.id} className="text-xs text-slate-500 line-through px-3 py-1">{t.title}</div>
+              : <TaskRow key={t.id} task={t} onComplete={completeTask} onDelete={deleteTask} onEdit={setEditingTask} />
           ))}
         </div>
       </div>
@@ -1292,8 +1397,8 @@ function DashboardTasks({ taskApi }) {
       subtitle={`${totalOpen} open`}
       actions={
         <button onClick={() => setShowFullModal(true)}
-          className="text-xs text-slate-500 hover:text-amber-400 transition-colors font-semibold">
-          + Full Task
+          className="h-8 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-black text-amber-300 hover:bg-amber-500/15 transition-all">
+          Add Task
         </button>
       }
       bodyClassName="space-y-3"
@@ -1324,20 +1429,31 @@ function DashboardTasks({ taskApi }) {
         </button>
       </div>
 
+      <div className="flex flex-wrap gap-1 rounded-lg bg-slate-950/60 border border-slate-800 p-1">
+        {filters.map(([key, label, count]) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-all ${
+              filter === key ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            {label} <span className="text-slate-600">{count}</span>
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <LoadingSkeleton rows={3} />
-      ) : totalOpen === 0 ? (
+      ) : totalOpen === 0 && filter !== 'completed' ? (
         <EmptyState icon="Done" message="Nothing open. You're caught up." />
       ) : (
         <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-          {group('Overdue', overdue, 'text-red-400')}
-          {group('Due Today', dueToday, 'text-amber-400')}
-          {group('Upcoming', upcoming, 'text-slate-400')}
-          {group('No Due Date', noDueDate, 'text-slate-500')}
+          {visibleGroups().map(([label, items, tone]) => group(label, items, tone, filter === 'completed'))}
         </div>
       )}
 
-      {completedToday.length > 0 && (
+      {filter !== 'completed' && completedToday.length > 0 && (
         <div>
           <button onClick={() => setShowCompleted(v => !v)}
             className="text-xs text-slate-600 hover:text-slate-400 transition-colors font-semibold">
@@ -1437,18 +1553,14 @@ export default function Dashboard({
 
   const overdueCount = taskApi?.groups?.overdue?.length ?? 0;
   const dueTodayCount = taskApi?.groups?.dueToday?.length ?? 0;
-  const bovsDueCount = useMemo(() => {
-    const { overdue = [], dueToday = [] } = taskApi?.groups ?? {};
-    return [...overdue, ...dueToday].filter(t => t.taskType === 'bov').length;
-  }, [taskApi]);
-  // Callback counts (Sprint 7) â€” identical logic to Call Mode's Today's /
+  // Callback counts (Sprint 7) - identical logic to Call Mode's Today's /
   // Overdue Callbacks queues (open call tasks on contacts, deduped), via the
   // shared builder in tasks/taskUtils.js.
   const todayCallbacks = useMemo(() =>
     buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }).length, [contacts, taskApi]);
   const overdueCallbacks = useMemo(() =>
     buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }).length, [contacts, taskApi]);
-  // Sprint 17 â€” Dashboard "Upcoming" is bounded to the next 30 days so a
+  // Sprint 17 - Dashboard "Upcoming" is bounded to the next 30 days so a
   // callback parked months out doesn't inflate today's attention numbers.
   // The Database queue this card routes into uses the same 30-day window.
   const completedTodayCount = taskApi?.groups?.completedToday?.length ?? 0;
@@ -1461,54 +1573,26 @@ export default function Dashboard({
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4">
-      <CommandHeader
-        today={today}
-        overdueCount={overdueCount}
-        dueTodayCount={dueTodayCount}
-        bovsDueCount={bovsDueCount}
-        todayCallbacks={todayCallbacks}
-        overdueCallbacks={overdueCallbacks}
-        onStartCallMode={onStartCallMode}
+      <WeeklyProductionScorecard
+        data={weeklyProduction}
+        completedTodayCount={completedTodayCount}
+        callbacksCreatedToday={callbacksCreatedToday}
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)] gap-4 items-start">
-        <div className="space-y-4 min-w-0">
-          <BrokerCommandCenter
-            attackRows={attackRows}
-            followUpRows={followUpRows}
-            attentionRows={attentionRows}
-            today={today}
-            weeklyProduction={weeklyProduction}
-            active={active}
-            inContract={inContract}
-            closed={closed}
-            todayCallbacks={todayCallbacks}
-            overdueCallbacks={overdueCallbacks}
-            overdueCount={overdueCount}
-            dueTodayCount={dueTodayCount}
-            completedTodayCount={completedTodayCount}
-            callbacksCreatedToday={callbacksCreatedToday}
-            onCallContact={onOpenContact}
-            onEditClient={onEditClient}
-            onStartCallMode={onStartCallMode}
-            onMoveToMasterDB={onMoveToMasterDB}
-            onLogClientAction={onLogClientAction}
-            onDeleteClientAction={onDeleteClientAction}
-            taskApi={taskApi}
-          />
-          <DailyProduction
-            today={today}
-            increment={increment}
-            decrement={decrement}
-            addValues={addValues}
-            setValue={setValue}
-            todayLabel={todayLabel}
-            completedTodayCount={completedTodayCount}
-            callbacksCreatedToday={callbacksCreatedToday}
-            migrationNeeded={migrationNeeded}
-          />
-          <WeeklyProductionScorecard data={weeklyProduction} />
-        </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(300px,0.9fr)_minmax(360px,1.1fr)_minmax(320px,0.8fr)] gap-4 items-start">
+        <DailyProduction
+          today={today}
+          increment={increment}
+          decrement={decrement}
+          addValues={addValues}
+          setValue={setValue}
+          todayLabel={todayLabel}
+          completedTodayCount={completedTodayCount}
+          callbacksCreatedToday={callbacksCreatedToday}
+          migrationNeeded={migrationNeeded}
+        />
+
+        <DashboardTasks taskApi={taskApi} />
 
         <div className="space-y-4 min-w-0">
           <UpcomingMeetingsWidget
@@ -1516,8 +1600,6 @@ export default function Dashboard({
             clients={clients}
             onNavigate={onNavigateCalendar}
           />
-          <DashboardTasks taskApi={taskApi} />
-          <DailyActivityIntelligenceReview />
           {review && (
             <NeedsReview
               items={review.items}
@@ -1529,6 +1611,32 @@ export default function Dashboard({
           )}
         </div>
       </div>
+
+      <BrokerCommandCenter
+        attackRows={attackRows}
+        followUpRows={followUpRows}
+        attentionRows={attentionRows}
+        today={today}
+        weeklyProduction={weeklyProduction}
+        active={active}
+        inContract={inContract}
+        closed={closed}
+        todayCallbacks={todayCallbacks}
+        overdueCallbacks={overdueCallbacks}
+        overdueCount={overdueCount}
+        dueTodayCount={dueTodayCount}
+        completedTodayCount={completedTodayCount}
+        callbacksCreatedToday={callbacksCreatedToday}
+        onCallContact={onOpenContact}
+        onEditClient={onEditClient}
+        onStartCallMode={onStartCallMode}
+        onMoveToMasterDB={onMoveToMasterDB}
+        onLogClientAction={onLogClientAction}
+        onDeleteClientAction={onDeleteClientAction}
+        taskApi={taskApi}
+      />
+
+      <DailyActivityIntelligenceReview />
 
       <div className="pt-4" data-dashboard-financial-section>
         <CommissionCounter
