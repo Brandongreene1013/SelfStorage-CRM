@@ -57,6 +57,7 @@ This file is the map for future Codex/Claude sessions. Read `AGENTS.md`, `CODEX_
 - Any schema change needs a SQL file in `sql/` and live verification after Brandon runs it.
 - The live app still says `Storage Hero`; the Storage Hunters CRM rename is intentionally still incomplete.
 - The bundle still emits Vite's large chunk warning; code-splitting has not been done.
+- Daily Activity email delivery requires Vercel email config: preferred `RESEND_API_KEY` + `ACTIVITY_EMAIL_FROM`, optional `ACTIVITY_REVIEW_EMAIL`, or legacy `ACTIVITY_EMAIL_WEBHOOK_URL`.
 
 ## Recommended Next Work
 1. Finish the Storage Hero -> Storage Hunters CRM rename as a deliberate branding sprint.

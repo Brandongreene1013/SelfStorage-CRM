@@ -312,14 +312,14 @@ export function renderActivityEmail(analysis, mode = 'review') {
   if (analysis.importantItems.length) {
     lines.push('', 'Important items:');
     analysis.importantItems.slice(0, 6).forEach(item => {
-      lines.push(`- ${item.label}: ${item.reason}${item.note ? ` — ${item.note}` : ''}`);
+      lines.push(`- ${item.label}: ${item.reason}${item.note ? ` - ${item.note}` : ''}`);
     });
   }
 
   if (analysis.slippedItems.length) {
     lines.push('', 'Possible slipped-through-the-cracks items:');
     analysis.slippedItems.slice(0, 6).forEach(item => {
-      lines.push(`- ${item.email}${item.name ? ` (${item.name})` : ''}: ${item.reason}${item.subject ? ` — ${item.subject}` : ''}`);
+      lines.push(`- ${item.email}${item.name ? ` (${item.name})` : ''}: ${item.reason}${item.subject ? ` - ${item.subject}` : ''}`);
     });
   }
 
@@ -332,19 +332,79 @@ export function renderActivityEmail(analysis, mode = 'review') {
 
 export async function sendActivityEmail(analysis, mode = 'review') {
   const email = renderActivityEmail(analysis, mode);
+  const to = process.env.ACTIVITY_REVIEW_EMAIL || BRANDON_EMAIL;
+  const resendKey = process.env.RESEND_API_KEY || process.env.ACTIVITY_RESEND_API_KEY;
+  const from = process.env.ACTIVITY_EMAIL_FROM || process.env.RESEND_FROM_EMAIL;
+
+  if (resendKey) {
+    if (!from) {
+      return {
+        ok: false,
+        skipped: true,
+        provider: 'resend',
+        reason: 'ACTIVITY_EMAIL_FROM or RESEND_FROM_EMAIL not configured',
+        to,
+        ...email,
+      };
+    }
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${resendKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to,
+        subject: email.subject,
+        text: email.text,
+      }),
+    });
+    const body = await response.text();
+    if (!response.ok) {
+      return {
+        ok: false,
+        skipped: false,
+        provider: 'resend',
+        status: response.status,
+        reason: body || response.statusText,
+        to,
+        ...email,
+      };
+    }
+    return {
+      ok: true,
+      skipped: false,
+      provider: 'resend',
+      status: response.status,
+      response: body ? JSON.parse(body) : null,
+      to,
+      ...email,
+    };
+  }
+
   const webhook = process.env.ACTIVITY_EMAIL_WEBHOOK_URL;
-  if (!webhook) return { ok: false, skipped: true, reason: 'ACTIVITY_EMAIL_WEBHOOK_URL not configured', ...email };
+  if (!webhook) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: 'Email is not configured. Set RESEND_API_KEY + ACTIVITY_EMAIL_FROM, or ACTIVITY_EMAIL_WEBHOOK_URL.',
+      to,
+      ...email,
+    };
+  }
 
   const response = await fetch(webhook, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      to: process.env.ACTIVITY_REVIEW_EMAIL || BRANDON_EMAIL,
+      to,
       mode,
       ...email,
       analysis,
     }),
   });
-  if (!response.ok) return { ok: false, skipped: false, status: response.status, ...email };
-  return { ok: true, skipped: false, ...email };
+  if (!response.ok) return { ok: false, skipped: false, provider: 'webhook', status: response.status, to, ...email };
+  return { ok: true, skipped: false, provider: 'webhook', to, ...email };
 }

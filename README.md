@@ -20,6 +20,18 @@ There is no staging environment. Do not push until build/lint and relevant live 
 - Vercel serverless functions in `/api`
 - Anthropic Messages API for the Analyst
 
+## Production Environment
+Required Vercel environment variables:
+- `ANTHROPIC_KEY`
+- `SUPABASE_SERVICE_KEY`
+- `TRACTIQ_CLIENT_ID`
+- `TRACTIQ_REFRESH_TOKEN`
+
+Daily activity email delivery uses either direct Resend email or a webhook:
+- Preferred: `RESEND_API_KEY` and `ACTIVITY_EMAIL_FROM`
+- Optional recipient override: `ACTIVITY_REVIEW_EMAIL`
+- Legacy fallback: `ACTIVITY_EMAIL_WEBHOOK_URL`
+
 ## Start Here
 For any coding session, read these first:
 1. `AGENTS.md`
