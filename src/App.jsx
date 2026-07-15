@@ -512,6 +512,7 @@ export default function App() {
               mailerApi,
             }}
             taskApi={taskApi}
+            ownershipApi={ownershipApi}
             mailerApi={mailerApi}
             entryRequest={dbEntryRequest}
             onEntryConsumed={() => setDbEntryRequest(null)}

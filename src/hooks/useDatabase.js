@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { buildMergePlan } from '../lib/duplicateReview';
-import { buildSameOwnerMergePlan } from '../lib/ownerRadar';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
 import { DEFAULT_RELATIONSHIP_TYPE, RELATIONSHIP_TYPES } from '../data/constants';
 
@@ -1348,6 +1347,7 @@ export function useDatabase() {
   // Same-owner radar: fold `weakerId` into `masterId` as the same owner —
   // the weaker row's facility/address becomes an additional property on the
   // master, everything else merges, and the weaker row is deleted.
+  /* Removed destructive same-owner merge workflow.
   const mergeAsSameOwner = useCallback(async (masterId, weakerId) => {
     const master = contacts.find(c => c.id === masterId);
     const weaker = contacts.find(c => c.id === weakerId);
@@ -1363,6 +1363,7 @@ export function useDatabase() {
     return { ok: true, addedProperties, masterName: master.ownerName || master.facilityName || 'owner' };
   }, [contacts, updateContactWithFallback, deleteContact]);
 
+  */
   const updateContact = useCallback(async (contactId, fields) => {
     const dbFields = updatePayloadFromFields(fields);
     let { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
@@ -1632,7 +1633,6 @@ export function useDatabase() {
     importList,
     importIntoList,
     mergeDuplicateContact,
-    mergeAsSameOwner,
     duplicateDismissals,
     dismissedDuplicateKeys,
     dismissalStorage,

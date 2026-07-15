@@ -5,8 +5,7 @@ import DuplicateReview from './DuplicateReview';
 import { findDuplicateGroups } from '../lib/duplicateReview';
 import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
 import { buildWhitepagesLink, normalizeLinkedinUrl } from '../lib/researchLinks';
-import { findSameOwnerMatches } from '../lib/ownerRadar';
-import { keepScore } from '../lib/duplicateReview';
+import { buildRelatedOwnerCandidates, normalizePropertyAddress, subjectPropertyPayload } from '../lib/ownerRadar';
 import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
 import ClientCard from './ClientCard';
@@ -14,7 +13,6 @@ import MoveMenu from './MoveMenu';
 import { AddToMailerButton } from './MailerListPicker';
 import MailingAddressList from './MailingAddressList';
 import { ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCES, LEAD_TEMPS, PROPERTY_TYPES, RELATIONSHIP_TYPES } from '../data/constants';
-import { useOwnership } from '../hooks/useOwnership';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
@@ -991,6 +989,9 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
 // ── Multi-property owners ─────────────────────────────────────────────────────
 // Additional properties an owner holds beyond the card's primary
 // facility/address. Stored as jsonb on the contact (owned_properties).
+/* Legacy contact-owned property editor and destructive merge radar. Kept only
+   in repository history; canonical ownership groups/properties replace it. */
+/*
 function OwnedPropertiesEditor({ contact, onUpdate }) {
   const [draft, setDraft] = useState({ facilityName: '', address: '' });
   const entries = contact.ownedProperties ?? [];
@@ -1148,7 +1149,9 @@ function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerg
   );
 }
 
-function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteAction, onDeleteCallHistory, onMergeSameOwner, taskApi, ownershipApi, mailerApi }) {
+*/
+
+function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteAction, onDeleteCallHistory, taskApi, ownershipApi, mailerApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1232,13 +1235,6 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
           <OwnerResearchPanel contact={contact} onAddNote={addResearchNote} />
 
           {/* ── Same-owner radar: link multi-property owners ── */}
-          <SameOwnerRadar
-            contact={contact}
-            allContacts={allContacts}
-            lists={lists}
-            onMerge={onMergeSameOwner}
-            onMerged={(masterId) => { if (masterId !== contact.id) onClose(); }}
-          />
 
           {/* ── Editable contact fields ── */}
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-4">
@@ -1303,7 +1299,6 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
               inputClassName="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
               compact
             />
-            <OwnedPropertiesEditor contact={contact} onUpdate={onUpdate} />
           </div>
 
           <OwnershipLinksPanel contact={contact} ownershipApi={ownershipApi} onUpdate={onUpdate} />
@@ -1523,14 +1518,6 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           {contact._distanceMiles != null && (
             <span className="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2 py-0.5 rounded-md whitespace-nowrap">
               📍 {Math.round(contact._distanceMiles)} mi
-            </span>
-          )}
-          {(contact.ownedProperties?.length ?? 0) > 0 && (
-            <span
-              className="text-xs font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-md whitespace-nowrap"
-              title={contact.ownedProperties.map(p => p.facilityName || p.address).filter(Boolean).join('\n')}
-            >
-              🏢 {contact.ownedProperties.length + 1} properties
             </span>
           )}
           {(() => {
@@ -2224,17 +2211,15 @@ function CallModeQueuePicker({ queues, onSelect, onExit, resumeInfo, onResume, o
 }
 
 // ─── Main Database Component ──────────────────────────────────────────────────
-export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, mailerApi, entryRequest, onEntryConsumed }) {
+export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, ownershipApi, mailerApi, entryRequest, onEntryConsumed }) {
   const {
     lists, contacts, masterListId,
-    importList, importIntoList, mergeDuplicateContact, mergeAsSameOwner, moveContactToList, createList, addContact,
+    importList, importIntoList, mergeDuplicateContact, moveContactToList, createList, addContact,
     updateContactStatus, updateContactCallback,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB, logContactAction, deleteContactAction, deleteContactCallHistory,
     duplicateDismissals, dismissedDuplicateKeys, dismissalStorage, dismissDuplicateGroup, restoreDuplicateGroup,
   } = db;
-  const ownershipApi = useOwnership();
-
   const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -2893,6 +2878,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               onPromote={onContactToClients}
               onMoveToMaster={(contact) => moveContactToList(contact.id, masterListId)}
               masterListId={masterListId}
+              contacts={contacts}
               taskApi={taskApi}
               ownershipApi={ownershipApi}
               mailerApi={mailerApi}
@@ -2900,8 +2886,6 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               queueReasonText={activeQueueDef?.reason ?? ''}
               locationLabel={callQueueSource === 'activeList' ? locationAnchor?.label : null}
               allContacts={contacts}
-              lists={lists}
-              onMergeSameOwner={mergeAsSameOwner}
               onExit={() => {
                 const current = (activeQueueDef?.queue ?? [])[callQueueIndex];
                 if (current) setReturnFocusContactId(current.id);
@@ -3114,8 +3098,6 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         <ContactDetailModal
           contact={contacts.find(c => c.id === openContact.id) ?? openContact}
           lists={lists}
-          allContacts={contacts}
-          onMergeSameOwner={mergeAsSameOwner}
           onClose={() => setOpenContact(null)}
           onStatusChange={handleStatusChangeFromModal}
           onNotesChange={updateContactNotes}
@@ -3399,7 +3381,6 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
         inputClassName="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
         compact
       />
-      <OwnedPropertiesEditor contact={contact} onUpdate={(id, fields) => onUpdateContact?.(id, fields)} />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Relationship Type</label>
@@ -3432,7 +3413,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], lists = [], onMergeSameOwner }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [] }) {
   const queueCurrent = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const current = allContacts.find(c => c.id === queueCurrent?.id) ?? queueCurrent;
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
@@ -3443,12 +3424,17 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const [showContactDetails, setShowContactDetails] = useState(false);
   const [sidePanel, setSidePanel] = useState('tasks');
   const [movedMasterId, setMovedMasterId] = useState(null);
+  const [propertyAssociation, setPropertyAssociation] = useState({ contactId: null, candidateId: null, status: '', message: '' });
   const contactNote = current?.notes ?? '';
   const noteText = noteDraft.contactId === current?.id ? noteDraft.text : contactNote;
   const hasNoteChanges = noteText !== contactNote;
   const noteSaved = noteSavedFor === current?.id;
   const activePostOutcome = postOutcome;
   const masterStatus = current?.listId === masterListId ? 'in' : movedMasterId === current?.id ? 'moved' : 'available';
+  const relatedOwnerCandidates = useMemo(
+    () => buildRelatedOwnerCandidates(current, contacts, masterListId),
+    [current, contacts, masterListId]
+  );
 
   async function saveNotes() {
     if (!current) return;
@@ -3469,6 +3455,51 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     const result = await onMoveToMaster(current);
     if (result?.error) alert('Could not move to Master Database: ' + result.error);
     else setMovedMasterId(current.id);
+  }
+
+  async function addCurrentFacilityToOwner(candidateId) {
+    if (!current) return;
+    const selectedOwner = contacts.find(contact => contact.id === candidateId && contact.listId === masterListId);
+    const feedback = (status, message) => setPropertyAssociation({ contactId: current.id, candidateId, status, message });
+    if (!selectedOwner) return feedback('error', 'That Master Database owner no longer exists.');
+    if (!String(current.address ?? '').trim()) return feedback('error', 'Add a facility address to this Call Mode record first.');
+    if (ownershipApi?.loadError || !ownershipApi?.createProperty) {
+      return feedback('error', ownershipApi?.loadError || 'Ownership/property data is unavailable.');
+    }
+
+    feedback('saving', 'Adding property…');
+    let groupId = selectedOwner.ownershipGroupId || null;
+    let createdGroup = false;
+    if (groupId) {
+      const duplicate = (ownershipApi.propertiesByGroup?.get(groupId) ?? [])
+        .some(property => normalizePropertyAddress(property.address) === normalizePropertyAddress(current.address));
+      if (duplicate) return feedback('exists', 'Property already associated.');
+    } else {
+      const groupResult = await ownershipApi.createGroup({
+        displayName: selectedOwner.ownerEntity || selectedOwner.ownerName || selectedOwner.facilityName || 'Ownership Group',
+        ownerEntity: selectedOwner.ownerEntity || '',
+        relationshipType: selectedOwner.relationshipType || DEFAULT_RELATIONSHIP_TYPE,
+        notes: '',
+      });
+      if (groupResult?.error || !groupResult?.group) return feedback('error', groupResult?.error || 'Could not create the owner profile.');
+      groupId = groupResult.group.id;
+      createdGroup = true;
+      const linkResult = await onUpdateContact?.(selectedOwner.id, { ownershipGroupId: groupId });
+      if (linkResult?.error) {
+        await ownershipApi.removeGroupIfOrphaned(groupId);
+        return feedback('error', linkResult.error);
+      }
+    }
+
+    const result = await ownershipApi.createProperty(subjectPropertyPayload(current, groupId));
+    if (result?.error) {
+      if (createdGroup) {
+        await onUpdateContact?.(selectedOwner.id, { ownershipGroupId: null });
+        await ownershipApi.removeGroupIfOrphaned(groupId);
+      }
+      return feedback('error', result.error);
+    }
+    feedback('success', 'Property added to owner.');
   }
 
   async function moveSnapshotToMaster(outcome = activePostOutcome) {
@@ -3935,20 +3966,53 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           </div>
 
           <div className="space-y-3">
-            <SameOwnerRadar
-              contact={current}
-              allContacts={allContacts}
-              lists={lists}
-              onMerge={onMergeSameOwner}
-            />
-            {(current.ownedProperties?.length ?? 0) > 0 && !showDetails && (
-              <div className="bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-2.5">
-                <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Also owns</p>
-                {current.ownedProperties.map((p, i) => (
-                  <p key={i} className="text-sm text-slate-300 truncate">
-                    {p.facilityName || 'Unnamed facility'}{p.address ? ` - ${p.address}` : ''}
-                  </p>
-                ))}
+            {relatedOwnerCandidates.length > 0 && (
+              <div className="bg-blue-500/5 border border-blue-500/25 rounded-xl p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-black text-blue-300 uppercase tracking-wide">Possible Related Record</p>
+                  <p className="text-xs text-slate-500 mt-1">Matches shown here are owners from the Master Database.</p>
+                </div>
+                {relatedOwnerCandidates.map(({ contact: candidate, reason }) => {
+                  const properties = candidate.ownershipGroupId
+                    ? (ownershipApi?.propertiesByGroup?.get(candidate.ownershipGroupId) ?? [])
+                    : [];
+                  const state = propertyAssociation.contactId === current.id && propertyAssociation.candidateId === candidate.id
+                    ? propertyAssociation
+                    : null;
+                  return (
+                    <div key={candidate.id} className="bg-slate-950/60 border border-slate-700/80 rounded-lg px-3 py-3">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-white break-words">{candidate.ownerName || candidate.ownerEntity || 'Unknown owner'}</p>
+                          <p className="text-xs text-blue-300 mt-1">{reason}</p>
+                          <div className="mt-2 space-y-1">
+                            {properties.length > 0 ? properties.map(property => (
+                              <div key={property.id} className="text-xs text-slate-400 break-words">
+                                <p className="font-semibold text-slate-300">{property.facilityName || 'Unnamed facility'}</p>
+                                <p>{property.address || 'Address not entered'}</p>
+                              </div>
+                            )) : (
+                              <div className="text-xs text-slate-400 break-words">
+                                <p className="font-semibold text-slate-300">{candidate.facilityName || 'Unnamed facility'}</p>
+                                <p>{candidate.address || 'Address not entered'}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => addCurrentFacilityToOwner(candidate.id)}
+                          disabled={!current.address?.trim() || state?.status === 'saving'}
+                          className="w-full sm:w-auto flex-shrink-0 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-200 font-bold rounded-lg px-3 py-2 text-xs disabled:opacity-40">
+                          {state?.status === 'saving' ? 'Adding…' : 'Add facility to owner'}
+                        </button>
+                      </div>
+                      {state?.message && (
+                        <p className={`text-xs mt-2 font-semibold ${state.status === 'success' ? 'text-green-400' : state.status === 'exists' ? 'text-amber-400' : state.status === 'saving' ? 'text-blue-300' : 'text-red-400'}`}>
+                          {state.message}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
