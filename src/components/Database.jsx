@@ -3749,13 +3749,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             />
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {latestCall && (
-              <div className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
-                <p className="text-xs text-slate-500 uppercase font-semibold">Last Call</p>
-                <p className="text-sm text-slate-300">{latestCall.date} · {STATUS_LABELS[latestCall.outcome] ?? latestCall.outcome}</p>
-              </div>
-            )}
+          <div className="grid grid-cols-1 gap-3">
             {nextTask && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3">
                 <p className="text-xs text-amber-400 uppercase font-semibold">Next Action</p>
@@ -3795,10 +3789,10 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   <button
                     type="button"
                     onClick={() => onDeleteCallHistory(current.id, latestCallEntry.index)}
-                    className="text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
+                    className="text-slate-500 hover:text-red-400 font-black px-1 flex-shrink-0"
                     title="Delete logged call"
                   >
-                    x
+                    ×
                   </button>
                 )}
               </div>
