@@ -6,12 +6,12 @@ import ActionCenterModal from './ActionCenterModal';
 import { AddToMailerButton } from './MailerListPicker';
 import OwnershipLinksPanel from './OwnershipLinksPanel';
 import { StatusBadge } from './ui';
-import { RelatedTasks, getNextOpenTask, dueMeta, TASK_TYPE_MAP } from './tasks';
+import { RelatedTasks, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
 export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, onDeleteAction, compact = false, taskApi, ownershipApi, mailerApi }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
   const propType = PROPERTY_TYPES.find(p => p.value === client.propertyType);
-  const [activityMode, setActivityMode] = useState(null);
+  const [showActionCenter, setShowActionCenter] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
   const openTasks = taskApi?.getRelatedTasks('client', client.id) ?? [];
@@ -21,6 +21,9 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
   const actionType = ACTION_TYPES.find(a => a.value === client.nextActionType);
   const fallbackDue = dueMeta(client.nextActionDate);
   const projectedCommission = projectedCommissionAmount(client.desiredSalePrice, client.projectedCommissionPct);
+  const modalDefaults = nextTask
+    ? {}
+    : legacyActionDefaults(client.nextActionType, client.nextActionDate, client.nextActionNote);
 
   return (
     <>
@@ -195,11 +198,11 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         <p className="text-xs text-slate-500 italic line-clamp-2">{client.notes}</p>
       )}
 
-      {/* Next Action display */}
-      {(nextTask || actionType) && <div className="mt-3 pt-3 border-t border-slate-700">
+      {/* Next Action display / set button */}
+      <div className="mt-3 pt-3 border-t border-slate-700">
         {nextTask ? (
           <button
-            onClick={() => setActivityMode('task')}
+            onClick={() => setShowActionCenter(true)}
             className={`w-full rounded-xl px-3 py-2.5 text-left transition-all border ${
               nextTaskDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
@@ -231,7 +234,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
           </button>
         ) : actionType ? (
           <button
-            onClick={() => setActivityMode('task')}
+            onClick={() => setShowActionCenter(true)}
             className={`w-full rounded-xl px-3 py-2.5 text-left transition-all border ${
               fallbackDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
@@ -259,29 +262,29 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
               <p className="text-xs text-slate-500 mt-1 truncate">{client.nextActionNote}</p>
             )}
           </button>
-        ) : null}
-      </div>}
+        ) : (
+          <button
+            onClick={() => setShowActionCenter(true)}
+            className="w-full bg-transparent border border-dashed border-slate-700 hover:border-amber-500/40 text-slate-500 hover:text-amber-400 font-semibold px-3 py-2.5 rounded-xl text-xs transition-all"
+          >
+            + Set Next Action
+          </button>
+        )}
+      </div>
 
-      {/* One compact relationship-work area: future Task or historical Action. */}
-      {(onLogAction || taskApi) && (
-        <div className="mt-2 pt-2 border-t border-slate-700/60 space-y-2">
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Relationship Activity</p>
-          <div className="flex items-center justify-between gap-2">
+      {/* Activity log: Last Action + Log button */}
+      {onLogAction && (
+        <div className="mt-2 flex items-center justify-between gap-2">
           <LastActionLine
             actionLog={client.actionLog}
             onDeleteLast={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
           />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setActivityMode('task')} disabled={!taskApi?.createTask}
-              className="min-w-0 min-h-10 text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
-              + Task
-            </button>
-            <button type="button" onClick={() => setActivityMode('action')} disabled={!onLogAction}
-              className="min-w-0 min-h-10 text-xs font-bold text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
-              + Action
-            </button>
-          </div>
+          <button
+            onClick={() => setShowActionCenter(true)}
+            className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
+          >
+            + Log
+          </button>
         </div>
       )}
 
@@ -294,7 +297,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         relatedId={client.id}
         relatedName={client.name}
         source="client"
-        allowAdd={false}
+        excludeTaskIds={nextTask ? [nextTask.id] : []}
       />
 
       {!compact && ownershipApi && (
@@ -337,17 +340,17 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       )}
     </div>
 
-    {activityMode && (
+    {showActionCenter && (
       <ActionCenterModal
         name={client.name}
         subtitle={client.facilityName}
-        mode={activityMode}
         actionLog={client.actionLog}
         onLogAction={onLogAction ? (entry) => onLogAction(client.id, entry) : undefined}
         onDeleteAction={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
         taskContext={{ relatedType: 'client', relatedId: client.id, relatedName: client.name, source: compact ? 'pipeline' : 'client' }}
+        taskDefaults={modalDefaults}
         onSaveTask={taskApi?.createTask}
-        onClose={() => setActivityMode(null)}
+        onClose={() => setShowActionCenter(false)}
       />
     )}
     </>

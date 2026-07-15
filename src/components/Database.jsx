@@ -14,7 +14,7 @@ import { AddToMailerButton } from './MailerListPicker';
 import MailingAddressList from './MailingAddressList';
 import { ACTION_TYPES, CALL_ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCES, LEAD_TEMPS, PROPERTY_TYPES, RELATIONSHIP_TYPES } from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
-import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
+import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
@@ -1144,14 +1144,14 @@ function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerg
 
 */
 
-function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteAction, onDeleteCallHistory, taskApi, ownershipApi, mailerApi }) {
+function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onLogAction, onDeleteAction, onDeleteCallHistory, taskApi, ownershipApi, mailerApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
-  // Sprint 2: after logging certain outcomes, offer/require a follow-up task.
-  // 'callback' strongly prompts (auto-opens, due date emphasized); 'conversation'
-  // and 'appointment' just offer a dismissible suggestion bar.
-  const [taskPrompt, setTaskPrompt] = useState(null); // 'callback' | 'suggest' | null
+  // Conversation and appointment can still offer a follow-up. Call Back creates
+  // its dated task immediately so the action and task cannot drift apart.
+  const [taskPrompt, setTaskPrompt] = useState(null); // 'suggest' | 'open' | null
+  const [activityMode, setActivityMode] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const contactName = contact.ownerName || contact.facilityName || 'Contact';
@@ -1173,16 +1173,39 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
     onNotesChange(contact.id, next);
   }
 
-  function handleOutcome(status) {
+  async function handleOutcome(status) {
+    if (status === 'callback' && !callbackDate) {
+      alert('Pick a callback date before logging Call Back.');
+      return;
+    }
     const loggedNotes = status === 'callback'
       ? appendDateToLogNote(notes, 'Callback date', callbackDate)
       : notes;
-    onStatusChange(contact.id, status, loggedNotes, activityDate);
+    await onStatusChange(contact.id, status, loggedNotes, activityDate);
+    const actionResult = await onLogAction?.(contact.id, {
+      type: status,
+      date: activityDate,
+      priority: 'normal',
+      note: loggedNotes.trim(),
+      at: new Date().toISOString(),
+    });
+    if (actionResult?.error) alert('The call was saved, but its activity entry could not be saved: ' + actionResult.error);
     onNotesChange(contact.id, loggedNotes);
     if (loggedNotes !== notes) setNotes(loggedNotes);
     if (status === 'callback') {
-      if (callbackDate) onUpdate(contact.id, { callbackDate });
-      setTaskPrompt('callback');
+      await onUpdate(contact.id, { callbackDate });
+      await taskApi?.createTask({
+        title: 'Call back',
+        description: loggedNotes.trim(),
+        taskType: 'call',
+        priority: 'normal',
+        dueDate: callbackDate,
+        relatedType: 'contact',
+        relatedId: contact.id,
+        relatedName: contactName,
+        source: 'database',
+      });
+      setTaskPrompt(null);
     }
     else if (status === 'conversation' || status === 'appointment') setTaskPrompt('suggest');
     else setTaskPrompt(null);
@@ -1218,6 +1241,16 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
               placeholder="Click to add facility name"
               onChange={field('facilityName')}
             />
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={() => setActivityMode('task')} disabled={!taskApi?.createTask}
+                className="min-h-10 min-w-28 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-black text-amber-300 hover:bg-amber-500/20 disabled:opacity-40">
+                + Task
+              </button>
+              <button type="button" onClick={() => setActivityMode('action')} disabled={!onLogAction}
+                className="min-h-10 min-w-28 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-xs font-black text-blue-300 hover:bg-blue-500/20 disabled:opacity-40">
+                + Action
+              </button>
+            </div>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white text-2xl leading-none p-1 flex-shrink-0">✕</button>
         </div>
@@ -1386,6 +1419,7 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
             relatedId={contact.id}
             relatedName={contactName}
             source="database"
+            allowAdd={false}
           />
 
           {/* ── Call history ── */}
@@ -1430,15 +1464,28 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
           </button>
         </div>
 
-        {/* 'Call Back' strongly prompts for a task with due date emphasized;
-            the suggestion bar's "+ Add Task" also opens this, unemphasized. */}
-        {(taskPrompt === 'callback' || taskPrompt === 'open') && (
+        {/* The conversation/appointment suggestion opens the standard task editor. */}
+        {taskPrompt === 'open' && (
           <TaskModal
             context={{ relatedType: 'contact', relatedId: contact.id, relatedName: contactName, source: 'database' }}
-            defaults={{ title: taskPrompt === 'callback' ? 'Call back' : '', taskType: 'call', dueDate: callbackDate || undefined }}
-            emphasizeDueDate={taskPrompt === 'callback'}
+            defaults={{ title: '', taskType: 'call', dueDate: callbackDate || undefined }}
+            emphasizeDueDate={false}
             onSave={(fields) => taskApi?.createTask(fields)}
             onClose={() => setTaskPrompt(null)}
+          />
+        )}
+
+        {activityMode && (
+          <ActionCenterModal
+            name={contactName}
+            subtitle={contact.facilityName}
+            mode={activityMode}
+            actionLog={contact.actionLog}
+            onLogAction={onLogAction ? (entry) => onLogAction(contact.id, entry) : undefined}
+            onDeleteAction={onDeleteAction ? (index) => onDeleteAction(contact.id, index) : undefined}
+            taskContext={{ relatedType: 'contact', relatedId: contact.id, relatedName: contactName, source: 'database' }}
+            onSaveTask={taskApi?.createTask}
+            onClose={() => setActivityMode(null)}
           />
         )}
 
@@ -1457,7 +1504,7 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
 // ─── Property Card ────────────────────────────────────────────────────────────
 function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, lists = [], onMoveToList, onToClients, taskApi }) {
   const [added, setAdded] = useState(false);
-  const [showActionCenter, setShowActionCenter] = useState(false);
+  const [activityMode, setActivityMode] = useState(null);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: contact.id, data: { contact } });
 
@@ -1469,10 +1516,6 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
   const fallbackDue = dueMeta(contact.nextActionDate);
   const source = contactSource(contact, lists);
   const rel = relationshipMeta(contact.relationshipType);
-  const modalDefaults = nextTask
-    ? {}
-    : legacyActionDefaults(contact.nextActionType, contact.nextActionDate, contact.nextActionNote);
-
   const mapsQuery = encodeURIComponent(
     [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ')
   );
@@ -1652,7 +1695,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
       <div className="mt-2">
         {nextTask ? (
           <button
-            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
+            onClick={e => { e.stopPropagation(); setActivityMode('task'); }}
             className={`w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-all border ${
               nextTaskDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -1667,7 +1710,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           </button>
         ) : actionType ? (
           <button
-            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
+            onClick={e => { e.stopPropagation(); setActivityMode('task'); }}
             className={`w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-all border ${
               fallbackDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -1680,43 +1723,40 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
             <span className="font-semibold truncate">{actionType.label}</span>
             {fallbackDue && <span className="font-black ml-auto flex-shrink-0">{fallbackDue.label}</span>}
           </button>
-        ) : (
-          <button
-            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
-            className="w-full text-xs text-slate-600 hover:text-amber-400 border border-dashed border-slate-700 hover:border-amber-500/40 rounded-lg px-2.5 py-1.5 transition-all"
-          >
-            + Set Action
-          </button>
-        )}
+        ) : null}
       </div>
 
-      {/* Activity log: Last Action + Log button */}
-      {onLogAction && (
-        <div className="mt-2 flex items-center justify-between gap-2">
+      {/* Unified relationship work for Database contacts. */}
+      {(onLogAction || taskApi) && (
+        <div className="mt-2 pt-2 border-t border-slate-800 space-y-2">
           <LastActionLine
             actionLog={contact.actionLog}
             onDeleteLast={onDeleteAction ? (index) => onDeleteAction(contact.id, index) : undefined}
           />
-          <button
-            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
-            className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
-          >
-            + Log
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={event => { event.stopPropagation(); setActivityMode('task'); }} disabled={!taskApi?.createTask}
+              className="min-h-10 text-xs font-black text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
+              + Task
+            </button>
+            <button type="button" onClick={event => { event.stopPropagation(); setActivityMode('action'); }} disabled={!onLogAction}
+              className="min-h-10 text-xs font-black text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
+              + Action
+            </button>
+          </div>
         </div>
       )}
 
-      {showActionCenter && (
+      {activityMode && (
         <ActionCenterModal
           name={contact.ownerName || contact.facilityName || 'Contact'}
           subtitle={contact.facilityName}
+          mode={activityMode}
           actionLog={contact.actionLog}
           onLogAction={onLogAction ? (entry) => onLogAction(contact.id, entry) : undefined}
           onDeleteAction={onDeleteAction ? (index) => onDeleteAction(contact.id, index) : undefined}
           taskContext={{ relatedType: 'contact', relatedId: contact.id, relatedName: contact.ownerName || contact.facilityName || 'Contact', source: 'database' }}
-          taskDefaults={modalDefaults}
           onSaveTask={taskApi?.createTask}
-          onClose={() => setShowActionCenter(false)}
+          onClose={() => setActivityMode(null)}
         />
       )}
 
@@ -2571,9 +2611,17 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       ? appendDateToLogNote(note, 'Callback date', callbackDate)
       : note;
     await updateContactStatus(contact.id, status, loggedNote, activityDate);
+    const actionResult = await logContactAction(contact.id, {
+      type: status,
+      date: activityDate || new Date().toISOString().slice(0, 10),
+      priority: 'normal',
+      note: loggedNote.trim(),
+      at: new Date().toISOString(),
+    });
+    if (actionResult?.error) alert('The call was saved, but its activity entry could not be saved: ' + actionResult.error);
     if (status === 'callback' && callbackDate) await updateContactCallback(contact.id, callbackDate);
     if (status === 'callback') {
-      taskApi?.createTask({
+      const taskResult = await taskApi?.createTask({
         title: 'Call back',
         description: loggedNote.trim(),
         taskType: 'call',
@@ -2584,14 +2632,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         relatedName: contact.ownerName || contact.facilityName || 'Contact',
         source: 'database',
       });
+      if (taskResult?.error) alert('The callback was logged, but its task could not be created: ' + taskResult.error);
     }
     if (onCallLogged) onCallLogged(status);
     setCallNote('');
     setCallbackDate('');
   }
 
-  function handleStatusChangeFromModal(id, status, notes, activityDate) {
-    updateContactStatus(id, status, notes, activityDate);
+  async function handleStatusChangeFromModal(id, status, notes, activityDate) {
+    await updateContactStatus(id, status, notes, activityDate);
     if (onCallLogged) onCallLogged(status);
     // refresh open contact
     setOpenContact(prev => prev?.id === id ? { ...prev, status, lastCalled: activityDate || new Date().toISOString().slice(0,10) } : prev);
@@ -2866,6 +2915,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               onSaveNotes={updateContactNotes}
               onUpdateContact={updateContact}
               onDeleteContact={deleteContact}
+              onLogAction={logContactAction}
               onDeleteAction={deleteContactAction}
               onDeleteCallHistory={deleteContactCallHistory}
               onPromote={onContactToClients}
@@ -3096,6 +3146,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           onNotesChange={updateContactNotes}
           onUpdate={updateContact}
           onDelete={(id) => { deleteContact(id); setOpenContact(null); }}
+          onLogAction={logContactAction}
           onDeleteAction={deleteContactAction}
           onDeleteCallHistory={deleteContactCallHistory}
           taskApi={taskApi}
@@ -3406,7 +3457,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [] }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [] }) {
   const queueCurrent = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const current = allContacts.find(c => c.id === queueCurrent?.id) ?? queueCurrent;
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
@@ -3416,6 +3467,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const [showDetails, setShowDetails] = useState(false);
   const [showContactDetails, setShowContactDetails] = useState(false);
   const [sidePanel, setSidePanel] = useState('tasks');
+  const [activityMode, setActivityMode] = useState(null);
   const [movedMasterId, setMovedMasterId] = useState(null);
   const [propertyAssociation, setPropertyAssociation] = useState({ contactId: null, candidateId: null, status: '', message: '' });
   const contactNote = current?.notes ?? '';
@@ -3611,7 +3663,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const recentActivity = (current.actionLog ?? [])
     .map((entry, index) => ({ entry, index }))
     .reverse()
-    .slice(0, 4);
+    .slice(0, 8);
 
   async function finalizePostOutcome({ addFollowUp = false, moveToMaster = false } = {}) {
     const outcome = activePostOutcome;
@@ -4011,6 +4063,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             <div className="flex gap-1 bg-slate-950/70 rounded-lg p-1">
               {[
                 ['tasks', `Tasks (${openTasks.length})`],
+                ['actions', 'Actions'],
                 ['research', 'Research'],
                 ['history', 'History'],
               ].map(([key, label]) => (
@@ -4036,9 +4089,48 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           <div className={`${sidePanel === 'tasks' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-black text-white">Tasks</h3>
-              <span className="text-xs text-slate-600">{openTasks.length} open</span>
+              <button type="button" onClick={() => setActivityMode('task')}
+                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-black text-amber-300 hover:bg-amber-500/20">
+                + Task
+              </button>
             </div>
-            <RelatedTasks taskApi={taskApi} relatedType="contact" relatedId={current.id} relatedName={contactDisplayName(current)} source="database" maxVisible={4} />
+            <p className="mb-2 text-xs text-slate-600">{openTasks.length} open</p>
+            <RelatedTasks taskApi={taskApi} relatedType="contact" relatedId={current.id} relatedName={contactDisplayName(current)} source="database" maxVisible={4} allowAdd={false} />
+          </div>
+
+          <div className={`${sidePanel === 'actions' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h3 className="text-sm font-black text-white">Actions</h3>
+              <button type="button" onClick={() => setActivityMode('action')}
+                className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-xs font-black text-blue-300 hover:bg-blue-500/20">
+                + Action
+              </button>
+            </div>
+            {recentActivity.length > 0 ? (
+              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                {recentActivity.map(({ entry, index }) => {
+                  const action = CALL_ACTION_TYPES.find(item => item.value === entry.type);
+                  return (
+                    <div key={`${entry.at ?? entry.date}-${index}`} className="flex items-start gap-2 text-xs text-slate-400 bg-slate-800 rounded-lg px-3 py-2">
+                      <span className="flex-shrink-0">{action?.icon ?? '•'}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-slate-300">{action?.label ?? entry.type ?? 'Action'}</p>
+                        {entry.note && <p className="mt-0.5 break-words text-slate-500">{entry.note}</p>}
+                        {entry.date && <p className="mt-0.5 text-slate-600">{entry.date}</p>}
+                      </div>
+                      {onDeleteAction && (
+                        <button type="button" onClick={() => onDeleteAction(current.id, index)}
+                          className="flex-shrink-0 px-1 font-black text-slate-600 hover:text-red-400" title="Delete activity">
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-600 italic">No actions logged yet.</p>
+            )}
           </div>
 
           <div className={`${sidePanel === 'history' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
@@ -4071,32 +4163,6 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             )}
           </div>
 
-          <div className={`${sidePanel === 'history' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
-            <h3 className="text-sm font-black text-white mb-3">Activity</h3>
-            {recentActivity.length > 0 ? (
-              <div className="space-y-1.5">
-                {recentActivity.map(({ entry, index }) => (
-                  <div key={index} className="flex items-center gap-2 text-xs text-slate-400 bg-slate-800 rounded-lg px-3 py-2">
-                    <span className="truncate flex-1">{entry.note || entry.type || 'Action'} {entry.date ? `- ${entry.date}` : ''}</span>
-                    {onDeleteAction && (
-                      <button
-                        onClick={() => {
-                          onDeleteAction(current.id, index);
-                        }}
-                        className="text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
-                        title="Delete activity"
-                      >
-                        x
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-600 italic">No activity logged yet.</p>
-            )}
-          </div>
-
           {masterListId && (
             masterStatus === 'moved' ? (
               <div className="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-black px-4 py-3 rounded-2xl text-sm text-center">
@@ -4122,6 +4188,19 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           <p className="text-xs text-slate-600 px-1">Shortcuts: X no answer, V voicemail, C conversation, A appt, K/B callback, S save, M master, N/right next, left back, E edit.</p>
         </aside>
       </div>
+      {activityMode && (
+        <ActionCenterModal
+          name={contactDisplayName(current)}
+          subtitle={current.facilityName}
+          mode={activityMode}
+          actionLog={current.actionLog}
+          onLogAction={onLogAction ? (entry) => onLogAction(current.id, entry) : undefined}
+          onDeleteAction={onDeleteAction ? (actionIndex) => onDeleteAction(current.id, actionIndex) : undefined}
+          taskContext={{ relatedType: 'contact', relatedId: current.id, relatedName: contactDisplayName(current), source: 'database' }}
+          onSaveTask={taskApi?.createTask}
+          onClose={() => setActivityMode(null)}
+        />
+      )}
       {confirmDelete && (
         <DeleteContactConfirmModal
           contact={current}

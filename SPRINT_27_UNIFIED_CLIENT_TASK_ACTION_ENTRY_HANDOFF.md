@@ -1,176 +1,146 @@
-# Sprint 27 — Unified Client Task / Action Entry
+# Sprint 27 — Unified Database Person Task / Action Entry
 
-## Objective
+## Corrected product meaning
 
-Make future Tasks and historical Actions feel like one intentional relationship-management workflow on client cards while keeping their data and semantics separate.
+In this CRM, “client” in the sprint request meant a person/contact inside the Database, including the person currently being worked in Call Mode. It did not mean only a promoted record in the Clients or Pipeline sections.
 
-## User-facing result
+The initial implementation misunderstood that term and placed direct `+ Task` / `+ Action` controls on Clients and Pipeline cards. The correction restores those two sections to their pre-sprint card UI and moves the unified workflow to Database contacts and Call Mode.
 
-- Client cards now show one compact **Relationship Activity** area with adjacent `+ Task` and `+ Action` buttons.
-- Pipeline client cards expose the same two direct choices.
-- `Task` opens a focused Add Task form; `Action` opens a focused Log Action form. The user does not choose the mode twice.
-- Existing next-task summaries, related-task editing/completion, Last Action display, recent action history, and action deletion remain available.
-- Redundant `+ Set Next Action`, `+ Log`, and expanded-details `+ Task` entry buttons were removed from client cards.
+## Final scope
 
-## Current behavior discovered
+- Database person cards
+- Full Database person-details modal
+- Call Mode active person
+- Call Mode outcomes integrated with the person’s action history
+- Call Back integrated with automatic universal task creation
 
-Before this sprint, client cards exposed overlapping `Set Next Action`, `Log`, and `Task` entry points. All opened either a combined optional two-section modal or a separate task modal, so future obligations and completed activity did not have a clear first choice.
+Explicitly excluded:
 
-Tasks already used the universal `tasks` table through the single `useTasks()` instance in `App.jsx`. Actions already used the `clients.action_log` JSONB array through `useCRM()`.
+- New direct `+ Task` / `+ Action` buttons on Clients cards
+- New direct `+ Task` / `+ Action` buttons on Pipeline cards
+- Database schema migrations
+- Automatic promotion to Clients/Pipeline
 
-## Files created and modified
+## Database card workflow
 
-Created:
+Every Database contact card has adjacent `+ Task` and `+ Action` buttons.
 
+- `+ Task` opens the focused Add Task form.
+- `+ Action` opens the focused Log Action form.
+- Existing next-task summaries remain visible and open the Task workflow.
+- Last Action remains visible and deletable.
+
+Tasks are related to the Database person with:
+
+- `relatedType: "contact"`
+- the contact ID and display name
+- `source: "database"`
+
+Actions are appended to `contacts.action_log`.
+
+## Full person-details workflow
+
+The person-details modal exposes `+ Task` and `+ Action` immediately below the person/facility identity, before the long research and editable-details content.
+
+- The focused forms use the same design and persistence paths as the Database card.
+- Existing task rows remain available for editing and completion.
+- The duplicate Add Task control inside the related-task list is suppressed.
+- Logging any call outcome also appends that outcome to the unified action log.
+- Selecting Call Back requires a callback date and automatically creates the dated `Call back` task.
+- Conversation and Appointment can still offer an optional additional follow-up task.
+
+## Call Mode workflow
+
+The right-side navigation is now:
+
+`Tasks | Actions | Research | History`
+
+### Tasks
+
+- Shows open universal tasks related to the active Database contact.
+- `+ Task` opens the focused Add Task form.
+- Existing task edit and completion behavior remains available.
+
+### Actions
+
+- Shows up to eight recent entries from `contacts.action_log`.
+- Displays action icon/type, notes, date, and delete control.
+- `+ Action` opens the focused Log Action form.
+
+### Research
+
+Retains the existing Call Mode research tools.
+
+### History
+
+Retains call history. The separate Activity box was removed because unified actions now have their own tab.
+
+## Call Mode outcome integration
+
+Each canonical outcome automatically writes the same event to the active contact’s unified action history:
+
+- No Answer
+- Left VM
+- Conversation
+- Appt Set
+- Not Interested
+- Call Back
+
+The existing call-history/status update still occurs for compatibility with Call Mode queues and reporting. The action entry uses the same activity date and notes.
+
+Call Back additionally:
+
+1. Requires a callback date.
+2. Saves the contact callback status/date.
+3. Logs the Call Back action.
+4. Automatically creates a universal `Call back` task due on that date.
+
+## Persistence and failure behavior
+
+### Tasks
+
+Focused Task form → lifted `taskApi.createTask()` → universal `tasks` table → local task state.
+
+### Actions
+
+Focused Action form or Call Mode outcome → `logContactAction(contactId, entry)` → `contacts.action_log` JSONB → local contact state.
+
+`logContactAction` and `deleteContactAction` now wait for Supabase success before changing local state and return errors to the caller. The focused form stays open when a save fails.
+
+No SQL migration was required.
+
+## Files changed by the correction
+
+- `src/components/Database.jsx`
+- `src/hooks/useDatabase.js`
+- `src/components/ClientCard.jsx` — restored pre-sprint card UI
+- `src/components/PipelineBoard.jsx` — restored pre-sprint card UI
 - `SPRINT_27_UNIFIED_CLIENT_TASK_ACTION_ENTRY_HANDOFF.md`
 
-Modified:
+The focused modal and shared action constants introduced in the earlier commit remain in:
 
 - `src/components/ActionCenterModal.jsx`
-- `src/components/ActionLog.jsx`
-- `src/components/ClientCard.jsx`
-- `src/components/Database.jsx`
-- `src/components/PipelineBoard.jsx`
-- `src/components/RecentActivity.jsx`
-- `src/components/tasks/RelatedTasks.jsx`
 - `src/data/constants.js`
-- `src/hooks/useCRM.js`
 
-## Exact Task workflow
+## Verification
 
-1. Click `+ Task` on a Clients or Pipeline client card.
-2. A focused **Add Task** modal opens with client/facility context.
-3. Enter the task text, task type, due date, priority, and optional notes; existing quick picks remain available.
-4. Save calls `taskApi.createTask()` with `relatedType: "client"`, the correct client ID/name, and the originating `client` or `pipeline` source.
-5. The modal closes only after a successful database response. On failure it stays open, preserves form state, and displays an error.
-6. The task immediately updates the card and remains part of Dashboard/task queue logic.
+- `npm run build` passes.
+- `npm run lint` passes.
+- `git diff --check` passes.
+- Local Database Master view shows `+ Task` and `+ Action` on Database person cards.
+- Local person-details modal shows both controls at the top.
+- Focused Log Action modal opens from person details with canonical outcomes, date, priority, notes, and Save Action.
+- Local Call Mode shows `Tasks`, `Actions`, `Research`, and `History` tabs.
+- Call Mode Tasks tab shows `+ Task`.
+- Call Mode Actions tab shows `+ Action` and the empty/history state.
+- Clients section has zero new `+ Task` / `+ Action` card buttons.
+- Pipeline section has zero new `+ Task` / `+ Action` card buttons.
+- No CRM records were created, updated, or deleted during this correction’s browser verification.
 
-Expanded details continue to show the related task rows for completion and editing, but no longer show a second Add Task button.
+Automatic outcome persistence was verified through code-path inspection rather than clicking a real owner’s outcome during UI QA, to avoid modifying production CRM data.
 
-## Exact Action workflow
+## Current repository state
 
-1. Click `+ Action` on a Clients or Pipeline client card.
-2. A focused **Log Action** modal opens with client/facility context.
-3. Select a Call Mode action type, choose/backdate the action date, select priority, and enter optional context.
-4. Save appends `{ type, date, priority, note, at }` to `clients.action_log`.
-5. `useCRM.logClientAction()` now waits for Supabase success before updating local state. On failure it returns an error so the modal remains open with entered data.
-6. Last Action and recent activity update after success. No universal task is created.
+Base pushed commit: `b4c61c3ac2666c9239a510cd47f8347042784f1c`
 
-## Shared modal/component design
-
-`ActionCenterModal` now supports focused `task` and `action` modes using the same modal shell, responsive spacing, footer, Save/Cancel placement, error state, and priority vocabulary. Its prior combined mode remains available for non-client surfaces to avoid broadening this sprint into Dashboard or Database workflow redesign.
-
-## Action type reuse
-
-The six existing Call Mode outcomes were promoted unchanged to the shared `CALL_ACTION_TYPES` constant and are consumed by both Call Mode and the focused client Action form. Call Mode labels, values, icons, colors, shortcuts, and outcome behavior are unchanged.
-
-The older `ACTION_TYPES` list remains in place for legacy future Next Action fields and combined non-client entry surfaces.
-
-## Task persistence path
-
-`ClientCard` / `PipelineBoard` → focused `ActionCenterModal` task mode → lifted `taskApi.createTask()` → `useTasks()` → Supabase `tasks` table → local task state.
-
-## Action persistence path
-
-`ClientCard` / `PipelineBoard` → focused `ActionCenterModal` action mode → `logClientAction(clientId, entry)` → `useCRM()` → Supabase `clients.action_log` JSONB → local client state.
-
-## Priority behavior
-
-- Task priority continues to use `low`, `normal`, `high`, and `urgent` and retains all existing task queue/due-date behavior.
-- Action priority uses the same vocabulary but remains historical metadata inside JSONB.
-- Normal action priority is quiet. High/Urgent appears as a subtle Last Action/recent-history indicator.
-- Action priority never creates task urgency, overdue state, or task queue entries.
-
-## Data model and migration status
-
-No SQL migration is required. The universal task schema is unchanged. `clients.action_log` is JSONB and safely supports the additional `priority` property on individual entries. Existing action entries without priority remain compatible and display normally.
-
-## QA records created
-
-- Client: `QA_TASK_ACTION_20260715`
-- Facility: `QA Unified Workflow Facility`
-- Task: `QA_TASK_ACTION_FOLLOW_UP` (Urgent, due 2026-07-16)
-- Action: `QA_TASK_ACTION_BACKDATED_CONVERSATION` (Conversation, Urgent, dated 2026-07-10)
-
-## QA cleanup performed
-
-- The QA action was deleted through the client-card action-delete control and confirmed removed.
-- The remaining QA task and QA client were deleted through Supabase using exact QA identifiers.
-- A final query confirmed zero `QA_TASK_ACTION_20260715` clients and zero `QA_TASK_ACTION_%` tasks remain.
-
-No real client, contact, owner, property, or task records were modified for testing.
-
-## Desktop verification
-
-- Verified Clients card controls and focused forms locally against live persistence.
-- Verified the same Task/Action controls render on the QA client inside Pipeline.
-- At 1280px and 1440px, controls stayed compact and the document had no horizontal overflow.
-
-## Mobile verification
-
-- At 390px, the Add Task dialog fit between 16px page gutters, had no document overflow, and kept Save visible. Task/Action buttons remained side-by-side and usable.
-- At 430px, the Log Action dialog fit between 16px gutters with no document overflow and kept Save visible.
-- Form grids collapse to one column where necessary; quick-pick/type choices remain two columns on small screens.
-
-## Refresh and persistence verification
-
-- Created an Urgent client task; it appeared immediately and remained after a full reload.
-- Created an Urgent backdated client action; it appeared immediately and remained with its selected date after a full reload.
-- The action did not create another task; the QA client retained only the explicitly created QA task.
-- Action deletion was exercised successfully.
-- RelatedTasks edit wiring was preserved and the previously excluded headline task is now included in expanded details, keeping task editing reachable without a duplicate Add Task control.
-
-## Save-failure behavior
-
-The focused modal awaits the existing persistence APIs. Both task and action errors leave the form mounted, preserve state, and render a clear inline error. The error branch was verified by code-path inspection; no production outage or destructive schema failure was induced solely to force an error.
-
-## Build result
-
-- Pre-sprint: `npm run build` passed with the existing bundle-size advisory.
-- Post-sprint: `npm run build` passed with the same advisory.
-
-## Lint result and baseline comparison
-
-- Pre-sprint: `npm run lint` passed with zero findings.
-- Post-sprint: `npm run lint` passed with zero findings.
-- Net regression: none.
-
-## Known issues
-
-- The application still has legacy single-slot Next Action fields for compatibility with existing pipeline/contact behavior. This sprint removes redundant client-card entry buttons but does not migrate or delete those fields.
-- A forced visual save-failure test was not performed against production; failure behavior is implemented and statically verified.
-
-## Deliberately deferred work
-
-- Dashboard Action Center redesign
-- Database/contact-card entry redesign
-- Call Mode workflow changes
-- Legacy Next Action data migration/removal
-- Broader activity taxonomy beyond the existing Call Mode outcomes
-
-## Protected areas not touched
-
-- `api/analyst.js`
-- `api/_financialModel.js`
-- `src/data/financialModel.js`
-- `src/lib/excelModel.js`
-- `public/model-template.xlsm`
-- TractIQ OAuth/authentication
-- `app_secrets` and service-role logic
-- Production secrets
-
-## Recommended next sprint
-
-Decide whether the remaining legacy single-slot `nextActionType`, `nextActionDate`, and `nextActionNote` fields should be migrated into universal tasks, then retire their fallback display only after Pipeline and contact workflows have dedicated regression coverage.
-
-## Commit status
-
-Committed in the production-branch commit containing this handoff. Use
-`git log -1 --oneline -- SPRINT_27_UNIFIED_CLIENT_TASK_ACTION_ENTRY_HANDOFF.md`
-to resolve the exact SHA in a fresh Claude Code session.
-
-## Deployment status
-
-Approved by Brandon for push to `origin/claude/storage-investment-crm-vV018`.
-That branch is the Vercel production source; confirm the remote SHA and Vercel
-deployment state before beginning the next sprint.
+The corrected scope is currently an uncommitted follow-up diff and must be committed and pushed only after approval.

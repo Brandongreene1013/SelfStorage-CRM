@@ -15,11 +15,11 @@ import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
 import MoveMenu from './MoveMenu';
 import { StatusBadge } from './ui';
-import { NextActionIndicator, getNextOpenTask, dueMeta, TASK_TYPE_MAP } from './tasks';
+import { NextActionIndicator, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
 
 /* ── Draggable client chip ── */
 function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDatabase, taskApi }) {
-  const [activityMode, setActivityMode] = useState(null);
+  const [showActionCenter, setShowActionCenter] = useState(false);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: client.id,
     data: { client },
@@ -36,6 +36,9 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
   const actionType = ACTION_TYPES.find(a => a.value === client.nextActionType);
   const fallbackDue = dueMeta(client.nextActionDate);
   const projectedCommission = projectedCommissionAmount(client.desiredSalePrice, client.projectedCommissionPct);
+  const modalDefaults = nextTask
+    ? {}
+    : legacyActionDefaults(client.nextActionType, client.nextActionDate, client.nextActionNote);
 
   return (
     <div
@@ -65,7 +68,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
               taskApi={taskApi}
               relatedType="client"
               relatedId={client.id}
-              onClick={e => { e.stopPropagation(); setActivityMode('task'); }}
+              onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
             />
           </div>
           <p className="text-sm font-semibold text-white truncate leading-tight">{client.name}</p>
@@ -118,7 +121,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
       {nextTask ? (
         <div
           onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); setActivityMode('task'); }}
+          onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
           className={`mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-all border ${
             nextTaskDue?.tone === 'red'
               ? 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -134,7 +137,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
       ) : actionType ? (
         <div
           onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); setActivityMode('task'); }}
+          onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
           className={`mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-all border ${
             fallbackDue?.tone === 'red'
               ? 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -147,43 +150,44 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
           <span className="font-semibold truncate">{actionType.label}</span>
           {fallbackDue && <span className="font-black ml-auto flex-shrink-0">{fallbackDue.label}</span>}
         </div>
-      ) : null}
+      ) : (
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
+          className="mt-2 w-full text-xs text-slate-600 hover:text-amber-400 border border-dashed border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1.5 transition-all"
+        >
+          + Set Action
+        </button>
+      )}
 
-      {/* Compact Task / Action entry for client relationships. */}
-      {(onLogAction || taskApi) && (
-        <div className="mt-2 pt-2 border-t border-slate-700/60 space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
+      {/* Activity log: Last Action + Log button */}
+      {onLogAction && (
+        <div className="mt-2 flex items-center justify-between gap-2">
           <LastActionLine
             actionLog={client.actionLog}
             onDeleteLast={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
           />
-          </div>
-          <div className="grid grid-cols-2 gap-1.5">
-            <button type="button" onPointerDown={event => event.stopPropagation()}
-              onClick={event => { event.stopPropagation(); setActivityMode('task'); }} disabled={!taskApi?.createTask}
-              className="text-[11px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2 py-1.5 disabled:opacity-40">
-              + Task
-            </button>
-            <button type="button" onPointerDown={event => event.stopPropagation()}
-              onClick={event => { event.stopPropagation(); setActivityMode('action'); }} disabled={!onLogAction}
-              className="text-[11px] font-bold text-blue-300 bg-blue-500/10 border border-blue-500/30 rounded-lg px-2 py-1.5 disabled:opacity-40">
-              + Action
-            </button>
-          </div>
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
+            className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-0.5 transition-all"
+          >
+            + Log
+          </button>
         </div>
       )}
 
-      {activityMode && (
+      {showActionCenter && (
         <ActionCenterModal
           name={client.name}
           subtitle={client.facilityName}
-          mode={activityMode}
           actionLog={client.actionLog}
           onLogAction={onLogAction ? (entry) => onLogAction(client.id, entry) : undefined}
           onDeleteAction={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
           taskContext={{ relatedType: 'client', relatedId: client.id, relatedName: client.name, source: 'pipeline' }}
+          taskDefaults={modalDefaults}
           onSaveTask={taskApi?.createTask}
-          onClose={() => setActivityMode(null)}
+          onClose={() => setShowActionCenter(false)}
         />
       )}
     </div>

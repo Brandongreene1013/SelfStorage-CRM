@@ -1440,24 +1440,31 @@ export function useDatabase() {
   }, []);
 
   // Append a logged action to a contact's activity log
-  const logContactAction = useCallback((contactId, entry) => {
-    setContacts(prev => {
-      const c = prev.find(x => x.id === contactId);
-      const nextLog = [...(c?.actionLog ?? []), entry];
-      supabase.from('contacts').update({ action_log: nextLog, updated_at: new Date().toISOString() }).eq('id', contactId).then(() => {});
-      return prev.map(x => x.id === contactId ? { ...x, actionLog: nextLog } : x);
-    });
-  }, []);
+  const logContactAction = useCallback(async (contactId, entry) => {
+    const contact = contacts.find(item => item.id === contactId);
+    if (!contact) return { error: 'Contact not found.' };
+    const nextLog = [...(contact.actionLog ?? []), entry];
+    const { error } = await supabase
+      .from('contacts')
+      .update({ action_log: nextLog, updated_at: new Date().toISOString() })
+      .eq('id', contactId);
+    if (error) return { error: error.message };
+    setContacts(prev => prev.map(item => item.id === contactId ? { ...item, actionLog: nextLog } : item));
+    return { ok: true };
+  }, [contacts]);
 
-  const deleteContactAction = useCallback((contactId, actionIndex) => {
-    setContacts(prev => {
-      const c = prev.find(x => x.id === contactId);
-      if (!c) return prev;
-      const nextLog = (c.actionLog ?? []).filter((_, idx) => idx !== actionIndex);
-      supabase.from('contacts').update({ action_log: nextLog, updated_at: new Date().toISOString() }).eq('id', contactId).then(() => {});
-      return prev.map(x => x.id === contactId ? { ...x, actionLog: nextLog } : x);
-    });
-  }, []);
+  const deleteContactAction = useCallback(async (contactId, actionIndex) => {
+    const contact = contacts.find(item => item.id === contactId);
+    if (!contact) return { error: 'Contact not found.' };
+    const nextLog = (contact.actionLog ?? []).filter((_, index) => index !== actionIndex);
+    const { error } = await supabase
+      .from('contacts')
+      .update({ action_log: nextLog, updated_at: new Date().toISOString() })
+      .eq('id', contactId);
+    if (error) return { error: error.message };
+    setContacts(prev => prev.map(item => item.id === contactId ? { ...item, actionLog: nextLog } : item));
+    return { ok: true };
+  }, [contacts]);
 
   const deleteContactCallHistory = useCallback((contactId, historyIndex) => {
     setContacts(prev => {
