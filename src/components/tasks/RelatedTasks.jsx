@@ -5,7 +5,7 @@ import TaskModal from './TaskModal';
 // Compact "open tasks for this entity" block + Add Task button. Used inside
 // ClientCard and Database's ContactDetailModal — deliberately small (per
 // Sprint 2's "don't make the UI huge" constraint), not a full task manager.
-export default function RelatedTasks({ taskApi, relatedType, relatedId, relatedName, source, maxVisible = 3, excludeTaskIds = [] }) {
+export default function RelatedTasks({ taskApi, relatedType, relatedId, relatedName, source, maxVisible = 3, excludeTaskIds = [], allowAdd = true }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   if (!taskApi) return null;
@@ -21,12 +21,14 @@ export default function RelatedTasks({ taskApi, relatedType, relatedId, relatedN
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
           Tasks{openTasks.length > 0 ? ` (${openTasks.length})` : ''}
         </p>
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowAdd(true); }}
-          className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-0.5 transition-all"
-        >
-          + Task
-        </button>
+        {allowAdd && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowAdd(true); }}
+            className="text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-0.5 transition-all"
+          >
+            + Task
+          </button>
+        )}
       </div>
 
       {visible.length > 0 && (

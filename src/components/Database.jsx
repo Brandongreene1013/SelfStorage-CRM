@@ -12,7 +12,7 @@ import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
 import { AddToMailerButton } from './MailerListPicker';
 import MailingAddressList from './MailingAddressList';
-import { ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCES, LEAD_TEMPS, PROPERTY_TYPES, RELATIONSHIP_TYPES } from '../data/constants';
+import { ACTION_TYPES, CALL_ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCES, LEAD_TEMPS, PROPERTY_TYPES, RELATIONSHIP_TYPES } from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
@@ -49,14 +49,7 @@ const STATUS_VARIANT = {
   appointment: 'amber', not_interested: 'red', callback: 'purple',
 };
 
-const CALL_OUTCOMES = [
-  { status: 'no_answer',      label: 'No Answer',      icon: '📵', color: 'bg-yellow-600/20 border-yellow-600/40 text-yellow-400 hover:bg-yellow-600/30' },
-  { status: 'voicemail',      label: 'Left VM',        icon: '📩', color: 'bg-blue-600/20 border-blue-600/40 text-blue-400 hover:bg-blue-600/30' },
-  { status: 'conversation',   label: 'Conversation',   icon: '💬', color: 'bg-green-600/20 border-green-600/40 text-green-400 hover:bg-green-600/30' },
-  { status: 'appointment',    label: 'Appt Set',       icon: '📅', color: 'bg-amber-600/20 border-amber-600/40 text-amber-400 hover:bg-amber-600/30' },
-  { status: 'not_interested', label: 'Not Interested', icon: '🚫', color: 'bg-red-600/20 border-red-600/40 text-red-400 hover:bg-red-600/30' },
-  { status: 'callback',       label: 'Call Back',      icon: '🔄', color: 'bg-purple-600/20 border-purple-600/40 text-purple-400 hover:bg-purple-600/30' },
-];
+const CALL_OUTCOMES = CALL_ACTION_TYPES;
 
 const SOURCE_COLORS = {
   'Internal DB': 'bg-blue-600/20 text-blue-400 border-blue-600/30',

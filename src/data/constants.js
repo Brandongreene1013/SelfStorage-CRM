@@ -67,6 +67,18 @@ export const ACTION_TYPES = [
   { value: 'bov',      label: 'BOV Presentation', icon: '📊' },
 ];
 
+// Historical interaction types shared by Call Mode and client action logs.
+// `status` keeps the existing Call Mode API stable; `value` lets the same
+// canonical list drive focused action-entry forms.
+export const CALL_ACTION_TYPES = [
+  { value: 'no_answer',      status: 'no_answer',      label: 'No Answer',      icon: '📵', color: 'bg-yellow-600/20 border-yellow-600/40 text-yellow-400 hover:bg-yellow-600/30' },
+  { value: 'voicemail',      status: 'voicemail',      label: 'Left VM',        icon: '📩', color: 'bg-blue-600/20 border-blue-600/40 text-blue-400 hover:bg-blue-600/30' },
+  { value: 'conversation',   status: 'conversation',   label: 'Conversation',   icon: '💬', color: 'bg-green-600/20 border-green-600/40 text-green-400 hover:bg-green-600/30' },
+  { value: 'appointment',    status: 'appointment',    label: 'Appt Set',       icon: '📅', color: 'bg-amber-600/20 border-amber-600/40 text-amber-400 hover:bg-amber-600/30' },
+  { value: 'not_interested', status: 'not_interested', label: 'Not Interested', icon: '🚫', color: 'bg-red-600/20 border-red-600/40 text-red-400 hover:bg-red-600/30' },
+  { value: 'callback',       status: 'callback',       label: 'Call Back',      icon: '🔄', color: 'bg-purple-600/20 border-purple-600/40 text-purple-400 hover:bg-purple-600/30' },
+];
+
 // Universal Task engine (Sprint 2) - richer type/priority vocab than the
 // legacy single-slot ACTION_TYPES above, since one entity can now have
 // several open tasks at once.

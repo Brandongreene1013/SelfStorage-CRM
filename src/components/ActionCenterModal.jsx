@@ -1,255 +1,254 @@
 import { useState } from 'react';
-import { ACTION_TYPES, TASK_TYPES, TASK_PRIORITIES, TASK_QUICK_PICKS } from '../data/constants';
+import { ACTION_TYPES, CALL_ACTION_TYPES, TASK_TYPES, TASK_PRIORITIES, TASK_QUICK_PICKS } from '../data/constants';
 import ModalLayout from './ui/ModalLayout';
 
-const ACTION_TYPE_MAP = Object.fromEntries(ACTION_TYPES.map(a => [a.value, a]));
+const ACTION_TYPE_MAP = Object.fromEntries([...ACTION_TYPES, ...CALL_ACTION_TYPES].map(type => [type.value, type]));
 
-function plusDays(n) {
-  const d = new Date();
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+function plusDays(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
-// One popup for the whole touch: log what happened AND schedule what's next,
-// saved together with a single button. Replaces the old two-modal dance
-// (LogActionModal + TaskModal) on client cards, pipeline chips, contact
-// cards, and the Dashboard's pipeline-attention rows.
-//
-// Both halves are optional: pick an activity type to log it, type a task
-// title to schedule it, or do both at once. Save stays disabled until at
-// least one half has something in it.
+function saveError(result, fallback) {
+  if (!result?.error) return '';
+  return result.error === 'migration_needed'
+    ? 'The task database needs its one-time migration before this can be saved.'
+    : result.error || fallback;
+}
+
 export default function ActionCenterModal({
   name,
   subtitle,
+  mode = null,
   actionLog = [],
-  onLogAction,      // (entry) => void — omit to hide the log section
-  onDeleteAction,   // (index) => void — enables delete on recent activity
-  taskContext,      // { relatedType, relatedId, relatedName, source }
+  onLogAction,
+  onDeleteAction,
+  taskContext,
   taskDefaults = {},
-  onSaveTask,       // (task) => void — omit to hide the schedule section
+  onSaveTask,
   onClose,
 }) {
-  // What happened
-  const [logType, setLogType] = useState(null); // null = not logging anything
+  const focusedAction = mode === 'action';
+  const focusedTask = mode === 'task';
+  const combined = !focusedAction && !focusedTask;
+
+  const [logType, setLogType] = useState(null);
   const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
+  const [logPriority, setLogPriority] = useState('normal');
   const [logNote, setLogNote] = useState('');
 
-  // What's next
   const [title, setTitle] = useState(taskDefaults.title ?? '');
   const [taskType, setTaskType] = useState(taskDefaults.taskType ?? 'follow_up');
-  const [priority, setPriority] = useState(taskDefaults.priority ?? 'normal');
+  const [taskPriority, setTaskPriority] = useState(taskDefaults.priority ?? 'normal');
   const [dueDate, setDueDate] = useState(taskDefaults.dueDate ?? plusDays(1));
   const [description, setDescription] = useState(taskDefaults.description ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const willLog = Boolean(onLogAction && logType);
   const willSchedule = Boolean(onSaveTask && title.trim());
-  const canSave = willLog || willSchedule;
-  const saveLabel = willLog && willSchedule ? 'Log + Schedule'
-    : willLog ? 'Log It'
-    : 'Save Next Action';
+  const canSave = focusedAction ? willLog : focusedTask ? willSchedule : willLog || willSchedule;
+  const displayedActionTypes = focusedAction ? CALL_ACTION_TYPES : ACTION_TYPES;
+  const heading = focusedAction ? 'Log Action' : focusedTask ? 'Add Task' : 'Log & Next Action';
+  const saveLabel = focusedAction ? 'Save Action'
+    : focusedTask ? 'Save Task'
+      : willLog && willSchedule ? 'Log + Schedule' : willLog ? 'Log It' : 'Save Next Action';
 
-  function applyQuickPick(qp) {
-    setTitle(qp.title);
-    setTaskType(qp.taskType);
-    setDueDate(plusDays(qp.offsetDays));
+  function applyQuickPick(quickPick) {
+    setTitle(quickPick.title);
+    setTaskType(quickPick.taskType);
+    setDueDate(plusDays(quickPick.offsetDays));
   }
 
-  function handleSave() {
-    if (!canSave) return;
-    if (willLog) {
-      onLogAction({ type: logType, date: logDate, note: logNote.trim(), at: new Date().toISOString() });
+  async function handleSave() {
+    if (!canSave || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      if (willLog) {
+        const result = await onLogAction({
+          type: logType,
+          date: logDate,
+          priority: logPriority,
+          note: logNote.trim(),
+          at: new Date().toISOString(),
+        });
+        const message = saveError(result, 'Could not save this action.');
+        if (message) { setError(message); return; }
+      }
+      if (willSchedule) {
+        const result = await onSaveTask({
+          title: title.trim(),
+          taskType,
+          priority: taskPriority,
+          dueDate: dueDate || null,
+          description: description.trim(),
+          relatedType: taskContext?.relatedType ?? 'general',
+          relatedId: taskContext?.relatedId ?? null,
+          relatedName: taskContext?.relatedName ?? '',
+          source: taskContext?.source ?? 'dashboard',
+        });
+        const message = saveError(result, 'Could not save this task.');
+        if (message) { setError(message); return; }
+      }
+      onClose();
+    } catch (saveFailure) {
+      setError(saveFailure?.message || 'Could not save. Please try again.');
+    } finally {
+      setSaving(false);
     }
-    if (willSchedule) {
-      onSaveTask({
-        title: title.trim(),
-        taskType,
-        priority,
-        dueDate: dueDate || null,
-        description: description.trim(),
-        relatedType: taskContext?.relatedType ?? 'general',
-        relatedId: taskContext?.relatedId ?? null,
-        relatedName: taskContext?.relatedName ?? '',
-        source: taskContext?.source ?? 'dashboard',
-      });
-    }
-    onClose();
   }
 
-  function handleDeleteActivity(index) {
-    if (!onDeleteAction) return;
-    onDeleteAction(index);
-  }
-
-  const recent = actionLog
-    .map((entry, index) => ({ entry, index }))
-    .reverse()
-    .slice(0, 5);
-
+  const recent = actionLog.map((entry, index) => ({ entry, index })).reverse().slice(0, 5);
   const sectionLabel = 'text-xs font-black uppercase tracking-widest';
   const fieldLabel = 'block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5';
-  const inputCls = 'w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition-colors';
+  const inputClass = 'w-full min-w-0 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition-colors';
 
   return (
-    <ModalLayout onClose={onClose} size="md" className="max-h-[90vh] flex flex-col">
-      <div className="flex items-center justify-between p-5 border-b border-slate-800 flex-shrink-0">
-        <div>
-          <h2 className="text-base font-black text-white">Log & Next Action</h2>
-          <p className="text-xs text-slate-500 mt-0.5">{name}{subtitle ? ` · ${subtitle}` : ''}</p>
+    <ModalLayout onClose={onClose} size="md" className="max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-800 flex-shrink-0">
+        <div className="min-w-0">
+          <h2 className="text-base font-black text-white">{heading}</h2>
+          <p className="text-xs text-slate-500 mt-0.5 truncate">{name}{subtitle ? ` · ${subtitle}` : ''}</p>
         </div>
-        <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
+        <button type="button" onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">×</button>
       </div>
 
-      <div className="p-5 space-y-5 flex-1 overflow-y-auto min-h-0">
-        {/* ── What happened ── */}
-        {onLogAction && (
-          <div className="bg-slate-800/40 border border-slate-700/60 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
+      <div className="p-4 sm:p-5 space-y-5 flex-1 overflow-y-auto min-h-0">
+        {(combined || focusedAction) && onLogAction && (
+          <section className="bg-slate-800/40 border border-slate-700/60 rounded-xl p-3 sm:p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
               <p className={`${sectionLabel} ${willLog ? 'text-amber-400' : 'text-slate-500'}`}>What happened?</p>
-              {willLog ? (
-                <button onClick={() => setLogType(null)} className="text-xs text-slate-500 hover:text-slate-300 font-semibold">
-                  Not logging
-                </button>
-              ) : (
-                <span className="text-xs text-slate-600">optional</span>
-              )}
+              {combined && <span className="text-xs text-slate-600">optional</span>}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-              {ACTION_TYPES.map(a => (
-                <button key={a.value} onClick={() => setLogType(logType === a.value ? null : a.value)}
-                  className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-bold border transition-all text-left ${
-                    logType === a.value ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
+              {displayedActionTypes.map(action => (
+                <button type="button" key={action.value} onClick={() => setLogType(action.value)}
+                  className={`flex min-w-0 items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-bold border transition-all text-left ${
+                    logType === action.value ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
                       : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-white'
                   }`}>
-                  <span className="text-base">{a.icon}</span>
-                  <span className="truncate">{a.label}</span>
+                  <span className="text-base flex-shrink-0">{action.icon}</span>
+                  <span className="truncate">{action.label}</span>
                 </button>
               ))}
             </div>
-            {willLog && (
-              <div className="grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-3">
-                <div>
-                  <label className={fieldLabel}>When</label>
-                  <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)} className={inputCls} />
-                </div>
-                <div>
-                  <label className={fieldLabel}>Note</label>
-                  <input value={logNote} onChange={e => setLogNote(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
-                    placeholder="e.g. Left voicemail, owner wants a BOV..."
-                    className={inputCls} />
-                </div>
+            {(focusedAction || willLog) && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={fieldLabel}>Action Date</label>
+                <input type="date" value={logDate} onChange={event => setLogDate(event.target.value)} className={inputClass} />
               </div>
-            )}
-          </div>
+              <PriorityPicker value={logPriority} onChange={setLogPriority} labelClass={fieldLabel} />
+            </div>}
+            {(focusedAction || willLog) && <div>
+              <label className={fieldLabel}>What happened?</label>
+              <textarea autoFocus={focusedAction} value={logNote} onChange={event => setLogNote(event.target.value)} rows={3}
+                placeholder="Add context about the conversation, email, meeting, or outcome…"
+                className={`${inputClass} resize-y`} />
+            </div>}
+          </section>
         )}
 
-        {/* ── What's next ── */}
-        {onSaveTask && (
-          <div className="bg-slate-800/40 border border-slate-700/60 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className={`${sectionLabel} ${willSchedule ? 'text-amber-400' : 'text-slate-500'}`}>What's next?</p>
-              {!willSchedule && <span className="text-xs text-slate-600">optional</span>}
+        {(combined || focusedTask) && onSaveTask && (
+          <section className="bg-slate-800/40 border border-slate-700/60 rounded-xl p-3 sm:p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className={`${sectionLabel} ${willSchedule ? 'text-amber-400' : 'text-slate-500'}`}>What needs to happen?</p>
+              {combined && <span className="text-xs text-slate-600">optional</span>}
             </div>
+            <textarea autoFocus={focusedTask} value={title} onChange={event => setTitle(event.target.value)} rows={2}
+              placeholder="What needs to happen?"
+              className={`${inputClass} resize-y`} />
             <div className="flex flex-wrap gap-1.5">
-              {TASK_QUICK_PICKS.map(qp => (
-                <button key={qp.title} onClick={() => applyQuickPick(qp)}
+              {TASK_QUICK_PICKS.map(quickPick => (
+                <button type="button" key={quickPick.title} onClick={() => applyQuickPick(quickPick)}
                   className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-slate-700 text-slate-400 hover:border-amber-500/40 hover:text-amber-400 transition-all">
-                  {qp.title}
+                  {quickPick.title}
                 </button>
               ))}
             </div>
-            <div>
-              <label className={fieldLabel}>Task</label>
-              <input value={title} onChange={e => setTitle(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
-                placeholder="e.g. Call back about T-12 request..."
-                className={inputCls} />
-            </div>
-            {willSchedule && (
-              <>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {TASK_TYPES.map(t => (
-                    <button key={t.value} onClick={() => setTaskType(t.value)}
-                      className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-bold border transition-all text-left ${
-                        taskType === t.value ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
-                          : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-white'
-                      }`}>
-                      <span>{t.icon}</span>
-                      <span className="truncate">{t.label}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={fieldLabel}>Due Date</label>
-                    <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={fieldLabel}>Priority</label>
-                    <div className="flex gap-1 bg-slate-800 border border-slate-700 rounded-lg p-1">
-                      {TASK_PRIORITIES.map(p => (
-                        <button key={p.value} onClick={() => setPriority(p.value)} title={p.label}
-                          className={`flex-1 rounded-md py-1 text-xs font-bold transition-all ${
-                            priority === p.value ? `${p.bg} ${p.text}` : 'text-slate-600 hover:text-slate-400'
-                          }`}>
-                          {p.label[0]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <label className={fieldLabel}>Notes</label>
-                  <input value={description} onChange={e => setDescription(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
-                    placeholder="Optional detail..."
-                    className={inputCls} />
-                </div>
-              </>
-            )}
-          </div>
+            {(focusedTask || willSchedule) && <div>
+              <label className={fieldLabel}>Task Type</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                {TASK_TYPES.map(type => (
+                  <button type="button" key={type.value} onClick={() => setTaskType(type.value)}
+                    className={`flex min-w-0 items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-bold border transition-all text-left ${
+                      taskType === type.value ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
+                        : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600 hover:text-white'
+                    }`}>
+                    <span>{type.icon}</span><span className="truncate">{type.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>}
+            {(focusedTask || willSchedule) && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={fieldLabel}>Due Date</label>
+                <input type="date" value={dueDate} onChange={event => setDueDate(event.target.value)} className={inputClass} />
+              </div>
+              <PriorityPicker value={taskPriority} onChange={setTaskPriority} labelClass={fieldLabel} />
+            </div>}
+            {(focusedTask || willSchedule) && <div>
+              <label className={fieldLabel}>Notes</label>
+              <textarea value={description} onChange={event => setDescription(event.target.value)} rows={2}
+                placeholder="Optional detail…" className={`${inputClass} resize-y`} />
+            </div>}
+          </section>
         )}
 
-        {/* ── Recent activity ── */}
-        {recent.length > 0 && (
-          <div>
+        {(combined || focusedAction) && recent.length > 0 && (
+          <section>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Recent activity</p>
             <div className="space-y-1 max-h-32 overflow-auto">
-              {recent.map(({ entry, index }) => (
-                <div key={index} className="flex items-center gap-2 text-xs bg-slate-800/60 rounded-lg px-2.5 py-1.5">
-                  <span>{ACTION_TYPE_MAP[entry.type]?.icon ?? '•'}</span>
-                  <span className="text-slate-300 truncate flex-1">{entry.note || ACTION_TYPE_MAP[entry.type]?.label}</span>
-                  <span className="text-slate-600 flex-shrink-0">{entry.date}</span>
-                  {onDeleteAction && (
-                    <button onClick={() => handleDeleteActivity(index)}
-                      className="text-slate-600 hover:text-red-400 font-black px-1" title="Delete activity">
-                      ✕
-                    </button>
-                  )}
-                </div>
-              ))}
+              {recent.map(({ entry, index }) => {
+                const action = ACTION_TYPE_MAP[entry.type];
+                const priority = TASK_PRIORITIES.find(item => item.value === entry.priority);
+                return (
+                  <div key={`${entry.at ?? entry.date}-${index}`} className="flex items-center gap-2 text-xs bg-slate-800/60 rounded-lg px-2.5 py-1.5">
+                    <span>{action?.icon ?? '•'}</span>
+                    <span className="text-slate-300 truncate flex-1">{entry.note || action?.label || entry.type}</span>
+                    {entry.priority && entry.priority !== 'normal' && <span className={`font-bold ${priority?.text ?? 'text-slate-500'}`}>{priority?.label}</span>}
+                    <span className="text-slate-600 flex-shrink-0">{entry.date}</span>
+                    {onDeleteAction && (
+                      <button type="button" onClick={() => onDeleteAction(index)} className="text-slate-600 hover:text-red-400 font-black px-1" title="Delete activity">×</button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          </section>
         )}
+
+        {error && <p role="alert" className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>}
       </div>
 
-      <div className="flex items-center justify-between gap-2 p-5 border-t border-slate-800 flex-shrink-0">
-        <p className="text-xs text-slate-500 min-w-0 truncate">
-          {willLog && willSchedule ? `Logging "${ACTION_TYPE_MAP[logType]?.label}" + scheduling "${title.trim()}"`
-            : willLog ? `Logging "${ACTION_TYPE_MAP[logType]?.label}"`
-            : willSchedule ? `Scheduling "${title.trim()}"`
-            : 'Pick an activity, a next task, or both'}
-        </p>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button onClick={onClose} className="text-sm text-slate-400 hover:text-white transition-colors">Cancel</button>
-          <button onClick={handleSave} disabled={!canSave}
-            className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
-              canSave ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-            }`}>
-            {saveLabel}
-          </button>
-        </div>
+      <div className="flex items-center justify-end gap-3 p-4 sm:p-5 border-t border-slate-800 flex-shrink-0 bg-slate-900">
+        <button type="button" onClick={onClose} disabled={saving} className="text-sm text-slate-400 hover:text-white disabled:opacity-50">Cancel</button>
+        <button type="button" onClick={handleSave} disabled={!canSave || saving}
+          className={`min-w-28 px-5 py-2 rounded-xl text-sm font-bold transition-all ${
+            canSave && !saving ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+          }`}>
+          {saving ? 'Saving…' : saveLabel}
+        </button>
       </div>
     </ModalLayout>
+  );
+}
+
+function PriorityPicker({ value, onChange, labelClass }) {
+  return (
+    <div>
+      <label className={labelClass}>Priority</label>
+      <div className="grid grid-cols-4 gap-1 bg-slate-800 border border-slate-700 rounded-lg p-1">
+        {TASK_PRIORITIES.map(priority => (
+          <button type="button" key={priority.value} onClick={() => onChange(priority.value)} title={priority.label}
+            className={`min-w-0 rounded-md px-1 py-1.5 text-[11px] font-bold transition-all ${
+              value === priority.value ? `${priority.bg} ${priority.text}` : 'text-slate-600 hover:text-slate-400'
+            }`}>
+            {priority.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

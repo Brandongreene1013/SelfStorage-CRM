@@ -350,23 +350,28 @@ export function useCRM() {
 
   // Append a logged action to a client's activity log
   const logClientAction = useCallback(async (id, entry) => {
-    setClients(prev => {
-      const client = prev.find(c => c.id === id);
-      const nextLog = [...(client?.actionLog ?? []), entry];
-      supabase.from('clients').update({ action_log: nextLog, updated_at: new Date().toISOString() }).eq('id', id).then(() => {});
-      return prev.map(c => c.id === id ? { ...c, actionLog: nextLog } : c);
-    });
-  }, []);
+    const client = clients.find(c => c.id === id);
+    if (!client) return { error: 'Client not found. Refresh and try again.' };
+    const nextLog = [...(client.actionLog ?? []), entry];
+    const { error } = await supabase.from('clients')
+      .update({ action_log: nextLog, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) return { error: error.message };
+    setClients(prev => prev.map(c => c.id === id ? { ...c, actionLog: nextLog } : c));
+    return { ok: true };
+  }, [clients]);
 
-  const deleteClientAction = useCallback((id, actionIndex) => {
-    setClients(prev => {
-      const client = prev.find(c => c.id === id);
-      if (!client) return prev;
-      const nextLog = (client.actionLog ?? []).filter((_, idx) => idx !== actionIndex);
-      supabase.from('clients').update({ action_log: nextLog, updated_at: new Date().toISOString() }).eq('id', id).then(() => {});
-      return prev.map(c => c.id === id ? { ...c, actionLog: nextLog } : c);
-    });
-  }, []);
+  const deleteClientAction = useCallback(async (id, actionIndex) => {
+    const client = clients.find(c => c.id === id);
+    if (!client) return { error: 'Client not found. Refresh and try again.' };
+    const nextLog = (client.actionLog ?? []).filter((_, idx) => idx !== actionIndex);
+    const { error } = await supabase.from('clients')
+      .update({ action_log: nextLog, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) return { error: error.message };
+    setClients(prev => prev.map(c => c.id === id ? { ...c, actionLog: nextLog } : c));
+    return { ok: true };
+  }, [clients]);
 
   return { clients, dealValueMigrationNeeded, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog };
 }

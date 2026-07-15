@@ -1,6 +1,6 @@
-import { ACTION_TYPES } from '../data/constants';
+import { ACTION_TYPES, CALL_ACTION_TYPES } from '../data/constants';
 
-const TYPE_MAP = Object.fromEntries(ACTION_TYPES.map(a => [a.value, a]));
+const TYPE_MAP = Object.fromEntries([...ACTION_TYPES, ...CALL_ACTION_TYPES].map(action => [action.value, action]));
 
 function ts(entry) {
   // Prefer full ISO timestamp; fall back to date-only

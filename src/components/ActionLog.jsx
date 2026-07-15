@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ACTION_TYPES } from '../data/constants';
+import { ACTION_TYPES, CALL_ACTION_TYPES, TASK_PRIORITIES } from '../data/constants';
 import ModalLayout from './ui/ModalLayout';
 
-const TYPE_MAP = Object.fromEntries(ACTION_TYPES.map(a => [a.value, a]));
+const TYPE_MAP = Object.fromEntries([...ACTION_TYPES, ...CALL_ACTION_TYPES].map(action => [action.value, action]));
+const PRIORITY_MAP = Object.fromEntries(TASK_PRIORITIES.map(priority => [priority.value, priority]));
 
 // Compact "Last Action" line shown on every card. actionLog = [{date,type,note}]
 export function LastActionLine({ actionLog, onDeleteLast }) {
@@ -11,11 +12,15 @@ export function LastActionLine({ actionLog, onDeleteLast }) {
   }
   const last = actionLog[actionLog.length - 1];
   const t = TYPE_MAP[last.type];
+  const priority = PRIORITY_MAP[last.priority];
   return (
     <span className="text-xs text-slate-400 flex items-center gap-1 min-w-0">
       <span className="text-slate-500 flex-shrink-0">Last:</span>
       <span className="flex-shrink-0">{t?.icon ?? '•'}</span>
-      <span className="truncate">{last.note || t?.label || 'Action'}</span>
+      <span className="truncate">{t?.label || 'Action'}{last.note ? ` · ${last.note}` : ''}</span>
+      {last.priority && last.priority !== 'normal' && (
+        <span className={`flex-shrink-0 font-bold ${priority?.text ?? 'text-slate-500'}`}>{priority?.label}</span>
+      )}
       {last.date && <span className="text-slate-600 flex-shrink-0">- {last.date.slice(5)}</span>}
       {onDeleteLast && (
         <button
@@ -28,7 +33,7 @@ export function LastActionLine({ actionLog, onDeleteLast }) {
           className="ml-0.5 text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
           title="Delete this activity"
         >
-          x
+          ×
         </button>
       )}
     </span>
