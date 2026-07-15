@@ -5,7 +5,7 @@ import ModalLayout from './ui/ModalLayout';
 const TYPE_MAP = Object.fromEntries(ACTION_TYPES.map(a => [a.value, a]));
 
 // Compact "Last Action" line shown on every card. actionLog = [{date,type,note}]
-export function LastActionLine({ actionLog }) {
+export function LastActionLine({ actionLog, onDeleteLast }) {
   if (!actionLog || actionLog.length === 0) {
     return <span className="text-xs text-slate-600 italic">No actions logged yet</span>;
   }
@@ -17,6 +17,20 @@ export function LastActionLine({ actionLog }) {
       <span className="flex-shrink-0">{t?.icon ?? '•'}</span>
       <span className="truncate">{last.note || t?.label || 'Action'}</span>
       {last.date && <span className="text-slate-600 flex-shrink-0">- {last.date.slice(5)}</span>}
+      {onDeleteLast && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteLast(actionLog.length - 1);
+          }}
+          className="ml-0.5 text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
+          title="Delete this activity"
+        >
+          x
+        </button>
+      )}
     </span>
   );
 }
@@ -34,7 +48,6 @@ export function LogActionModal({ name, subtitle, actionLog = [], onSave, onDelet
 
   function handleDelete(index) {
     if (!onDelete) return;
-    if (!confirm('Delete this activity?')) return;
     onDelete(index);
   }
 

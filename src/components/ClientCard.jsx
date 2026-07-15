@@ -67,6 +67,9 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
             })()}
           </div>
           <h3 className="font-bold text-white text-sm mt-1 truncate">{client.name}</h3>
+          {client.age && (
+            <p className="text-[11px] font-semibold text-slate-500 mt-0.5">Age {client.age}</p>
+          )}
           {client.facilityName && (
             <p className="text-xs text-slate-400 truncate">{client.facilityName}</p>
           )}
@@ -272,7 +275,10 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       {/* Activity log: Last Action + Log button */}
       {onLogAction && (
         <div className="mt-2 flex items-center justify-between gap-2">
-          <LastActionLine actionLog={client.actionLog} />
+          <LastActionLine
+            actionLog={client.actionLog}
+            onDeleteLast={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
+          />
           <button
             onClick={() => setShowActionCenter(true)}
             className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
@@ -324,10 +330,10 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
       {showDetails && onMoveToDatabase && (
         <button
           onClick={() => {
-            if (confirm(`Move "${client.name}" out of the Clients pipeline and into the Master Database as a contact?`)) onMoveToDatabase(client);
+            if (confirm(`Archive "${client.name}" from the active pipeline and keep the owner in the Master Database?`)) onMoveToDatabase(client);
           }}
           className="mt-2 w-full text-xs font-semibold text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 rounded-lg px-3 py-1.5 transition-all"
-          title="Removes them from the active pipeline but keeps them in the Master Database"
+          title="Keeps the linked owner/contact record and moves this deal to Post-Close"
         >
           ⤳ Move to Master Database
         </button>

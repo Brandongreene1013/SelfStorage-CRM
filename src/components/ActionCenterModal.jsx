@@ -77,7 +77,6 @@ export default function ActionCenterModal({
 
   function handleDeleteActivity(index) {
     if (!onDeleteAction) return;
-    if (!confirm('Delete this activity?')) return;
     onDeleteAction(index);
   }
 

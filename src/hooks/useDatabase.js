@@ -27,6 +27,12 @@ function isMissingColumnError(error, columnName) {
     || new RegExp(`column .*${columnName}.* does not exist|could not find .*${columnName}.* column`, 'i').test(msg);
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 export function extractStateAndMarket(address) {
   if (!address) return { state: '', market: '' };
   const stateAbbrRegex = /\b([A-Z]{2})\b(?:\s*\d{5})?/g;
@@ -662,6 +668,7 @@ function updatePayloadFromFields(fields) {
   if (fields.phone !== undefined) dbFields.phone = fields.phone;
   if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
   if (fields.email !== undefined) dbFields.email = fields.email;
+  if (fields.age !== undefined) dbFields.age = numberOrNull(fields.age);
   if (fields.linkedinUrl !== undefined) dbFields.linkedin_url = fields.linkedinUrl;
   if (fields.ownedProperties !== undefined) dbFields.owned_properties = fields.ownedProperties;
   if (fields.address !== undefined) dbFields.address = fields.address;
@@ -845,6 +852,7 @@ function dbToContact(row) {
     phone: row.phone ?? '',
     alternatePhones: Array.isArray(row.alternate_phones) ? row.alternate_phones : [],
     email: row.email ?? '',
+    age: row.age ?? null,
     linkedinUrl: row.linkedin_url ?? '',
     ownedProperties: Array.isArray(row.owned_properties) ? row.owned_properties : [],
     address: row.address ?? '',
@@ -1281,6 +1289,7 @@ export function useDatabase() {
       lead_source: fields.leadSource || null,
       phone: fields.phone ?? '',
       email: fields.email ?? '',
+      age: numberOrNull(fields.age),
       address: fields.address ?? '',
       mailing_address: fields.mailingAddress ?? '',
       mailing_addresses: normalizeMailingAddresses(fields.mailingAddresses),
@@ -1368,6 +1377,9 @@ export function useDatabase() {
     }
     if (error && fields.ownedProperties !== undefined && isMissingColumnError(error, 'owned_properties')) {
       return { error: 'Run sql/contact_owned_properties_migration.sql in Supabase, then refresh to save properties.' };
+    }
+    if (error && fields.age !== undefined && isMissingColumnError(error, 'age')) {
+      return { error: 'Run sql/contact_age_migration.sql in Supabase, then refresh to save contact ages.' };
     }
     if (error && (
       isMissingColumnError(error, 'owner_entity')
@@ -1509,6 +1521,7 @@ export function useDatabase() {
         phone: existingMaster.phone || contact.phone || '',
         alternatePhones: existingMaster.alternatePhones?.length ? existingMaster.alternatePhones : (contact.alternatePhones ?? []),
         email: existingMaster.email || contact.email || '',
+        age: existingMaster.age ?? contact.age ?? null,
         address: existingMaster.address || contact.address || '',
         mailingAddress: existingMaster.mailingAddress || contact.mailingAddress || '',
         mailingAddresses: existingMaster.mailingAddresses?.length ? existingMaster.mailingAddresses : (contact.mailingAddresses ?? []),
@@ -1539,6 +1552,7 @@ export function useDatabase() {
       phone: contact.phone ?? '',
       alternate_phones: contact.alternatePhones ?? [],
       email: contact.email ?? '',
+      age: numberOrNull(contact.age),
       address: contact.address ?? '',
       owned_properties: contact.ownedProperties ?? [],
       mailing_address: contact.mailingAddress ?? '',
@@ -1579,6 +1593,20 @@ export function useDatabase() {
     }
     if (error && isMissingColumnError(error, 'mailing_addresses')) {
       payload = stripContactMailingAddressesColumn(payload);
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
+    if (error && isMissingColumnError(error, 'age')) {
+      const { age: _age, ...withoutAge } = payload;
+      payload = withoutAge;
+      const retry = await supabase.from('contacts').insert([payload]).select().single();
+      row = retry.data;
+      error = retry.error;
+    }
+    if (error && isMissingColumnError(error, 'age')) {
+      const { age: _age, ...withoutAge } = payload;
+      payload = withoutAge;
       const retry = await supabase.from('contacts').insert([payload]).select().single();
       row = retry.data;
       error = retry.error;

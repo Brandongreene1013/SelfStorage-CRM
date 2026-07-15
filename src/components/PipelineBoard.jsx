@@ -72,6 +72,9 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
             />
           </div>
           <p className="text-sm font-semibold text-white truncate leading-tight">{client.name}</p>
+          {client.age && (
+            <p className="text-[11px] font-semibold text-slate-500 leading-tight">Age {client.age}</p>
+          )}
           {client.facilityName && (
             <p className="text-xs text-slate-400 truncate">{client.facilityName}</p>
           )}
@@ -102,7 +105,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {onMoveToDatabase && (
-            <MoveMenu label="More" options={[{ label: 'Move to Master Database', onClick: () => { if (confirm(`Move "${client.name}" out of the pipeline and into the Master Database?`)) onMoveToDatabase(client); } }]} />
+            <MoveMenu label="More" options={[{ label: 'Archive to Master Database', onClick: () => { if (confirm(`Archive "${client.name}" from the active pipeline and keep the owner in the Master Database?`)) onMoveToDatabase(client); } }]} />
           )}
           <button
             onPointerDown={e => e.stopPropagation()}
@@ -160,7 +163,10 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
       {/* Activity log: Last Action + Log button */}
       {onLogAction && (
         <div className="mt-2 flex items-center justify-between gap-2">
-          <LastActionLine actionLog={client.actionLog} />
+          <LastActionLine
+            actionLog={client.actionLog}
+            onDeleteLast={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
+          />
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
@@ -244,6 +250,7 @@ function OverlayChip({ client }) {
         {client.type}
       </div>
       <p className="text-sm font-semibold text-white truncate">{client.name}</p>
+      {client.age && <p className="text-[11px] font-semibold text-slate-500 truncate">Age {client.age}</p>}
       {client.facilityName && <p className="text-xs text-slate-400 truncate">{client.facilityName}</p>}
     </div>
   );

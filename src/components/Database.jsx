@@ -1148,7 +1148,7 @@ function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerg
   );
 }
 
-function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteCallHistory, onMergeSameOwner, taskApi, ownershipApi, mailerApi }) {
+function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onDeleteAction, onDeleteCallHistory, onMergeSameOwner, taskApi, ownershipApi, mailerApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1160,6 +1160,10 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
 
   const contactName = contact.ownerName || contact.facilityName || 'Contact';
   const openTasks = taskApi?.getRelatedTasks('contact', contact.id) ?? [];
+  const recentActivity = (contact.actionLog ?? [])
+    .map((entry, index) => ({ entry, index }))
+    .reverse()
+    .slice(0, 6);
   const source = contactSource(contact, lists);
   const rel = relationshipMeta(contact.relationshipType);
 
@@ -1242,6 +1246,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
               <EditableField label="Owner Name" value={contact.ownerName} placeholder="Click to add owner name" onChange={field('ownerName')} />
               <EditableField label="Owner Entity" value={contact.ownerEntity} placeholder="ABC Storage LLC / owns personally" onChange={field('ownerEntity')} />
             </div>
+            <EditableField label="Age" value={contact.age ?? ''} placeholder="Click to add age" onChange={field('age')} />
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Relationship Type</label>
               <select
@@ -1337,6 +1342,29 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
           </div>
 
           {/* ── Callback date ── */}
+          {recentActivity.length > 0 && (
+            <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase mb-2">Recent Activity</p>
+              <div className="space-y-1.5">
+                {recentActivity.map(({ entry, index }) => (
+                  <div key={index} className="flex items-center gap-2 text-xs text-slate-400 bg-slate-900/70 rounded-lg px-3 py-2">
+                    <span className="truncate flex-1">{entry.note || entry.type || 'Action'} {entry.date ? `- ${entry.date}` : ''}</span>
+                    {onDeleteAction && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteAction(contact.id, index)}
+                        className="text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
+                        title="Delete this activity"
+                      >
+                        x
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Activity Date</label>
@@ -1592,6 +1620,11 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           Entity: <span className="text-slate-300 font-semibold">{contact.ownerEntity}</span>
         </p>
       )}
+      {contact.age && (
+        <p className="mb-3 text-xs text-slate-500 truncate">
+          Age: <span className="text-slate-300 font-semibold">{contact.age}</span>
+        </p>
+      )}
       {contact.leadSource && (
         <p className="mb-3 text-xs text-slate-500 truncate">
           Lead Source: <span className="text-slate-300 font-semibold">{contact.leadSource}</span>
@@ -1680,7 +1713,10 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
       {/* Activity log: Last Action + Log button */}
       {onLogAction && (
         <div className="mt-2 flex items-center justify-between gap-2">
-          <LastActionLine actionLog={contact.actionLog} />
+          <LastActionLine
+            actionLog={contact.actionLog}
+            onDeleteLast={onDeleteAction ? (index) => onDeleteAction(contact.id, index) : undefined}
+          />
           <button
             onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
             className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
@@ -1724,11 +1760,11 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
 // ─── Add Contact Modal ────────────────────────────────────────────────────────
 function AddContactModal({ listName, onSave, onClose }) {
   const [form, setForm] = useState({
-    ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', mailingAddress: '', mailingAddresses: [], state: '', notes: '',
+    ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', age: '', address: '', mailingAddress: '', mailingAddresses: [], state: '', notes: '',
   });
 
   function set(key, val) { setForm(prev => ({ ...prev, [key]: val })); }
-  const blankForm = { ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', address: '', mailingAddress: '', mailingAddresses: [], state: '', notes: '' };
+  const blankForm = { ownerName: '', ownerEntity: '', facilityName: '', relationshipType: DEFAULT_RELATIONSHIP_TYPE, leadSource: '', phone: '', email: '', age: '', address: '', mailingAddress: '', mailingAddresses: [], state: '', notes: '' };
 
   function handleSave() {
     if (!form.ownerName.trim() && !form.facilityName.trim()) return;
@@ -1748,6 +1784,7 @@ function AddContactModal({ listName, onSave, onClose }) {
     { key: 'facilityName', label: 'Facility Name',   placeholder: 'ABC Self Storage',        type: 'text' },
     { key: 'phone',        label: 'Phone',           placeholder: '(555) 000-0000',          type: 'tel'  },
     { key: 'email',        label: 'Email',           placeholder: 'john@abcstorage.com',     type: 'email'},
+    { key: 'age',          label: 'Age',             placeholder: 'Owner age',               type: 'number' },
     { key: 'address',      label: 'Address',         placeholder: '123 Main St, City, FL',   type: 'text' },
     { key: 'mailingAddress', label: 'Mailing Address', placeholder: 'PO Box 123, City, FL',  type: 'text' },
   ];
@@ -2534,6 +2571,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const masterView = activeListId === masterListId;
   const clientsInView = (masterView && statusFilter === 'all' && relationshipFilter === 'all' && leadSourceFilter === 'all')
     ? clients.filter(cl => {
+        if (cl.contactId && contacts.some(contact => contact.id === cl.contactId)) return false;
         if (!search) return true;
         const q = search.toLowerCase();
         return (cl.name ?? '').toLowerCase().includes(q)
@@ -3326,6 +3364,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <EditableField label="Owner Name" value={contact.ownerName} placeholder="Click to add owner name" onChange={field('ownerName')} />
         <EditableField label="Owner Entity" value={contact.ownerEntity} placeholder="ABC Storage LLC / owns personally" onChange={field('ownerEntity')} />
+        <EditableField label="Age" value={contact.age ?? ''} placeholder="Click to add age" onChange={field('age')} />
         <EditableField label="Facility Name" value={contact.facilityName} placeholder="Click to add facility name" onChange={field('facilityName')} />
         <EditableEmailTile email={contact.email} onChange={field('email')} />
         <EditableField label="LinkedIn" value={contact.linkedinUrl} placeholder="Paste LinkedIn profile URL"
@@ -3541,7 +3580,10 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const openTasks = taskApi?.getRelatedTasks('contact', current.id) ?? [];
   const nextTask = getNextOpenTask(openTasks);
   const due = dueMeta(nextTask?.dueDate);
-  const latestCall = [...(current.callHistory ?? [])].reverse()[0];
+  const latestCallEntry = (current.callHistory ?? [])
+    .map((h, index) => ({ h, index }))
+    .reverse()[0];
+  const latestCall = latestCallEntry?.h;
   const recentActivity = (current.actionLog ?? [])
     .map((entry, index) => ({ entry, index }))
     .reverse()
@@ -3643,6 +3685,9 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 inputClassName="text-base text-slate-200 mt-1"
               />
               <CallModePropertySubheader contact={current} />
+              {current.age && (
+                <p className="text-xs text-slate-500 mt-1 font-semibold">Age {current.age}</p>
+              )}
               {current.queueReason && (
                 <p className="text-xs text-amber-400/80 mt-1.5 font-semibold">Why they're up: {current.queueReason}</p>
               )}
@@ -3709,6 +3754,24 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 </button>
               ))}
             </div>
+            {latestCall && (
+              <div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs">
+                <span className="font-black uppercase tracking-wide text-slate-600">Last logged</span>
+                <span className="min-w-0 flex-1 truncate text-slate-300">
+                  {STATUS_LABELS[latestCall.outcome] ?? latestCall.outcome}{latestCall.notes ? ` - ${latestCall.notes}` : ''}{latestCall.date ? ` - ${latestCall.date}` : ''}
+                </span>
+                {onDeleteCallHistory && (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteCallHistory(current.id, latestCallEntry.index)}
+                    className="text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
+                    title="Delete logged call"
+                  >
+                    x
+                  </button>
+                )}
+              </div>
+            )}
             <div className="mt-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">Activity Date</label>
@@ -3939,9 +4002,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                         <span className="text-slate-600">{h.date}</span>
                         {onDeleteCallHistory && (
                           <button
-                            onClick={() => {
-                              if (confirm('Delete this logged call?')) onDeleteCallHistory(current.id, index);
-                            }}
+                            onClick={() => onDeleteCallHistory(current.id, index)}
                             className="text-slate-600 hover:text-red-400 font-black px-1"
                             title="Delete logged call"
                           >
@@ -3969,7 +4030,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                     {onDeleteAction && (
                       <button
                         onClick={() => {
-                          if (confirm('Delete this activity?')) onDeleteAction(current.id, index);
+                          onDeleteAction(current.id, index);
                         }}
                         className="text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
                         title="Delete activity"

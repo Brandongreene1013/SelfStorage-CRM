@@ -12,6 +12,7 @@ const EMPTY = {
   facilityName: '',
   phone: '',
   email: '',
+  age: '',
   address: '',
   mailingAddress: '',
   mailingAddresses: [],
@@ -38,6 +39,7 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
         facilityName: client.facilityName ?? '',
         phone: client.phone ?? '',
         email: client.email ?? '',
+        age: client.age ?? '',
         address: client.address ?? '',
         mailingAddress: client.mailingAddress ?? '',
         mailingAddresses: client.mailingAddresses ?? [],
@@ -66,6 +68,7 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
       stageId: Number(form.stageId),
       units: form.units === '' ? null : Number(form.units),
       sqft: form.sqft === '' ? null : Number(form.sqft),
+      age: numberOrNull(form.age),
       desiredSalePrice: numberOrNull(form.desiredSalePrice),
       projectedCommissionPct: numberOrNull(form.projectedCommissionPct),
       mailingAddresses: form.mailingAddresses,
@@ -162,8 +165,8 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
             />
           </div>
 
-          {/* Phone + Email */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Phone + Email + Age */}
+          <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_90px] gap-3">
             <div>
               <label className={labelCls}>Phone</label>
               <input
@@ -183,6 +186,19 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
                 value={form.email}
                 onChange={handleChange}
                 placeholder="name@example.com"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Age</label>
+              <input
+                name="age"
+                type="number"
+                min="0"
+                max="130"
+                value={form.age}
+                onChange={handleChange}
+                placeholder="Age"
                 className={inputCls}
               />
             </div>

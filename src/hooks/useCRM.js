@@ -9,8 +9,18 @@ function isMissingColumnError(error, columnName) {
   return text.includes(columnName);
 }
 
+function isMissingExactColumnError(error, columnName) {
+  if (!error) return false;
+  const text = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`;
+  return text.includes(`'${columnName}'`) || text.includes(`"${columnName}"`) || text.includes(`.${columnName}`) || text.includes(`column ${columnName}`);
+}
+
 function hasDealValueInput(data) {
   return numberOrNull(data.desiredSalePrice) !== null || numberOrNull(data.projectedCommissionPct) !== null;
+}
+
+function hasAgeInput(data) {
+  return numberOrNull(data.age) !== null;
 }
 
 function dealValueChanged(previous, next) {
@@ -32,6 +42,42 @@ function buildDealValueLogEntry(data) {
   };
 }
 
+// Map DB snake_case -> app camelCase
+function dbToClient(row) {
+  return {
+    id: row.id,
+    contactId: row.contact_id ?? null,
+    name: row.name,
+    type: row.type,
+    propertyType: row.property_type,
+    facilityName: row.facility_name,
+    address: row.address,
+    mailingAddress: row.mailing_address ?? '',
+    mailingAddresses: normalizeMailingAddresses(row.mailing_addresses),
+    phone: row.phone,
+    email: row.email,
+    age: row.age ?? null,
+    units: row.units,
+    sqft: row.sqft,
+    desiredSalePrice: row.desired_sale_price ?? null,
+    projectedCommissionPct: row.projected_commission_pct ?? null,
+    notes: row.notes,
+    stageId: row.stage_id,
+    storageClass: row.storage_class,
+    documents: row.documents ?? [],
+    nextActionType: row.next_action_type ?? '',
+    nextActionDate: row.next_action_date ?? '',
+    nextActionNote: row.next_action_note ?? '',
+    leadTemp: row.lead_temp ?? '',
+    actionLog: row.action_log ?? [],
+    ownershipGroupId: row.ownership_group_id ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+const mapClientRow = dbToClient;
+
 export function useCRM() {
   const [clients, setClients] = useState([]);
   const [dealValueMigrationNeeded, setDealValueMigrationNeeded] = useState(false);
@@ -43,7 +89,7 @@ export function useCRM() {
       .order('created_at', { ascending: true })
       .order('id', { ascending: true });
     if (!error && data) {
-      setClients(data.map(dbToClient));
+      setClients(data.map(mapClientRow));
     }
     const { error: dealValueError } = await supabase
       .from('clients')
@@ -60,6 +106,7 @@ export function useCRM() {
   function dbToClient(row) {
     return {
       id: row.id,
+      contactId: row.contact_id ?? null,
       name: row.name,
       type: row.type,
       propertyType: row.property_type,
@@ -69,6 +116,7 @@ export function useCRM() {
       mailingAddresses: normalizeMailingAddresses(row.mailing_addresses),
       phone: row.phone,
       email: row.email,
+      age: row.age ?? null,
       units: row.units,
       sqft: row.sqft,
       desiredSalePrice: row.desired_sale_price ?? null,
@@ -92,6 +140,7 @@ export function useCRM() {
   function clientToDb(data) {
     const db = {
       name: data.name,
+      contact_id: data.contactId ?? null,
       type: data.type,
       property_type: data.propertyType,
       facility_name: data.facilityName,
@@ -100,6 +149,7 @@ export function useCRM() {
       mailing_addresses: normalizeMailingAddresses(data.mailingAddresses),
       phone: data.phone,
       email: data.email,
+      age: numberOrNull(data.age),
       units: data.units ?? null,
       sqft: data.sqft ?? null,
       desired_sale_price: data.desiredSalePrice ?? null,
@@ -145,9 +195,25 @@ export function useCRM() {
       dbRow = withoutMailingAddresses;
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
+    if (error && isMissingColumnError(error, 'contact_id')) {
+      if (data.contactId) {
+        return { error: 'Run sql/client_contact_link_migration.sql in Supabase first. Contact/client linking is not active yet.' };
+      }
+      const { contact_id: _contactId, ...withoutContactId } = dbRow;
+      dbRow = withoutContactId;
+      ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
+    }
     if (error && isMissingColumnError(error, 'action_log')) {
       const { action_log: _actionLog, ...withoutActionLog } = dbRow;
       dbRow = withoutActionLog;
+      ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
+    }
+    if (error && isMissingExactColumnError(error, 'age')) {
+      if (hasAgeInput(data)) {
+        return { error: 'Run sql/client_age_migration.sql in Supabase first. Client age is not being saved yet.' };
+      }
+      const { age: _age, ...withoutAge } = dbRow;
+      dbRow = withoutAge;
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
     if (error && (isMissingColumnError(error, 'desired_sale_price') || isMissingColumnError(error, 'projected_commission_pct'))) {
@@ -160,8 +226,9 @@ export function useCRM() {
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
     if (!error && row) {
-      setClients(prev => [...prev, dbToClient(row)]);
-      return { ok: true };
+      const client = dbToClient(row);
+      setClients(prev => [...prev, client]);
+      return { ok: true, client };
     }
     return { error: error?.message ?? 'Could not add client.' };
   }, []);
@@ -188,9 +255,25 @@ export function useCRM() {
       dbRow = withoutMailingAddresses;
       ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
     }
+    if (error && isMissingColumnError(error, 'contact_id')) {
+      if (data.contactId) {
+        return { error: 'Run sql/client_contact_link_migration.sql in Supabase first. Contact/client linking is not active yet.' };
+      }
+      const { contact_id: _contactId, ...withoutContactId } = dbRow;
+      dbRow = withoutContactId;
+      ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
+    }
     if (error && isMissingColumnError(error, 'action_log')) {
       const { action_log: _actionLog, ...withoutActionLog } = dbRow;
       dbRow = withoutActionLog;
+      ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
+    }
+    if (error && isMissingExactColumnError(error, 'age')) {
+      if (hasAgeInput(data)) {
+        return { error: 'Run sql/client_age_migration.sql in Supabase first. Client age is not being saved yet.' };
+      }
+      const { age: _age, ...withoutAge } = dbRow;
+      dbRow = withoutAge;
       ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
     }
     if (error && (isMissingColumnError(error, 'desired_sale_price') || isMissingColumnError(error, 'projected_commission_pct'))) {
@@ -203,8 +286,9 @@ export function useCRM() {
       ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
     }
     if (!error && row) {
-      setClients(prev => prev.map(c => c.id === id ? dbToClient(row) : c));
-      return { ok: true };
+      const client = dbToClient(row);
+      setClients(prev => prev.map(c => c.id === id ? client : c));
+      return { ok: true, client };
     }
     return { error: error?.message ?? 'Could not update client.' };
   }, [clients]);

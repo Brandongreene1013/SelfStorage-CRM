@@ -24,6 +24,46 @@ import './index.css';
 const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
+function clientFieldsFromContact(contact) {
+  return {
+    name: contact.ownerName || contact.facilityName || 'Unknown',
+    type: contact.relationshipType === 'buyer' ? 'Buyer' : 'Seller',
+    propertyType: 'Self-Storage',
+    facilityName: contact.facilityName ?? '',
+    address: contact.address ?? '',
+    mailingAddress: contact.mailingAddress ?? '',
+    mailingAddresses: contact.mailingAddresses ?? [],
+    phone: contact.phone ?? '',
+    email: contact.email ?? '',
+    age: contact.age ?? null,
+    notes: contact.notes ?? '',
+    leadTemp: contact.leadTemp ?? '',
+    nextActionType: contact.nextActionType ?? '',
+    nextActionDate: contact.nextActionDate ?? '',
+    nextActionNote: contact.nextActionNote ?? '',
+    ownershipGroupId: contact.ownershipGroupId ?? null,
+  };
+}
+
+function contactFieldsFromClient(client) {
+  return {
+    ownerName: client.name ?? '',
+    facilityName: client.facilityName ?? '',
+    phone: client.phone ?? '',
+    email: client.email ?? '',
+    age: client.age ?? null,
+    address: client.address ?? '',
+    mailingAddress: client.mailingAddress ?? '',
+    mailingAddresses: client.mailingAddresses ?? [],
+    notes: client.notes ?? '',
+    leadTemp: client.leadTemp ?? '',
+    nextActionType: client.nextActionType ?? '',
+    nextActionDate: client.nextActionDate ?? '',
+    nextActionNote: client.nextActionNote ?? '',
+    ownershipGroupId: client.ownershipGroupId ?? null,
+  };
+}
+
 function PipelineValueHeader({ clients }) {
   const summary = buildCommissionSummary(clients);
   const blendedFee = summary.pipelineSaleValue > 0
@@ -115,50 +155,66 @@ export default function App() {
   }, [reviewRecords, mutateLog]);
 
   // ── Move a Database contact → Clients/Pipeline (drag onto the Clients target) ──
-  const handleContactToClients = useCallback((contact) => {
+  const handleContactToClients = useCallback(async (contact) => {
     if (!contact) return;
-    addClient({
-      name: contact.ownerName || contact.facilityName || 'Unknown',
-      type: 'Seller',
-      propertyType: 'Self-Storage',
-      facilityName: contact.facilityName ?? '',
-      address: contact.address ?? '',
-      mailingAddress: contact.mailingAddress ?? '',
-      mailingAddresses: contact.mailingAddresses ?? [],
-      phone: contact.phone ?? '',
-      email: contact.email ?? '',
-      notes: contact.notes ?? '',
+    const linkedClient = clients.find(client => client.contactId === contact.id);
+    const payload = {
+      ...clientFieldsFromContact(contact),
+      contactId: contact.id,
       stageId: 1,
-      leadTemp: contact.leadTemp ?? '',
-      nextActionType: contact.nextActionType ?? '',
-      nextActionDate: contact.nextActionDate ?? '',
-      nextActionNote: contact.nextActionNote ?? '',
-      ownershipGroupId: contact.ownershipGroupId ?? null,
-    });
-    db.deleteContact(contact.id);
-  }, [addClient, db]);
+    };
+    const result = linkedClient
+      ? await updateClient(linkedClient.id, { ...linkedClient, ...payload, stageId: linkedClient.stageId ?? 1 })
+      : await addClient(payload);
+    if (result?.error) {
+      alert(result.error);
+      return;
+    }
+    if (db.masterListId && contact.listId !== db.masterListId) {
+      await db.moveContactToList(contact.id, db.masterListId);
+    }
+    await db.updateContact(contact.id, { ...contactFieldsFromClient(result?.client ?? payload), status: contact.status === 'fresh' ? 'conversation' : contact.status });
+  }, [addClient, clients, db, updateClient]);
 
   // ── Move a Client → Master Database (button on the client card) ──
   const handleClientToDatabase = useCallback(async (client) => {
     if (!client) return;
-    await db.addToMasterDB({
-      ownerName: client.name ?? '',
-      facilityName: client.facilityName ?? '',
-      phone: client.phone ?? '',
-      email: client.email ?? '',
-      address: client.address ?? '',
-      mailingAddress: client.mailingAddress ?? '',
-      mailingAddresses: client.mailingAddresses ?? [],
-      notes: client.notes ?? '',
+    let contactId = client.contactId;
+    if (contactId) {
+      const result = await db.updateContact(contactId, {
+        ...contactFieldsFromClient(client),
+        status: 'conversation',
+      });
+      if (result?.error) {
+        alert(result.error);
+        return;
+      }
+      if (db.masterListId) await db.moveContactToList(contactId, db.masterListId);
+    } else {
+      const existingMaster = db.contacts.find(contact =>
+        contact.listId === db.masterListId &&
+        contact.ownerName === client.name &&
+        contact.facilityName === client.facilityName
+      );
+      const added = await db.addToMasterDB({
+        ...contactFieldsFromClient(client),
+        status: 'conversation',
+      }, { mergeIfExists: true });
+      if (added?.error) {
+        alert(added.error);
+        return;
+      }
+      if (added && typeof added === 'object') contactId = added.id;
+      else if (existingMaster) contactId = existingMaster.id;
+    }
+    const result = await updateClient(client.id, {
+      ...client,
+      contactId: contactId ?? client.contactId ?? null,
+      stageId: 10,
       status: 'conversation',
-      leadTemp: client.leadTemp ?? '',
-      nextActionType: client.nextActionType ?? '',
-      nextActionDate: client.nextActionDate ?? '',
-      nextActionNote: client.nextActionNote ?? '',
-      ownershipGroupId: client.ownershipGroupId ?? null,
     });
-    deleteClient(client.id);
-  }, [db, deleteClient]);
+    if (result?.error) alert(result.error);
+  }, [db, updateClient]);
 
   // Dashboard → Database deep links: "Start Calling" / Attack List quick
   // actions navigate into Database and tell it what to open. Consumed once
@@ -223,7 +279,14 @@ export default function App() {
 
   async function handleSaveEdit(data) {
     const result = await updateClient(editingClient.id, data);
-    if (result?.ok) setEditingClient(null);
+    if (result?.ok) {
+      const contactId = result.client?.contactId ?? editingClient.contactId;
+      if (contactId) {
+        const contactResult = await db.updateContact(contactId, contactFieldsFromClient(result.client ?? data));
+        if (contactResult?.error) return contactResult;
+      }
+      setEditingClient(null);
+    }
     return result;
   }
 
