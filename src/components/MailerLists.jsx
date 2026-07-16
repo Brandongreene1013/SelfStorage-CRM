@@ -1,27 +1,63 @@
 import { useState } from 'react';
+import * as XLSX from 'xlsx';
 import { EmptyState } from './ui';
 
 // Mailer Lists view — the "Mailers" nav tab. Left: the lists themselves
 // (create / rename / delete). Right: who's on the selected list with their
 // live mailing address (pulled from the contact/client record, so edits there
-// show up here), plus a CSV export for labels / mail-merge.
+// show up here), plus an Excel export formatted for mail-merge (Name /
+// Street Address / City / State / Zip).
 
-function csvEscape(value) {
-  const s = String(value ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+function mailingAddresses(value = '') {
+  return String(value).split('\n').map(address => address.trim()).filter(Boolean);
 }
 
-function exportListCsv(list, rows) {
-  const header = ['Name', 'Mailing Address', 'Address Label', 'Facility', 'Type'];
-  const lines = [header, ...rows.map(r => [r.name, r.mailingAddress, r.addressLabel, r.facility, r.memberType === 'contact' ? 'Contact' : 'Client'])]
-    .map(cols => cols.map(csvEscape).join(','));
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${list.name.replace(/[^\w\- ]+/g, '').trim() || 'mailer-list'}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+const US_STATE_ABBREVIATIONS = new Set([
+  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
+  'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
+  'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC','PR','VI','GU','AS','MP',
+]);
+
+// Split "123 Main St, Suite 4, Anytown, NY 12345" into mail-merge parts.
+// Tolerates a missing comma before the state, zip-only or state-only tails,
+// and addresses with no city (everything left goes in Street Address).
+function parseMailingAddress(address = '') {
+  let text = String(address).replace(/\s+/g, ' ').trim();
+  if (!text) return { street: '', city: '', state: '', zip: '' };
+
+  let state = '', zip = '';
+  const zipMatch = text.match(/(\d{5}(?:-\d{4})?)\s*$/);
+  if (zipMatch) {
+    zip = zipMatch[1];
+    text = text.slice(0, zipMatch.index).replace(/[\s,]+$/, '');
+  }
+  const stateMatch = text.match(/(?:,|\s)([A-Za-z]{2})\.?$/);
+  if (stateMatch && US_STATE_ABBREVIATIONS.has(stateMatch[1].toUpperCase())) {
+    state = stateMatch[1].toUpperCase();
+    text = text.slice(0, stateMatch.index).replace(/[\s,]+$/, '');
+  }
+  const parts = text.split(',').map(part => part.trim()).filter(Boolean);
+  const city = parts.length >= 2 ? parts.pop() : '';
+  return { street: parts.join(', '), city, state, zip };
+}
+
+function exportListExcel(list, rows) {
+  const header = ['Name', 'Street Address', 'City', 'State', 'Zip'];
+  const data = rows.map(r => {
+    const parsed = parseMailingAddress(r.mailingAddress);
+    return {
+      'Name': r.name,
+      'Street Address': parsed.street,
+      'City': parsed.city,
+      'State': parsed.state,
+      'Zip': parsed.zip, // stays a string so leading zeros survive
+    };
+  });
+  const worksheet = XLSX.utils.json_to_sheet(data, { header });
+  worksheet['!cols'] = [{ wch: 30 }, { wch: 34 }, { wch: 20 }, { wch: 8 }, { wch: 12 }];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Mailer');
+  XLSX.writeFile(workbook, `${list.name.replace(/[^\w\- ]+/g, '').trim() || 'mailer-list'}.xlsx`);
 }
 
 function ListRow({ list, count, isActive, onSelect, onRename, onDelete }) {
@@ -87,13 +123,12 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
   const rows = activeList
     ? mailerApi.members
         .filter(m => m.listId === activeList.id)
-        .map(m => {
+        .flatMap(m => {
           const record = m.memberType === 'contact'
             ? contacts.find(c => c.id === m.memberId)
             : clients.find(c => c.id === m.memberId);
-          if (!record) return null;
-          return {
-            key: m.id || `${m.memberType}:${m.memberId}:${m.mailingAddress}`,
+          if (!record) return [];
+          const base = {
             memberType: m.memberType,
             memberId: m.memberId,
             memberRowId: m.id,
@@ -101,11 +136,25 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
               ? (record.ownerName || record.facilityName || 'Unknown')
               : (record.name || 'Unknown'),
             facility: record.facilityName ?? '',
-            mailingAddress: m.mailingAddress || record.mailingAddress || '',
-            addressLabel: m.addressLabel || (m.mailingAddress ? 'Selected' : 'Primary'),
           };
+          // Member rows added with a specific address carry it themselves;
+          // legacy rows fall back to every address on the contact/client record.
+          if (m.mailingAddress) {
+            return [{
+              ...base,
+              key: m.id || `${m.memberType}:${m.memberId}:${m.mailingAddress}`,
+              mailingAddress: m.mailingAddress,
+              addressLabel: m.addressLabel || 'Selected',
+            }];
+          }
+          const addresses = mailingAddresses(record.mailingAddress);
+          return (addresses.length > 0 ? addresses : ['']).map((mailingAddress, addressIndex) => ({
+            ...base,
+            key: `${m.id || `${m.memberType}:${m.memberId}`}:${addressIndex}`,
+            mailingAddress,
+            addressLabel: mailingAddress ? 'Primary' : '',
+          }));
         })
-        .filter(Boolean)
         .sort((a, b) => a.name.localeCompare(b.name))
     : [];
   const missingAddressCount = rows.filter(r => !r.mailingAddress).length;
@@ -203,11 +252,11 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
                 </p>
               </div>
               <button
-                onClick={() => exportListCsv(activeList, rows)}
+                onClick={() => exportListExcel(activeList, rows)}
                 disabled={rows.length === 0}
                 className="text-xs font-bold text-emerald-300 border border-emerald-600/40 bg-emerald-600/15 hover:bg-emerald-600/25 rounded-lg px-3 py-2 transition-all disabled:opacity-50"
               >
-                Export CSV
+                Export Excel
               </button>
             </div>
             {rows.length === 0 ? (
