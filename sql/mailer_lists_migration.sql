@@ -22,13 +22,15 @@ create table if not exists public.mailer_list_members (
   member_id uuid not null,
   mailing_address text not null default '',
   address_label text not null default '',
+  sent_at timestamptz,
   created_at timestamptz not null default now(),
   unique (list_id, member_type, member_id, mailing_address)
 );
 
 alter table public.mailer_list_members
   add column if not exists mailing_address text not null default '',
-  add column if not exists address_label text not null default '';
+  add column if not exists address_label text not null default '',
+  add column if not exists sent_at timestamptz;
 
 alter table public.mailer_list_members
   drop constraint if exists mailer_list_members_list_id_member_type_member_id_key;

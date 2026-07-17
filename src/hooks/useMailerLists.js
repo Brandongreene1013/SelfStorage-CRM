@@ -22,6 +22,12 @@ function isMissingMailerSchemaError(error) {
     || /mailing_address|address_label/i.test(msg);
 }
 
+function isMissingSentTrackingError(error) {
+  if (!error) return false;
+  const msg = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`;
+  return error.code === 'PGRST204' || error.code === '42703' || /sent_at/i.test(msg);
+}
+
 function dbToList(row) {
   return { id: row.id, name: row.name, createdAt: row.created_at ?? null };
 }
@@ -34,6 +40,7 @@ function dbToMember(row) {
     memberId: row.member_id,
     mailingAddress: row.mailing_address ?? '',
     addressLabel: row.address_label ?? '',
+    sentAt: row.sent_at ?? null,
     createdAt: row.created_at ?? null,
   };
 }
@@ -42,12 +49,14 @@ export function useMailerLists() {
   const [mailerLists, setMailerLists] = useState([]);
   const [members, setMembers] = useState([]);
   const [tablesMissing, setTablesMissing] = useState(false);
+  const [sentTrackingMissing, setSentTrackingMissing] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const [listsRes, membersRes] = await Promise.all([
+      const [listsRes, membersRes, sentTrackingRes] = await Promise.all([
         supabase.from('mailer_lists').select('*').order('created_at', { ascending: true }),
         supabase.from('mailer_list_members').select('*').order('created_at', { ascending: true }),
+        supabase.from('mailer_list_members').select('sent_at').limit(1),
       ]);
       if (isMissingTableError(listsRes.error) || isMissingTableError(membersRes.error)) {
         setTablesMissing(true);
@@ -55,6 +64,7 @@ export function useMailerLists() {
       }
       if (!listsRes.error && listsRes.data) setMailerLists(listsRes.data.map(dbToList));
       if (!membersRes.error && membersRes.data) setMembers(membersRes.data.map(dbToMember));
+      if (isMissingSentTrackingError(sentTrackingRes.error)) setSentTrackingMissing(true);
     })();
   }, []);
 
@@ -127,6 +137,23 @@ export function useMailerLists() {
     }
   }, []);
 
+  const setMemberSent = useCallback(async (memberRowId, sent) => {
+    const sentAt = sent ? new Date().toISOString() : null;
+    const { error } = await supabase
+      .from('mailer_list_members')
+      .update({ sent_at: sentAt })
+      .eq('id', memberRowId);
+    if (isMissingSentTrackingError(error)) {
+      setSentTrackingMissing(true);
+      return false;
+    }
+    if (error) return false;
+    setMembers(prev => prev.map(member => (
+      member.id === memberRowId ? { ...member, sentAt } : member
+    )));
+    return true;
+  }, []);
+
   // listIds a given contact/client/address is on - powers the picker's checkmarks
   const membershipFor = useCallback((memberType, memberId, mailingAddress) => {
     const address = mailingAddress === undefined ? undefined : (mailingAddress ?? '').trim();
@@ -147,11 +174,13 @@ export function useMailerLists() {
     members,
     memberCounts,
     tablesMissing,
+    sentTrackingMissing,
     createList,
     renameList,
     deleteList,
     addMember,
     removeMember,
+    setMemberSent,
     membershipFor,
   };
 }

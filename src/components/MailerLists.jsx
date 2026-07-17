@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { EmptyState } from './ui';
+import { allMailingAddressOptions } from '../lib/mailingAddresses';
 
 // Mailer Lists view — the "Mailers" nav tab. Left: the lists themselves
 // (create / rename / delete). Right: who's on the selected list with their
@@ -116,6 +117,10 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
   const [activeListId, setActiveListId] = useState(null);
   const [newListName, setNewListName] = useState('');
   const [showNewList, setShowNewList] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [showAddPeople, setShowAddPeople] = useState(false);
+  const [peopleSearch, setPeopleSearch] = useState('');
 
   const activeList = mailerApi.mailerLists.find(l => l.id === activeListId) ?? null;
 
@@ -136,6 +141,8 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
               ? (record.ownerName || record.facilityName || 'Unknown')
               : (record.name || 'Unknown'),
             facility: record.facilityName ?? '',
+            facilityAddress: record.address ?? '',
+            sentAt: m.sentAt,
           };
           // Member rows added with a specific address carry it themselves;
           // legacy rows fall back to every address on the contact/client record.
@@ -158,6 +165,47 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
         .sort((a, b) => a.name.localeCompare(b.name))
     : [];
   const missingAddressCount = rows.filter(r => !r.mailingAddress).length;
+  const sentCount = rows.filter(r => r.sentAt).length;
+  const filteredRows = (() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter(row => {
+      const matchesStatus = statusFilter === 'all'
+        || (statusFilter === 'sent' ? Boolean(row.sentAt) : !row.sentAt);
+      const haystack = [row.name, row.facility, row.mailingAddress, row.facilityAddress]
+        .join(' ').toLowerCase();
+      return matchesStatus && (!q || haystack.includes(q));
+    });
+  })();
+
+  const addCandidates = useMemo(() => {
+    if (!activeList) return [];
+    const q = peopleSearch.trim().toLowerCase();
+    if (!q) return [];
+    const records = [
+      ...contacts.map(record => ({ record, memberType: 'contact' })),
+      ...clients.map(record => ({ record, memberType: 'client' })),
+    ];
+    return records.flatMap(({ record, memberType }) => {
+      const name = memberType === 'contact'
+        ? (record.ownerName || record.facilityName || 'Unknown')
+        : (record.name || 'Unknown');
+      const addressOptions = allMailingAddressOptions(record);
+      const haystack = [name, record.facilityName, record.address, ...addressOptions.map(option => option.address)]
+        .join(' ').toLowerCase();
+      if (!haystack.includes(q)) return [];
+      return addressOptions.map(option => ({
+        key: `${memberType}:${record.id}:${option.address}`,
+        memberType,
+        memberId: record.id,
+        name,
+        facility: record.facilityName ?? '',
+        facilityAddress: record.address ?? '',
+        mailingAddress: option.address,
+        addressLabel: option.label,
+        alreadyAdded: mailerApi.membershipFor(memberType, record.id, option.address).has(activeList.id),
+      }));
+    }).slice(0, 30);
+  }, [activeList, clients, contacts, mailerApi, peopleSearch]);
 
   async function createList() {
     const list = await mailerApi.createList(newListName);
@@ -249,16 +297,91 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
                   {missingAddressCount > 0 && (
                     <span className="text-amber-400"> · ⚠ {missingAddressCount} missing a mailing address</span>
                   )}
+                  <span className="text-emerald-400"> · {sentCount} sent</span>
                 </p>
               </div>
-              <button
-                onClick={() => exportListExcel(activeList, rows)}
-                disabled={rows.length === 0}
-                className="text-xs font-bold text-emerald-300 border border-emerald-600/40 bg-emerald-600/15 hover:bg-emerald-600/25 rounded-lg px-3 py-2 transition-all disabled:opacity-50"
-              >
-                Export Excel
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowAddPeople(v => !v)}
+                  className="text-xs font-bold text-amber-300 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 rounded-lg px-3 py-2 transition-all"
+                >
+                  {showAddPeople ? 'Close Search' : '+ Find & Add People'}
+                </button>
+                <button
+                  onClick={() => exportListExcel(activeList, rows)}
+                  disabled={rows.length === 0}
+                  className="text-xs font-bold text-emerald-300 border border-emerald-600/40 bg-emerald-600/15 hover:bg-emerald-600/25 rounded-lg px-3 py-2 transition-all disabled:opacity-50"
+                >
+                  Export Excel
+                </button>
+              </div>
             </div>
+            {mailerApi.sentTrackingMissing && (
+              <div className="mx-5 mt-4 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
+                Run <span className="font-mono">sql/mailer_sent_tracking_migration.sql</span> in Supabase once to save sent/not-sent status.
+              </div>
+            )}
+            {showAddPeople && (
+              <div className="border-b border-slate-800 bg-slate-950/40 px-5 py-4">
+                <input
+                  autoFocus
+                  value={peopleSearch}
+                  onChange={e => setPeopleSearch(e.target.value)}
+                  placeholder="Search all contacts and clients by person, facility, or address..."
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
+                />
+                {peopleSearch.trim() && (
+                  <div className="mt-2 max-h-64 space-y-1.5 overflow-y-auto">
+                    {addCandidates.length === 0 ? (
+                      <p className="px-2 py-3 text-xs italic text-slate-500">No people with a mailing address match that search.</p>
+                    ) : addCandidates.map(candidate => (
+                      <div key={candidate.key} className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold text-white">{candidate.name}</p>
+                          <p className="truncate text-xs text-slate-400">Mailing: {candidate.mailingAddress}</p>
+                          {candidate.facilityAddress && <p className="truncate text-xs text-slate-500">Facility: {candidate.facilityAddress}</p>}
+                        </div>
+                        <button
+                          disabled={candidate.alreadyAdded}
+                          onClick={() => mailerApi.addMember(activeList.id, candidate.memberType, candidate.memberId, {
+                            mailingAddress: candidate.mailingAddress,
+                            addressLabel: candidate.addressLabel,
+                          })}
+                          className="flex-shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500"
+                        >
+                          {candidate.alreadyAdded ? 'On list' : '+ Add'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            {rows.length > 0 && (
+              <div className="flex flex-col gap-2 border-b border-slate-800 px-5 py-3 sm:flex-row sm:items-center">
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search this list by person, facility, or address..."
+                  className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-amber-500 focus:outline-none"
+                />
+                <div className="flex gap-1 rounded-lg bg-slate-800 p-1">
+                  {[
+                    ['all', `All (${rows.length})`],
+                    ['not_sent', `Not sent (${rows.length - sentCount})`],
+                    ['sent', `Sent (${sentCount})`],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => setStatusFilter(value)}
+                      className={`rounded-md px-2.5 py-1.5 text-xs font-bold transition-colors ${statusFilter === value ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {rows.length === 0 ? (
               <EmptyState
                 icon="📭"
@@ -266,7 +389,9 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
               />
             ) : (
               <div className="divide-y divide-slate-800">
-                {rows.map(r => (
+                {filteredRows.length === 0 ? (
+                  <p className="px-5 py-8 text-center text-sm italic text-slate-500">No recipients match this search and status filter.</p>
+                ) : filteredRows.map(r => (
                   <div key={r.key} className="flex items-center gap-3 px-5 py-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-white truncate">
@@ -274,9 +399,23 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
                         {r.facility && <span className="text-slate-500 font-normal"> · {r.facility}</span>}
                       </p>
                       <p className={`text-xs truncate ${r.mailingAddress ? 'text-slate-400' : 'text-amber-400 italic'}`}>
-                        {r.addressLabel && r.mailingAddress ? `${r.addressLabel}: ` : ''}{r.mailingAddress || 'No mailing address on file'}
+                        Mailing: {r.addressLabel && r.mailingAddress ? `${r.addressLabel} · ` : ''}{r.mailingAddress || 'No mailing address on file'}
                       </p>
+                      {r.facilityAddress && (
+                        <p className="truncate text-xs text-slate-500">Facility: {r.facilityAddress}</p>
+                      )}
                     </div>
+                    <button
+                      onClick={() => mailerApi.setMemberSent(r.memberRowId, !r.sentAt)}
+                      className={`flex-shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all ${
+                        r.sentAt
+                          ? 'border-emerald-600/40 bg-emerald-600/15 text-emerald-300 hover:bg-emerald-600/25'
+                          : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-amber-500/40 hover:text-amber-300'
+                      }`}
+                      title={r.sentAt ? `Marked sent ${new Date(r.sentAt).toLocaleDateString()}` : 'Mark this mailer as sent'}
+                    >
+                      {r.sentAt ? '✓ Sent' : 'Mark sent'}
+                    </button>
                     <span className={`text-xs font-semibold flex-shrink-0 px-2 py-0.5 rounded-md border ${
                       r.memberType === 'contact'
                         ? 'bg-slate-800 border-slate-700 text-slate-400'
