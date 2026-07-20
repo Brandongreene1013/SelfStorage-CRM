@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/selectAllRows';
 
 // Mailer Lists: named lists of contacts/clients for physical mailings.
 // Members store the referenced person plus the exact selected mailing address,
@@ -54,8 +55,8 @@ export function useMailerLists() {
   useEffect(() => {
     (async () => {
       const [listsRes, membersRes, sentTrackingRes] = await Promise.all([
-        supabase.from('mailer_lists').select('*').order('created_at', { ascending: true }),
-        supabase.from('mailer_list_members').select('*').order('created_at', { ascending: true }),
+        selectAllRows(() => supabase.from('mailer_lists').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
+        selectAllRows(() => supabase.from('mailer_list_members').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
         supabase.from('mailer_list_members').select('sent_at').limit(1),
       ]);
       if (isMissingTableError(listsRes.error) || isMissingTableError(membersRes.error)) {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/selectAllRows';
 import { normalizeMeetingText } from '../lib/textNormalize';
 
 function localDate(d) {
@@ -27,10 +28,11 @@ export function useCalendarEvents() {
   const [events, setEvents] = useState([]);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await selectAllRows(() => supabase
       .from('calendar_event')
       .select('*')
-      .order('start_at', { ascending: true });
+      .order('start_at', { ascending: true })
+      .order('id', { ascending: true }));
     if (!error && data) setEvents(data.map(toMeetingShape));
   }, []);
 

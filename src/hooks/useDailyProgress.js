@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/selectAllRows';
 
 export const PROGRESS_FIELDS = [
   { key: 'calls',               label: 'Total Calls Made',          shortLabel: 'Calls',        accent: 'text-blue-400',    bg: 'bg-blue-500/10',    border: 'border-blue-500/30'    },
@@ -57,9 +58,10 @@ export function useDailyProgress() {
   }
 
   const loadAll = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await selectAllRows(() => supabase
       .from('daily_progress')
-      .select('*');
+      .select('*')
+      .order('date', { ascending: true }));
     if (!error && data) {
       const logMap = {};
       let todayRow = null;

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/selectAllRows';
 import { buildMergePlan } from '../lib/duplicateReview';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
 import { DEFAULT_RELATIONSHIP_TYPE, RELATIONSHIP_TYPES } from '../data/constants';
@@ -937,7 +938,7 @@ export function useDatabase() {
   );
 
   const loadDismissals = useCallback(async () => {
-    const { data, error } = await supabase.from('duplicate_dismissals').select('pair_key,note,created_at');
+    const { data, error } = await selectAllRows(() => supabase.from('duplicate_dismissals').select('pair_key,note,created_at').order('pair_key', { ascending: true }));
     if (error) {
       if (!isMissingTableError(error)) console.warn('Could not load duplicate dismissals:', error.message);
       setDismissalStorage('local');
@@ -977,8 +978,8 @@ export function useDatabase() {
     // breaks ties arbitrarily — so without the id tie-breaker every app reload
     // dealt the queue back in a different order.
     const [listsRes, contactsRes] = await Promise.all([
-      supabase.from('lists').select('*').order('created_at', { ascending: true }).order('id', { ascending: true }),
-      supabase.from('contacts').select('*').order('created_at', { ascending: true }).order('id', { ascending: true }),
+      selectAllRows(() => supabase.from('lists').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
+      selectAllRows(() => supabase.from('contacts').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
     ]);
 
     let loadedLists = [];

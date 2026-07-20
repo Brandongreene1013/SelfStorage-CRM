@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/selectAllRows';
 import { normalizeDisplayText, normalizeMeetingText } from '../lib/textNormalize';
 
 export function useMeetings() {
@@ -31,10 +32,11 @@ export function useMeetings() {
   }
 
   const loadMeetings = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await selectAllRows(() => supabase
       .from('meetings')
       .select('*')
-      .order('date', { ascending: true });
+      .order('date', { ascending: true })
+      .order('id', { ascending: true }));
     if (!error && data) {
       setMeetings(data.map(dbToMeeting));
     }

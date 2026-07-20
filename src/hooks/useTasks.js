@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/selectAllRows';
 
 // Universal Task / Next-Action engine (Sprint 2). Single `tasks` table,
 // shared by the Dashboard, Clients, Database, and Pipeline. See
@@ -46,7 +47,7 @@ export function useTasks() {
 
   useEffect(() => {
     let cancelled = false;
-    supabase.from('tasks').select('*').order('created_at', { ascending: false }).then(({ data, error }) => {
+    selectAllRows(() => supabase.from('tasks').select('*').order('created_at', { ascending: false }).order('id', { ascending: true })).then(({ data, error }) => {
       if (cancelled) return;
       if (!error && data) setTasks(data.map(dbToTask));
       setLoading(false);

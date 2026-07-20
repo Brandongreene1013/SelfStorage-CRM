@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/selectAllRows';
 import { DEFAULT_RELATIONSHIP_TYPE } from '../data/constants';
 
 function dbToGroup(row) {
@@ -63,8 +64,8 @@ export function useOwnership() {
 
   const load = useCallback(async () => {
     const [groupsRes, propertiesRes] = await Promise.all([
-      supabase.from('ownership_groups').select('*').order('display_name', { ascending: true }),
-      supabase.from('properties').select('*').order('facility_name', { ascending: true }),
+      selectAllRows(() => supabase.from('ownership_groups').select('*').order('display_name', { ascending: true }).order('id', { ascending: true })),
+      selectAllRows(() => supabase.from('properties').select('*').order('facility_name', { ascending: true }).order('id', { ascending: true })),
     ]);
     if (groupsRes.error || propertiesRes.error) {
       setLoadError(groupsRes.error?.message ?? propertiesRes.error?.message ?? 'Ownership data unavailable');

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { selectAllRows } from '../lib/selectAllRows';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
 import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } from '../lib/dealValue';
 
@@ -83,11 +84,11 @@ export function useCRM() {
   const [dealValueMigrationNeeded, setDealValueMigrationNeeded] = useState(false);
 
   const loadClients = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await selectAllRows(() => supabase
       .from('clients')
       .select('*')
       .order('created_at', { ascending: true })
-      .order('id', { ascending: true });
+      .order('id', { ascending: true }));
     if (!error && data) {
       setClients(data.map(mapClientRow));
     }
