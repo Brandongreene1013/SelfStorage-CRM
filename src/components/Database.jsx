@@ -1550,6 +1550,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
 function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, lists = [], onMoveToList, onToClients, taskApi }) {
   const [added, setAdded] = useState(false);
   const [activityMode, setActivityMode] = useState(null);
+  const [editingTask, setEditingTask] = useState(null);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: contact.id, data: { contact } });
 
@@ -1743,7 +1744,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
       <div className="mt-2">
         {nextTask ? (
           <button
-            onClick={e => { e.stopPropagation(); setActivityMode('task'); }}
+            onClick={e => { e.stopPropagation(); setEditingTask(nextTask); }}
             className={`w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-all border ${
               nextTaskDue?.tone === 'red'
                 ? 'bg-red-500/10 border-red-500/30 text-red-400'
@@ -1805,6 +1806,23 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           taskContext={{ relatedType: 'contact', relatedId: contact.id, relatedName: contact.ownerName || contact.facilityName || 'Contact', source: 'database' }}
           onSaveTask={taskApi?.createTask}
           onClose={() => setActivityMode(null)}
+        />
+      )}
+
+      {editingTask && (
+        <TaskModal
+          context={{ relatedType: 'contact', relatedId: contact.id, relatedName: contact.ownerName || contact.facilityName || 'Contact', source: 'database' }}
+          defaults={{
+            title: editingTask.title,
+            taskType: editingTask.taskType,
+            priority: editingTask.priority,
+            dueDate: editingTask.dueDate ?? undefined,
+            description: editingTask.description,
+          }}
+          heading="Edit Task"
+          saveLabel="Save Changes"
+          onSave={(fields) => taskApi?.updateTask(editingTask.id, fields)}
+          onClose={() => setEditingTask(null)}
         />
       )}
 

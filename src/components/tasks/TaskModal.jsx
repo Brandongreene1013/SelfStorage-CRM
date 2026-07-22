@@ -17,6 +17,8 @@ export default function TaskModal({ context, defaults = {}, emphasizeDueDate = f
   const [priority, setPriority] = useState(defaults.priority ?? 'normal');
   const [dueDate, setDueDate] = useState(defaults.dueDate ?? plusDays(1));
   const [description, setDescription] = useState(defaults.description ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   function applyQuickPick(qp) {
     setTitle(qp.title);
@@ -24,21 +26,35 @@ export default function TaskModal({ context, defaults = {}, emphasizeDueDate = f
     setDueDate(plusDays(qp.offsetDays));
   }
 
-  function handleSave() {
+  async function handleSave() {
     const t = title.trim();
-    if (!t) return;
-    onSave({
-      title: t,
-      taskType,
-      priority,
-      dueDate: dueDate || null,
-      description: description.trim(),
-      relatedType: context?.relatedType ?? 'general',
-      relatedId: context?.relatedId ?? null,
-      relatedName: context?.relatedName ?? '',
-      source: context?.source ?? 'dashboard',
-    });
-    onClose();
+    if (!t || saving || !onSave) return;
+    setSaving(true);
+    setError('');
+    try {
+      const result = await onSave({
+        title: t,
+        taskType,
+        priority,
+        dueDate: dueDate || null,
+        description: description.trim(),
+        relatedType: context?.relatedType ?? 'general',
+        relatedId: context?.relatedId ?? null,
+        relatedName: context?.relatedName ?? '',
+        source: context?.source ?? 'dashboard',
+      });
+      if (result?.error) {
+        setError(result.error === 'migration_needed'
+          ? 'The task database needs its one-time migration before this can be saved.'
+          : result.error);
+        return;
+      }
+      onClose();
+    } catch (saveFailure) {
+      setError(saveFailure?.message || 'Could not save this task. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -152,15 +168,16 @@ export default function TaskModal({ context, defaults = {}, emphasizeDueDate = f
       </div>
 
       <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-800">
-        <button onClick={onClose} className="text-sm text-slate-400 hover:text-white transition-colors">Cancel</button>
+        {error && <p role="alert" className="mr-auto text-xs text-red-400">{error}</p>}
+        <button onClick={onClose} disabled={saving} className="text-sm text-slate-400 hover:text-white transition-colors disabled:opacity-50">Cancel</button>
         <button
           onClick={handleSave}
-          disabled={!title.trim()}
+          disabled={!title.trim() || saving}
           className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
-            title.trim() ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+            title.trim() && !saving ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
           }`}
         >
-          {saveLabel}
+          {saving ? 'Saving...' : saveLabel}
         </button>
       </div>
     </ModalLayout>

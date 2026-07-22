@@ -30,6 +30,7 @@ export default function ModalLayout({ onClose, size = 'md', className = '', chil
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
       onMouseDown={e => { if (e.target === e.currentTarget) onClose?.(); }}
+      onClick={e => e.stopPropagation()}
     >
       <div role="dialog" aria-modal="true" className={`bg-slate-900 border border-slate-700 rounded-2xl w-full ${SIZES[size] ?? SIZES.md} shadow-2xl max-h-[90vh] overflow-y-auto overscroll-contain ${className}`}>
         {children}
