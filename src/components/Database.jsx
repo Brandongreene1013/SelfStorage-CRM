@@ -12,6 +12,7 @@ import ClientCard from './ClientCard';
 import MoveMenu from './MoveMenu';
 import { AddToMailerButton } from './MailerListPicker';
 import MailingAddressList from './MailingAddressList';
+import EstateTransitionPanel from './EstateTransitionPanel';
 import { ACTION_TYPES, CALL_ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCES, LEAD_TEMPS, PROPERTY_TYPES, RELATIONSHIP_TYPES } from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
@@ -1066,19 +1067,33 @@ function OwnedPropertiesEditor({ contact, onUpdate }) {
 // Low-key related-owner hint: same/similar ownership, facility, or market
 // signals on a different property. One click can fold the weaker row into the
 // stronger card as an additional property.
-function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerged }) {
+function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerged, candidateIndex }) {
   const [confirmId, setConfirmId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const matches = useMemo(
-    () => (onMerge ? findSameOwnerMatches(contact, allContacts).slice(0, 3) : []),
-    [contact, allContacts, onMerge]
+    () => findSameOwnerMatches(contact, allContacts, { candidateIndex, limit: 4 }),
+    [contact, allContacts, candidateIndex]
   );
   if (matches.length === 0) return null;
 
   const listName = (c) => lists.find(l => l.id === c.listId)?.name ?? '';
+  const portfolioMatches = matches.filter(m => m.kind === 'portfolio').length;
+
+  function matchLabel(match) {
+    if (match.kind === 'duplicate') return 'Duplicate cleanup';
+    if (match.kind === 'portfolio') return 'Same owner';
+    return 'Related hint';
+  }
+
+  function confidenceClass(confidence) {
+    if (confidence === 'High') return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300';
+    if (confidence === 'Medium') return 'bg-amber-500/10 border-amber-500/30 text-amber-300';
+    return 'bg-slate-800 border-slate-700 text-slate-500';
+  }
 
   async function fold(match) {
+    if (!onMerge || match.kind === 'duplicate') return;
     // Keep whichever record has more work on it; the other becomes a property.
     const currentIsMaster = keepScore(contact) >= keepScore(match.contact);
     const masterId = currentIsMaster ? contact.id : match.contact.id;
@@ -1094,13 +1109,19 @@ function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerg
   return (
     <div className="bg-slate-900/50 border border-slate-800 rounded-lg px-3 py-2 space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Possible related record</p>
+        <div>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Possible related records</p>
+          <p className="text-[11px] text-slate-600">
+            {portfolioMatches > 0 ? `${portfolioMatches} likely same-owner portfolio link${portfolioMatches === 1 ? '' : 's'}` : 'Duplicates and ownership hints to review'}
+          </p>
+        </div>
         <span className="text-[11px] text-slate-600">{matches.length} match{matches.length === 1 ? '' : 'es'}</span>
       </div>
       {matches.map(m => {
         const c = m.contact;
         const name = c.ownerName || c.facilityName || 'Unknown';
         const currentIsMaster = keepScore(contact) >= keepScore(c);
+        const canMerge = Boolean(onMerge) && m.kind === 'portfolio';
         return (
           <div key={c.id} className="flex flex-wrap items-center gap-2 border-t border-slate-800/70 pt-2 first:border-t-0 first:pt-0">
             <div className="flex-1 min-w-[180px]">
@@ -1111,8 +1132,22 @@ function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerg
               <p className="text-[11px] text-slate-600 truncate">
                 {m.reasons.join(' · ')}{listName(c) ? ` · ${listName(c)}` : ''}
               </p>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <span className={`text-[10px] font-bold border rounded-full px-1.5 py-0.5 ${confidenceClass(m.confidence)}`}>
+                  {m.confidence}
+                </span>
+                <span className="text-[10px] font-bold border border-slate-700 bg-slate-800/70 text-slate-500 rounded-full px-1.5 py-0.5">
+                  {matchLabel(m)}
+                </span>
+              </div>
             </div>
-            {confirmId === c.id ? (
+            {m.kind === 'duplicate' ? (
+              <span className="text-[11px] text-slate-500 border border-slate-800 rounded-md px-2 py-1">
+                Same property - use Duplicate Review
+              </span>
+            ) : !canMerge ? (
+              <span className="text-[11px] text-slate-600 border border-slate-800 rounded-md px-2 py-1">Review only</span>
+            ) : confirmId === c.id ? (
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-[11px] text-slate-500">
                   {currentIsMaster ? 'Pull their property into this card?' : `Fold this row into ${name}'s card?`}
@@ -1144,7 +1179,7 @@ function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerg
 
 */
 
-function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onLogAction, onDeleteAction, onDeleteCallHistory, taskApi, ownershipApi, mailerApi }) {
+function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onLogAction, onDeleteAction, onDeleteCallHistory, onLinkInheritor, onCreateInheritor, taskApi, ownershipApi, mailerApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1227,6 +1262,9 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
               <StatusBadge variant={rel.variant} pill={false} className="font-bold">
                 {rel.short}
               </StatusBadge>
+              {contact.isDeceased && (
+                <span className="text-xs font-black text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md">Deceased</span>
+              )}
               {contact.market && (
                 <span className="text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
                   {contact.market}
@@ -1261,6 +1299,13 @@ function ContactDetailModal({ contact, lists = [], onClose, onStatusChange, onNo
           <OwnerResearchPanel contact={contact} onAddNote={addResearchNote} />
 
           {/* ── Same-owner radar: link multi-property owners ── */}
+          <EstateTransitionPanel
+            contact={contact}
+            allContacts={allContacts}
+            onUpdateContact={onUpdate}
+            onLinkInheritor={onLinkInheritor}
+            onCreateInheritor={onCreateInheritor}
+          />
 
           {/* ── Editable contact fields ── */}
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-4">
@@ -1551,6 +1596,9 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           <StatusBadge variant={rel.variant} pill={false} className="font-bold">
             {rel.short}
           </StatusBadge>
+          {contact.isDeceased && (
+            <span className="text-xs font-black text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md whitespace-nowrap">Deceased</span>
+          )}
           {contact._distanceMiles != null && (
             <span className="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2 py-0.5 rounded-md whitespace-nowrap">
               📍 {Math.round(contact._distanceMiles)} mi
@@ -2279,6 +2327,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // Default to no list selected — clean empty state on open
   const [activeListId, setActiveListId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [lifeStatusFilter, setLifeStatusFilter] = useState('all');
   const [relationshipFilter, setRelationshipFilter] = useState('all');
   const [leadSourceFilter, setLeadSourceFilter] = useState('all');
   const [search, setSearch]         = useState('');
@@ -2332,6 +2381,77 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       .catch(() => { if (!cancelled) setGeoError('Location data failed to load — check your connection.'); });
     return () => { cancelled = true; };
   }, [locationAnchor, geoWanted, geoData]);
+
+  async function linkInheritor(deceasedContactId, inheritorContactId, relationship, inheritorOverride = null) {
+    const deceased = contacts.find(c => c.id === deceasedContactId);
+    const inheritor = inheritorOverride ?? contacts.find(c => c.id === inheritorContactId);
+    if (!deceased || !inheritor) return { error: 'Contact not found. Refresh and try again.' };
+
+    const linkResult = await updateContact(deceased.id, {
+      inheritedByContactId: inheritor.id,
+      inheritorRelationship: relationship || '',
+    });
+    if (linkResult?.error) return linkResult;
+
+    let groupId = deceased.ownershipGroupId;
+    if (!groupId) {
+      if (ownershipApi?.loadError) {
+        return { message: 'Relative linked. Ownership data is unavailable, so the property group could not be connected yet.' };
+      }
+      const groupResult = await ownershipApi.createGroup({
+        displayName: deceased.ownerEntity || deceased.ownerName || deceased.facilityName || 'Estate ownership',
+        ownerEntity: deceased.ownerEntity || '',
+        relationshipType: deceased.relationshipType || DEFAULT_RELATIONSHIP_TYPE,
+        notes: `Estate history retained for ${deceased.ownerName || 'deceased owner'}.`,
+      });
+      if (groupResult?.error || !groupResult?.group) {
+        return { message: `Relative linked. Property group could not be created: ${groupResult?.error || 'unknown error'}` };
+      }
+      groupId = groupResult.group.id;
+      const groupLink = await updateContact(deceased.id, { ownershipGroupId: groupId });
+      if (groupLink?.error) {
+        await ownershipApi.removeGroupIfOrphaned(groupId);
+        return { message: `Relative linked. Property group could not be attached: ${groupLink.error}` };
+      }
+      if (deceased.facilityName || deceased.address) {
+        await ownershipApi.createProperty({
+          ownershipGroupId: groupId,
+          facilityName: deceased.facilityName || '',
+          address: deceased.address || '',
+          state: deceased.state || '',
+          market: deceased.market || '',
+          propertyType: 'Self-Storage',
+          source: deceased.source || '',
+          notes: 'Created from deceased owner record during inheritance linking.',
+        });
+      }
+    }
+
+    if (inheritor.ownershipGroupId && inheritor.ownershipGroupId !== groupId) {
+      return { message: 'Relative linked. Their existing property group was preserved; review both ownership groups before combining them.' };
+    }
+    if (!inheritor.ownershipGroupId) {
+      const inheritorLink = await updateContact(inheritor.id, { ownershipGroupId: groupId });
+      if (inheritorLink?.error) {
+        return { message: `Relative linked, but the property group could not be attached to them: ${inheritorLink.error}` };
+      }
+    }
+    return { ok: true, message: 'Relative linked and connected to the inherited property group.' };
+  }
+
+  async function createInheritor(deceasedContactId, fields) {
+    const deceased = contacts.find(c => c.id === deceasedContactId);
+    if (!deceased) return { error: 'Contact not found. Refresh and try again.' };
+    const created = await addContact(deceased.listId, {
+      ownerName: fields.ownerName,
+      relationshipType: DEFAULT_RELATIONSHIP_TYPE,
+      leadSource: deceased.leadSource || '',
+      notes: `${fields.relationship || 'Relative'} of ${deceased.ownerName || deceased.ownerEntity || 'deceased owner'}; possible inherited-property contact.`,
+    });
+    if (!created) return { error: 'Could not create the relative contact.' };
+    return linkInheritor(deceased.id, created.id, fields.relationship, created);
+  }
+
   const [openContact, setOpenContact] = useState(null);
 
   // Call queue state
@@ -2359,6 +2479,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     const result = contacts.filter(c => {
       if (activeListId !== 'all' && c.listId !== activeListId) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
+      if (lifeStatusFilter === 'deceased' && !c.isDeceased) return false;
+      if (lifeStatusFilter === 'living' && c.isDeceased) return false;
       if (relationshipFilter !== 'all' && (c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE) !== relationshipFilter) return false;
       if (leadSourceFilter !== 'all' && (c.leadSource ?? '') !== leadSourceFilter) return false;
       if (search) {
@@ -2386,7 +2508,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         .sort((a, b) => (a._distanceMiles ?? Infinity) - (b._distanceMiles ?? Infinity));
     }
     return result;
-  }, [contacts, activeListId, statusFilter, relationshipFilter, leadSourceFilter, search, locationAnchor, geoData]);
+  }, [contacts, activeListId, statusFilter, lifeStatusFilter, relationshipFilter, leadSourceFilter, search, locationAnchor, geoData]);
 
   const callQueue = useMemo(() =>
     filtered.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
@@ -2929,6 +3051,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               queueReasonText={activeQueueDef?.reason ?? ''}
               locationLabel={callQueueSource === 'activeList' ? locationAnchor?.label : null}
               allContacts={contacts}
+              onLinkInheritor={linkInheritor}
+              onCreateInheritor={createInheritor}
               onExit={() => {
                 const current = (activeQueueDef?.queue ?? [])[callQueueIndex];
                 if (current) setReturnFocusContactId(current.id);
@@ -2980,6 +3104,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               >
                 <option value="all">All Statuses</option>
                 {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <select
+                value={lifeStatusFilter}
+                onChange={e => setLifeStatusFilter(e.target.value)}
+                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+              >
+                <option value="all">All People</option>
+                <option value="living">Living / Unknown</option>
+                <option value="deceased">Deceased</option>
               </select>
               <select
                 value={relationshipFilter}
@@ -3141,6 +3274,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         <ContactDetailModal
           contact={contacts.find(c => c.id === openContact.id) ?? openContact}
           lists={lists}
+          allContacts={contacts}
+          onLinkInheritor={linkInheritor}
+          onCreateInheritor={createInheritor}
           onClose={() => setOpenContact(null)}
           onStatusChange={handleStatusChangeFromModal}
           onNotesChange={updateContactNotes}
@@ -3457,7 +3593,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [] }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
   const queueCurrent = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const current = allContacts.find(c => c.id === queueCurrent?.id) ?? queueCurrent;
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
@@ -3465,6 +3601,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const [postOutcome, setPostOutcome] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [estateContactId, setEstateContactId] = useState(null);
   const [showContactDetails, setShowContactDetails] = useState(false);
   const [sidePanel, setSidePanel] = useState('tasks');
   const [activityMode, setActivityMode] = useState(null);
@@ -3476,10 +3613,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const noteSaved = noteSavedFor === current?.id;
   const activePostOutcome = postOutcome;
   const masterStatus = current?.listId === masterListId ? 'in' : movedMasterId === current?.id ? 'moved' : 'available';
-  const relatedOwnerCandidates = useMemo(
-    () => buildRelatedOwnerCandidates(current, contacts, masterListId),
-    [current, contacts, masterListId]
-  );
+  const relatedOwnerCandidates = buildRelatedOwnerCandidates(current, contacts, masterListId);
 
   async function saveNotes() {
     if (!current) return;
@@ -3743,6 +3877,9 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   </span>
                 )}
                 <SourceBadge source={current.source} />
+                {current.isDeceased && (
+                  <span className="text-xs font-black text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md">Deceased</span>
+                )}
               </div>
               <HeaderInlineField
                 key={`owner-${current.id}`}
@@ -3767,15 +3904,23 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               {current.queueReason && (
                 <p className="text-xs text-amber-400/80 mt-1.5 font-semibold">Why they're up: {current.queueReason}</p>
               )}
-              <button
-                type="button"
-                onClick={() => setShowDetails(v => !v)}
-                className={`mt-2 text-xs font-bold rounded-lg px-3 py-1.5 border transition-all ${showDetails
-                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
-                  : 'border-slate-700 text-slate-400 hover:text-amber-400 hover:border-amber-500/40'}`}
-              >
-                {showDetails ? 'Hide Details' : 'Edit Details'}
-              </button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDetails(v => !v)}
+                  className={`text-xs font-bold rounded-lg px-3 py-1.5 border transition-all ${showDetails
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-400'
+                    : 'border-slate-700 text-slate-400 hover:text-amber-400 hover:border-amber-500/40'}`}
+                >
+                  {showDetails ? 'Hide Details' : 'Edit Details'}
+                </button>
+                <button type="button" onClick={() => setEstateContactId(current.id)}
+                  className={`text-xs font-bold rounded-lg px-3 py-1.5 border transition-all ${current.isDeceased
+                    ? 'border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                    : 'border-slate-700 text-slate-400 hover:text-red-300 hover:border-red-500/40'}`}>
+                  {current.isDeceased ? 'Manage estate / heir' : 'Mark deceased / link heir'}
+                </button>
+              </div>
             </div>
             <PrimaryPhoneEditor
               key={current.id}
@@ -4208,6 +4353,24 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           onClose={() => setConfirmDelete(false)}
           onConfirm={deleteCurrentContact}
         />
+      )}
+      {estateContactId && allContacts.find(c => c.id === estateContactId) && (
+        <ModalLayout onClose={() => setEstateContactId(null)} size="lg" className="p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-black text-white">Estate / Inheritance</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{contactDisplayName(allContacts.find(c => c.id === estateContactId))}</p>
+            </div>
+            <button type="button" onClick={() => setEstateContactId(null)} className="text-slate-500 hover:text-white text-xl leading-none">x</button>
+          </div>
+          <EstateTransitionPanel
+            contact={allContacts.find(c => c.id === estateContactId)}
+            allContacts={allContacts}
+            onUpdateContact={onUpdateContact}
+            onLinkInheritor={onLinkInheritor}
+            onCreateInheritor={onCreateInheritor}
+          />
+        </ModalLayout>
       )}
     </div>
   );

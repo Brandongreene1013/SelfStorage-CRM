@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node tests/textNormalize.test.mjs",
+    "test": "node tests/textNormalize.test.mjs && node tests/ownerRadar.test.mjs",
     "preview": "vite preview",
     "backup:db": "node scripts/backup-database.mjs",
     "backup:json": "node scripts/export-supabase-json-backup.mjs",

@@ -669,6 +669,10 @@ function updatePayloadFromFields(fields) {
   if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
   if (fields.email !== undefined) dbFields.email = fields.email;
   if (fields.age !== undefined) dbFields.age = numberOrNull(fields.age);
+  if (fields.isDeceased !== undefined) dbFields.is_deceased = Boolean(fields.isDeceased);
+  if (fields.deceasedDate !== undefined) dbFields.deceased_date = fields.deceasedDate || null;
+  if (fields.inheritedByContactId !== undefined) dbFields.inherited_by_contact_id = fields.inheritedByContactId || null;
+  if (fields.inheritorRelationship !== undefined) dbFields.inheritor_relationship = fields.inheritorRelationship ?? '';
   if (fields.linkedinUrl !== undefined) dbFields.linkedin_url = fields.linkedinUrl;
   if (fields.ownedProperties !== undefined) dbFields.owned_properties = fields.ownedProperties;
   if (fields.address !== undefined) dbFields.address = fields.address;
@@ -853,6 +857,10 @@ function dbToContact(row) {
     alternatePhones: Array.isArray(row.alternate_phones) ? row.alternate_phones : [],
     email: row.email ?? '',
     age: row.age ?? null,
+    isDeceased: Boolean(row.is_deceased),
+    deceasedDate: row.deceased_date ?? null,
+    inheritedByContactId: row.inherited_by_contact_id ?? null,
+    inheritorRelationship: row.inheritor_relationship ?? '',
     linkedinUrl: row.linkedin_url ?? '',
     ownedProperties: Array.isArray(row.owned_properties) ? row.owned_properties : [],
     address: row.address ?? '',
@@ -1382,6 +1390,19 @@ export function useDatabase() {
     }
     if (error && fields.age !== undefined && isMissingColumnError(error, 'age')) {
       return { error: 'Run sql/contact_age_migration.sql in Supabase, then refresh to save contact ages.' };
+    }
+    if (error && (
+      fields.isDeceased !== undefined
+      || fields.deceasedDate !== undefined
+      || fields.inheritedByContactId !== undefined
+      || fields.inheritorRelationship !== undefined
+    ) && (
+      isMissingColumnError(error, 'is_deceased')
+      || isMissingColumnError(error, 'deceased_date')
+      || isMissingColumnError(error, 'inherited_by_contact_id')
+      || isMissingColumnError(error, 'inheritor_relationship')
+    )) {
+      return { error: 'Run sql/contact_deceased_inheritance_migration.sql in Supabase, then refresh to use deceased and inheritance links.' };
     }
     if (error && (
       isMissingColumnError(error, 'owner_entity')
