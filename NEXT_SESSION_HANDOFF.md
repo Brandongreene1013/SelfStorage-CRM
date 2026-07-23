@@ -227,8 +227,17 @@ No pending migrations.
 - FIXED 2026-07-23: `ContactDetailModal` note save was fire-and-forget on blur
   and "Save & Close". Now awaits the result, shows the same red error state, and
   Save & Close only closes on success (research-note append surfaces errors too).
-- STILL TO AUDIT: task saves, meeting saves, and other useCRM/useMeetings
-  mutations for the same ignore-the-result pattern.
+- FIXED 2026-07-23: Meeting save. `Calendar.handleSave` ignored the result and
+  always closed the modal (silent loss); now closes only on success and
+  `MeetingModal` shows an error banner. This exposed a real latent bug —
+  `meetingToDb` sent `''` (the "None" client option) to the uuid `client_id`
+  column via `?? null`, so EVERY client-less meeting failed silently. Fixed to
+  `|| null`. Both verified live.
+- AUDITED clean: `TaskModal` already awaits, checks `result.error`, and only
+  closes on success.
+- STILL TO AUDIT: `useCRM` client add/update/deal-value and any other mutation
+  call sites for the same ignore-the-result pattern. Consider exporting
+  `meetingToDb` to unit-test the client_id normalization.
 
 ## Robustness backlog (hardening toward a foolproof CRM)
 1. Finish the silent write-failure audit (see above).
