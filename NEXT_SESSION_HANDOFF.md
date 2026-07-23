@@ -152,9 +152,17 @@ Before risky imports, delete flows, migrations, or mass updates:
 3. Owners / Properties: search box (matches groups, linked properties, and
    contacts) + relationship filter in the Database ownership tab.
 4. `lead_source_notes`: Source Notes field on contact detail, update-only
-   with graceful fallback. **Brandon must run
-   sql/contact_lead_source_notes_migration.sql in Supabase** before the
-   field saves; until then saves return a clear migration message.
+   with graceful fallback. Migration run and verified live 2026-07-23
+   (guarded write/revert round-trip).
+
+## Schema status — fully current as of 2026-07-23
+Every migration under sql/ is applied to live Supabase, verified by a full
+column sweep against every table the code references (contacts 40 cols incl.
+owner_identified_at + lead_source_notes; clients incl. deal-value, age, and
+contact_id; properties, ownership_groups, calendar_event, tasks, meetings,
+mailer_lists/members, daily_* tables, duplicate_dismissals, lists). The
+clients.contact_id FK was round-trip tested with a guarded link/unlink.
+No pending migrations.
 
 ## Recommended Next Work
 1. Owner radar UX polish (candidate ranking/dismissal ergonomics).
