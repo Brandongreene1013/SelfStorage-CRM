@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import * as XLSX from 'xlsx';
 import { EmptyState } from './ui';
 import { allMailingAddressOptions } from '../lib/mailingAddresses';
 
@@ -42,7 +41,9 @@ function parseMailingAddress(address = '') {
   return { street: parts.join(', '), city, state, zip };
 }
 
-function exportListExcel(list, rows) {
+async function exportListExcel(list, rows) {
+  // xlsx is heavy; load it only when an export is actually requested
+  const XLSX = await import('xlsx');
   const header = ['Name', 'Street Address', 'City', 'State', 'Zip'];
   const data = rows.map(r => {
     const parsed = parseMailingAddress(r.mailingAddress);

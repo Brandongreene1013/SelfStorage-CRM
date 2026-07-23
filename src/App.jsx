@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useCRM } from './hooks/useCRM';
 import { useDatabase } from './hooks/useDatabase';
 import { useMeetings } from './hooks/useMeetings';
@@ -6,15 +6,15 @@ import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useTasks } from './hooks/useTasks';
 import { useOwnership } from './hooks/useOwnership';
 import { useMailerLists } from './hooks/useMailerLists';
-import MailerLists from './components/MailerLists';
+const MailerLists = lazy(() => import('./components/MailerLists'));
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import PipelineBoard from './components/PipelineBoard';
 import ClientCard from './components/ClientCard';
 import Dashboard from './components/Dashboard';
-import Calendar from './components/Calendar';
+const Calendar = lazy(() => import('./components/Calendar'));
 import Database from './components/Database';
-import Analyst from './components/Analyst';
+const Analyst = lazy(() => import('./components/Analyst'));
 import { PIPELINE_STAGES } from './data/constants';
 import { SearchToolbar, FilterPills, EmptyState, PageHeader, Button } from './components/ui';
 import { downloadCrmBackup } from './lib/crmBackupExport';
@@ -519,25 +519,27 @@ export default function App() {
           />
         )}
 
-        {view === 'Mailers' && (
-          <div>
-            <PageHeader title="Mailer Lists" badge="Who's getting mail, and where" />
-            <MailerLists mailerApi={mailerApi} contacts={db.contacts} clients={clients} />
-          </div>
-        )}
+        <Suspense fallback={<div className="text-slate-500 text-sm py-12 text-center">Loading…</div>}>
+          {view === 'Mailers' && (
+            <div>
+              <PageHeader title="Mailer Lists" badge="Who's getting mail, and where" />
+              <MailerLists mailerApi={mailerApi} contacts={db.contacts} clients={clients} />
+            </div>
+          )}
 
-        {view === 'Analyst' && <Analyst />}
+          {view === 'Analyst' && <Analyst />}
 
-        {view === 'Calendar' && (
-          <Calendar
-            meetings={meetings}
-            calendarEvents={calendarEvents}
-            clients={clients}
-            onAdd={addMeeting}
-            onUpdate={updateMeeting}
-            onDelete={deleteMeeting}
-          />
-        )}
+          {view === 'Calendar' && (
+            <Calendar
+              meetings={meetings}
+              calendarEvents={calendarEvents}
+              clients={clients}
+              onAdd={addMeeting}
+              onUpdate={updateMeeting}
+              onDelete={deleteMeeting}
+            />
+          )}
+        </Suspense>
       </main>
 
       {/* Modals */}

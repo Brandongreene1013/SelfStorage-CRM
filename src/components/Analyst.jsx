@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import * as XLSX from 'xlsx';
 import { downloadFilledModel } from '../lib/excelModel';
 
 // Lightweight markdown-ish renderer: **bold**, line breaks, bullet dashes.
@@ -88,6 +87,8 @@ export default function Analyst() {
       try {
         if (file.name.match(/\.(xlsx|xls|csv)$/i)) {
           // Parse spreadsheet client-side → text the model can read
+          // (xlsx is heavy; load it only when a spreadsheet is attached)
+          const XLSX = await import('xlsx');
           const buf = await file.arrayBuffer();
           const wb = XLSX.read(buf, { type: 'array' });
           let text = `[Spreadsheet: ${file.name}]\n`;

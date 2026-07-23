@@ -1,11 +1,12 @@
 import { useState, useRef, useMemo } from 'react';
-import * as XLSX from 'xlsx';
 import { IMPORT_FIELD_OPTIONS, parseImportData } from '../hooks/useDatabase';
 import ModalLayout from './ui/ModalLayout';
 
 const SOURCES = ['', 'TractIQ', 'Reonomy', 'CoStar', 'County Records', 'Manual Excel', 'Other'];
 
-function excelToTSV(file) {
+async function excelToTSV(file) {
+  // xlsx is heavy; load it only when a spreadsheet is actually imported
+  const XLSX = await import('xlsx');
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
