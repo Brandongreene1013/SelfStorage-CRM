@@ -7,7 +7,7 @@ import ActionCenterModal from './ActionCenterModal';
 import { PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 import { buildCommissionSummary, formatMoney } from '../lib/dealValue';
 import { normalizeDisplayText, normalizeMeetingText } from '../lib/textNormalize';
-import { buildActivityAnalytics, easternToday } from '../lib/activityAnalytics';
+import { buildActivityAnalytics, buildConversionFunnel, easternToday, weeklyActivityTrend } from '../lib/activityAnalytics';
 import { mergeDashboardMeetings } from '../lib/calendarEvents';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState, ModalLayout } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
@@ -735,6 +735,126 @@ function WeeklyProductionScorecard({ data }) {
           <p className="text-[10px] font-semibold text-slate-500 mt-1 truncate">{label}</p>
         </div>
       ))}
+    </SectionCard>
+  );
+}
+
+// Palette validated for CVD + contrast on the slate-950 surface
+// (dataviz six-checks: #d97706 calls, #0284c7 conversations).
+const TREND_SERIES = [
+  { key: 'calls', label: 'Calls', color: '#d97706' },
+  { key: 'conversations', label: 'Conversations', color: '#0284c7' },
+];
+const FUNNEL_STEPS = ['#fbbf24', '#f59e0b', '#d97706', '#b45309'];
+
+function weekTickLabel(weekStart) {
+  const date = new Date(`${weekStart}T12:00:00`);
+  return date.toLocaleDateString('default', { month: 'numeric', day: 'numeric' });
+}
+
+function ProductionTrends({ trend, funnel }) {
+  const width = 720;
+  const height = 210;
+  const plot = { left: 30, right: 712, top: 12, bottom: 168 };
+  const plotHeight = plot.bottom - plot.top;
+  const groupWidth = (plot.right - plot.left) / trend.length;
+  const barWidth = Math.min(16, (groupWidth - 10) / TREND_SERIES.length);
+  const maxValue = Math.max(1, ...trend.flatMap(week => TREND_SERIES.map(series => week.metrics[series.key])));
+  const yFor = valueOf => plot.bottom - (valueOf / maxValue) * plotHeight;
+  const gridValues = [0.5, 1].map(fraction => Math.round(maxValue * fraction)).filter(v => v > 0);
+  const maxFunnelCount = Math.max(1, ...funnel.stages.map(stage => stage.count));
+
+  return (
+    <SectionCard
+      title="Production Trends"
+      subtitle="Last 8 weeks · conversion funnel"
+      className="p-4"
+      bodyClassName="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,1fr)] gap-5"
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-4 mb-2">
+          {TREND_SERIES.map(series => (
+            <span key={series.key} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: series.color }} />
+              {series.label}
+            </span>
+          ))}
+        </div>
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" role="img" aria-label="Weekly calls and conversations, last 8 weeks">
+          {gridValues.map(gridValue => (
+            <g key={gridValue}>
+              <line x1={plot.left} x2={plot.right} y1={yFor(gridValue)} y2={yFor(gridValue)} stroke="#1e293b" strokeWidth="1" />
+              <text x={plot.left - 5} y={yFor(gridValue) + 3} textAnchor="end" fontSize="10" fill="#64748b">{gridValue}</text>
+            </g>
+          ))}
+          <line x1={plot.left} x2={plot.right} y1={plot.bottom} y2={plot.bottom} stroke="#334155" strokeWidth="1" />
+          {trend.map((week, weekIndex) => {
+            const groupLeft = plot.left + weekIndex * groupWidth + (groupWidth - barWidth * TREND_SERIES.length - 2) / 2;
+            return (
+              <g key={week.weekStart}>
+                {TREND_SERIES.map((series, seriesIndex) => {
+                  const value = week.metrics[series.key];
+                  const barTop = yFor(value);
+                  return (
+                    <rect
+                      key={series.key}
+                      x={groupLeft + seriesIndex * (barWidth + 2)}
+                      y={barTop}
+                      width={barWidth}
+                      height={Math.max(plot.bottom - barTop, value > 0 ? 2 : 0)}
+                      rx="2"
+                      fill={series.color}
+                    >
+                      <title>{`Week of ${weekTickLabel(week.weekStart)} — ${series.label}: ${value}`}</title>
+                    </rect>
+                  );
+                })}
+                <text
+                  x={plot.left + weekIndex * groupWidth + groupWidth / 2}
+                  y={plot.bottom + 16}
+                  textAnchor="middle"
+                  fontSize="10"
+                  fill={week.isCurrentWeek ? '#e2e8f0' : '#64748b'}
+                  fontWeight={week.isCurrentWeek ? 700 : 400}
+                >
+                  {week.isCurrentWeek ? 'This wk' : weekTickLabel(week.weekStart)}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">Conversion Funnel · 8 wks</p>
+        <div className="space-y-2">
+          {funnel.stages.map((stage, index) => (
+            <div key={stage.key}>
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="font-semibold text-slate-300">{stage.label}</span>
+                <span className="tabular-nums font-black text-slate-100">
+                  {stage.count}
+                  {stage.rateFromPrevious !== null && stage.rateFromPrevious <= 1 && (
+                    <span className="ml-1.5 font-semibold text-slate-500">{Math.round(stage.rateFromPrevious * 100)}%</span>
+                  )}
+                </span>
+              </div>
+              <div className="mt-1 h-2 rounded-full bg-slate-800/80 overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${Math.max((stage.count / maxFunnelCount) * 100, stage.count > 0 ? 3 : 0)}%`,
+                    background: FUNNEL_STEPS[index],
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[11px] text-slate-500 leading-snug">
+          Percentages are stage-to-stage: how much of the previous stage converted. Pipeline entries are clients added in the window.
+        </p>
+      </div>
     </SectionCard>
   );
 }
@@ -1518,6 +1638,17 @@ export default function Dashboard({
   }), [clients, contacts, taskApi?.tasks, meetings]);
   const today = analytics.today;
   const weeklyProduction = analytics.week;
+  const productionTrend = useMemo(
+    () => weeklyActivityTrend(analytics.events, { weeks: 8 }),
+    [analytics.events],
+  );
+  const conversionFunnel = useMemo(
+    () => buildConversionFunnel(analytics.events, clients, {
+      since: productionTrend[0]?.weekStart ?? null,
+      until: easternToday(),
+    }),
+    [analytics.events, clients, productionTrend],
+  );
   const dashboardMeetings = useMemo(
     () => mergeDashboardMeetings(meetings, calendarEvents),
     [meetings, calendarEvents],
@@ -1624,6 +1755,8 @@ export default function Dashboard({
       </div>
 
       <WeeklyProductionScorecard data={weeklyProduction} />
+
+      <ProductionTrends trend={productionTrend} funnel={conversionFunnel} />
 
       <BrokerCommandCenter
         attackRows={attackRows}

@@ -378,6 +378,12 @@ function dateRange(start, end) {
   return dates;
 }
 
+function shiftDateString(dateString, days) {
+  const date = new Date(`${dateString}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export function aggregateActivityMetrics(events, reportingDates) {
   const metrics = { ...EMPTY_ACTIVITY_METRICS };
   const dates = reportingDates instanceof Set ? reportingDates : new Set(reportingDates);
@@ -403,6 +409,76 @@ export function aggregateActivityMetrics(events, reportingDates) {
 
   metrics.ownersWorked = worked.size;
   return metrics;
+}
+
+// Last `weeks` Monday-start weeks (oldest first, current partial week last),
+// each aggregated with the same metric rules as the daily/weekly scorecards.
+export function weeklyActivityTrend(events, { weeks = 8, reportingDate = easternToday() } = {}) {
+  const currentWeekStart = mondayFor(reportingDate);
+  const buckets = [];
+  for (let offset = weeks - 1; offset >= 0; offset -= 1) {
+    const weekStart = shiftDateString(currentWeekStart, -7 * offset);
+    const weekEnd = shiftDateString(weekStart, 6);
+    buckets.push({
+      weekStart,
+      weekEnd,
+      isCurrentWeek: offset === 0,
+      metrics: aggregateActivityMetrics(events, dateRange(weekStart, weekEnd)),
+    });
+  }
+  return buckets;
+}
+
+// Conversion funnel over a reporting-date window: prospecting volume down to
+// pipeline entries (clients created in the window). Rates are stage-to-stage.
+export function buildConversionFunnel(events, clients = [], { since = null, until = null } = {}) {
+  const inRange = date => Boolean(date) && (!since || date >= since) && (!until || date <= until);
+  const dates = new Set(events.map(event => event.reportingDate).filter(inRange));
+  const metrics = aggregateActivityMetrics(events, dates);
+  const pipelineEntries = clients.filter(client =>
+    inRange(easternDateString(value(client, 'createdAt', 'created_at')))).length;
+
+  const stages = [
+    { key: 'calls', label: 'Calls', count: metrics.calls },
+    { key: 'conversations', label: 'Conversations', count: metrics.conversations },
+    { key: 'meetingsSet', label: 'Meetings Set', count: metrics.meetingsSet },
+    { key: 'pipelineEntries', label: 'Pipeline Entries', count: pipelineEntries },
+  ];
+  return {
+    since,
+    until,
+    stages: stages.map((stage, index) => ({
+      ...stage,
+      rateFromPrevious: index > 0 && stages[index - 1].count > 0
+        ? stage.count / stages[index - 1].count
+        : null,
+    })),
+  };
+}
+
+// Week-over-week digest: this week (Monday through reportingDate) vs the full
+// prior Monday-Sunday week, plus the funnel and trend for the email/dashboard.
+export function buildWeeklyDigest(input = {}, reportingDate = easternToday()) {
+  const events = deriveActivityEvents(input);
+  const weekStart = mondayFor(reportingDate);
+  const previousWeekStart = shiftDateString(weekStart, -7);
+  const previousWeekEnd = shiftDateString(weekStart, -1);
+  const thisWeek = aggregateActivityMetrics(events, dateRange(weekStart, reportingDate));
+  const lastWeek = aggregateActivityMetrics(events, dateRange(previousWeekStart, previousWeekEnd));
+  const delta = Object.fromEntries(
+    ACTIVITY_METRIC_KEYS.map(key => [key, thisWeek[key] - lastWeek[key]]),
+  );
+  return {
+    reportingDate,
+    weekStart,
+    previousWeekStart,
+    previousWeekEnd,
+    thisWeek,
+    lastWeek,
+    delta,
+    funnel: buildConversionFunnel(events, input.clients ?? [], { since: weekStart, until: reportingDate }),
+    trend: weeklyActivityTrend(events, { weeks: 8, reportingDate }),
+  };
 }
 
 export function buildActivityAnalytics(input = {}, reportingDate = easternToday()) {

@@ -1,11 +1,15 @@
 import {
   analyzeDailyActivity,
+  analyzeWeeklyDigest,
   easternHour,
   easternDateString,
   finalizeDailyActivity,
+  isFridayEastern,
   isWeekdayEastern,
   renderActivityEmail,
+  renderWeeklyDigestEmail,
   sendActivityEmail,
+  sendWeeklyDigestEmail,
   supabase,
   upsertReview,
 } from './_dailyActivity.js';
@@ -34,6 +38,22 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Friday-evening weekly digest. `weekly-digest-due` is the cron guard: it
+    // fires only in the 5 PM ET hour on Fridays so the hourly cron sweep sends
+    // exactly one digest per week. `weekly-digest` sends unconditionally
+    // (manual runs); `weekly-digest-preview` renders without sending.
+    if (mode === 'weekly-digest' || mode === 'weekly-digest-due' || mode === 'weekly-digest-preview') {
+      if (mode === 'weekly-digest-due' && (!isFridayEastern(now) || hourEastern !== 17)) {
+        return res.status(200).json({ ok: true, skipped: true, reason: 'not_friday_5pm_et_window', activityDate, hourEastern });
+      }
+      const digest = await analyzeWeeklyDigest(activityDate);
+      if (mode === 'weekly-digest-preview') {
+        return res.status(200).json({ ok: true, activityDate, email: renderWeeklyDigestEmail(digest), digest });
+      }
+      const emailResult = await sendWeeklyDigestEmail(digest);
+      return res.status(200).json({ ok: true, activityDate, digest, email: emailResult });
+    }
+
     if (mode === 'email-test') {
       const analysis = {
         activityDate,

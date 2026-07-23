@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import {
   aggregateActivityMetrics,
   buildActivityAnalytics,
+  buildConversionFunnel,
+  buildWeeklyDigest,
   deriveActivityEvents,
   easternDateString,
   hasMeaningfulOwnerName,
+  weeklyActivityTrend,
   withOwnerIdentificationMilestone,
 } from '../src/lib/activityAnalytics.js';
 
@@ -181,6 +184,80 @@ assert.equal(hasMeaningfulOwnerName(' Jane Owner '), true);
     contacts: [{ id: 'contact-5', ownerName: 'New Owner', ownerIdentifiedAt: null }],
   }, reportingDate);
   assert.equal(failedSaveView.today.ownersIdentified, 0);
+}
+
+{
+  // 2026-07-23 is a Thursday; its week starts Monday 2026-07-20.
+  const trendContacts = [{
+    id: 'contact-trend',
+    ownerName: 'Trend Owner',
+    actionLog: [
+      { eventId: 'trend-this-week', type: 'conversation', date: '2026-07-21' },
+      { eventId: 'trend-last-week', type: 'no_answer', date: '2026-07-15' },
+      { eventId: 'trend-old', type: 'no_answer', date: '2026-05-01' },
+    ],
+  }];
+  const events = deriveActivityEvents({ contacts: trendContacts });
+  const trend = weeklyActivityTrend(events, { weeks: 8, reportingDate });
+  assert.equal(trend.length, 8);
+  assert.equal(trend[7].weekStart, '2026-07-20');
+  assert.equal(trend[7].isCurrentWeek, true);
+  assert.equal(trend[7].metrics.calls, 1);
+  assert.equal(trend[7].metrics.conversations, 1);
+  assert.equal(trend[6].weekStart, '2026-07-13');
+  assert.equal(trend[6].metrics.calls, 1);
+  assert.equal(trend[6].metrics.conversations, 0);
+  // 2026-05-01 falls outside the 8-week window entirely.
+  assert.equal(trend.reduce((sum, week) => sum + week.metrics.calls, 0), 2);
+}
+
+{
+  const funnelContacts = [{
+    id: 'contact-funnel',
+    ownerName: 'Funnel Owner',
+    actionLog: [
+      { eventId: 'funnel-call-1', type: 'no_answer', date: '2026-07-21' },
+      { eventId: 'funnel-call-2', type: 'no_answer', date: '2026-07-21' },
+      { eventId: 'funnel-call-3', type: 'conversation', date: '2026-07-22' },
+      { eventId: 'funnel-call-4', type: 'appointment', date: '2026-07-22' },
+      { eventId: 'funnel-out-of-range', type: 'no_answer', date: '2026-06-01' },
+    ],
+  }];
+  const clients = [
+    { id: 'client-in', name: 'In Range', createdAt: '2026-07-22T15:00:00.000Z' },
+    { id: 'client-out', name: 'Out of Range', createdAt: '2026-06-01T15:00:00.000Z' },
+  ];
+  const events = deriveActivityEvents({ contacts: funnelContacts });
+  const funnel = buildConversionFunnel(events, clients, { since: '2026-07-20', until: '2026-07-23' });
+  const byKey = Object.fromEntries(funnel.stages.map(stage => [stage.key, stage]));
+  assert.equal(byKey.calls.count, 4);
+  assert.equal(byKey.conversations.count, 2); // conversation + appointment
+  assert.equal(byKey.meetingsSet.count, 1);   // appointment
+  assert.equal(byKey.pipelineEntries.count, 1);
+  assert.equal(byKey.conversations.rateFromPrevious, 0.5);
+  assert.equal(byKey.calls.rateFromPrevious, null);
+}
+
+{
+  const digest = buildWeeklyDigest({
+    contacts: [{
+      id: 'contact-digest',
+      ownerName: 'Digest Owner',
+      actionLog: [
+        { eventId: 'digest-this-week', type: 'conversation', date: '2026-07-21' },
+        { eventId: 'digest-last-week-1', type: 'no_answer', date: '2026-07-14' },
+        { eventId: 'digest-last-week-2', type: 'no_answer', date: '2026-07-17' },
+      ],
+    }],
+  }, reportingDate);
+  assert.equal(digest.weekStart, '2026-07-20');
+  assert.equal(digest.previousWeekStart, '2026-07-13');
+  assert.equal(digest.previousWeekEnd, '2026-07-19');
+  assert.equal(digest.thisWeek.calls, 1);
+  assert.equal(digest.lastWeek.calls, 2);
+  assert.equal(digest.delta.calls, -1);
+  assert.equal(digest.trend.length, 8);
+  assert.equal(digest.funnel.since, '2026-07-20');
 }
 
 console.log('activity analytics tests passed');

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { buildActivityAnalytics } from './_activityAnalytics.js';
+import { buildActivityAnalytics, buildWeeklyDigest, ACTIVITY_METRIC_KEYS } from './_activityAnalytics.js';
 
 export const BRANDON_EMAIL = 'bgreene@ripcofl.com';
 
@@ -20,6 +20,11 @@ export function easternDateString(date = new Date()) {
 export function isWeekdayEastern(date = new Date()) {
   const day = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(date);
   return day !== 'Sat' && day !== 'Sun';
+}
+
+export function isFridayEastern(date = new Date()) {
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short' }).format(date);
+  return day === 'Fri';
 }
 
 export function easternHour(date = new Date()) {
@@ -139,6 +144,111 @@ export async function analyzeDailyActivity(activityDate = easternDateString()) {
     slippedItems: slippedFromEmailEvents(emailEvents ?? []),
     evidence: evidence.slice(0, 200),
   };
+}
+
+export async function analyzeWeeklyDigest(reportingDate = easternDateString()) {
+  const [
+    { data: contacts, error: contactsError },
+    { data: clients, error: clientsError },
+    { data: tasks, error: tasksError },
+    { data: meetings, error: meetingsError },
+    { data: emailEvents, error: emailError },
+  ] = await Promise.all([
+    supabase.from('contacts').select('*'),
+    supabase.from('clients').select('*'),
+    supabase.from('tasks').select('*'),
+    supabase.from('meetings').select('*'),
+    supabase.from('daily_email_events').select('*'),
+  ]);
+
+  const firstError = contactsError || clientsError || tasksError || meetingsError || emailError;
+  if (firstError) throw new Error(firstError.message);
+
+  const normalizedTasks = (tasks ?? []).map(task => ({
+    ...task,
+    taskType: task.task_type,
+    completedAt: task.completed_at,
+    relatedType: task.related_type,
+    relatedId: task.related_id,
+    relatedName: task.related_name,
+  }));
+  return buildWeeklyDigest({
+    contacts: contacts ?? [],
+    clients: clients ?? [],
+    tasks: normalizedTasks,
+    meetings: meetings ?? [],
+    emailEvents: emailEvents ?? [],
+  }, reportingDate);
+}
+
+const METRIC_LABELS = {
+  calls: 'Calls',
+  voicemails: 'Voicemails',
+  conversations: 'Conversations',
+  emails: 'Emails',
+  tractiqReportsSent: 'TractIQ reports sent',
+  meetingsSet: 'Meetings set',
+  ownersIdentified: 'Owners identified',
+  ownersWorked: 'Owners worked',
+  actions: 'Actions',
+};
+
+export function renderWeeklyDigestEmail(digest) {
+  const subject = `Weekly production digest — week of ${digest.weekStart}`;
+  const signed = amount => (amount > 0 ? `+${amount}` : String(amount));
+  const lines = [
+    subject,
+    '',
+    `This week (${digest.weekStart} → ${digest.reportingDate}) vs last week (${digest.previousWeekStart} → ${digest.previousWeekEnd}):`,
+  ];
+  ACTIVITY_METRIC_KEYS.forEach(key => {
+    lines.push(`${METRIC_LABELS[key] || key}: ${digest.thisWeek[key]} (last week ${digest.lastWeek[key]}, ${signed(digest.delta[key])})`);
+  });
+
+  lines.push('', 'Conversion funnel (this week):');
+  lines.push(digest.funnel.stages.map(stage => {
+    const rate = stage.rateFromPrevious === null ? '' : ` (${Math.round(stage.rateFromPrevious * 100)}%)`;
+    return `${stage.label} ${stage.count}${rate}`;
+  }).join(' → '));
+
+  lines.push('', '8-week call volume (oldest → current):');
+  lines.push(digest.trend.map(week => week.metrics.calls).join(', '));
+  lines.push('', '8-week conversations:');
+  lines.push(digest.trend.map(week => week.metrics.conversations).join(', '));
+
+  return { subject, text: lines.join('\n') };
+}
+
+export async function sendWeeklyDigestEmail(digest) {
+  const email = renderWeeklyDigestEmail(digest);
+  const to = activityEmailRecipients();
+  const resendKey = String(process.env.RESEND_API_KEY || process.env.ACTIVITY_RESEND_API_KEY || '').trim();
+  const from = String(process.env.ACTIVITY_EMAIL_FROM || process.env.RESEND_FROM_EMAIL || '').trim();
+
+  if (!resendKey) {
+    const webhook = process.env.ACTIVITY_EMAIL_WEBHOOK_URL;
+    if (!webhook) return { ok: false, skipped: true, reason: 'Email is not configured.', to, ...email };
+    const response = await fetch(webhook, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ to: to.length === 1 ? to[0] : to, mode: 'weekly-digest', ...email, digest }),
+    });
+    return { ok: response.ok, skipped: false, provider: 'webhook', status: response.status, to, ...email };
+  }
+
+  if (!from) {
+    return { ok: false, skipped: true, provider: 'resend', reason: 'ACTIVITY_EMAIL_FROM or RESEND_FROM_EMAIL not configured', to, ...email };
+  }
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${resendKey}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ from, to, subject: email.subject, text: email.text }),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    return { ok: false, skipped: false, provider: 'resend', status: response.status, reason: body || response.statusText, to, ...email };
+  }
+  return { ok: true, skipped: false, provider: 'resend', status: response.status, to, ...email };
 }
 
 export async function upsertReview(analysis, status = 'draft', emailStatus = null) {

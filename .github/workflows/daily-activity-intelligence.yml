@@ -33,3 +33,7 @@ jobs:
           echo "Checking 8 PM ET finalize window..."
           curl -fsS "${header[@]}" "${base}?mode=finalize-due"
           echo
+
+          echo "Checking Friday 5 PM ET weekly digest window..."
+          curl -fsS "${header[@]}" "${base}?mode=weekly-digest-due"
+          echo
