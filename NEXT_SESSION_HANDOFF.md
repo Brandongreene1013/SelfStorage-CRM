@@ -141,14 +141,25 @@ Before risky imports, delete flows, migrations, or mass updates:
 - `STORAGE_HUNTERS_CRM_CHATGPT_CONTEXT.md` is the self-contained product
   briefing for outside-tool discussions; keep it current on major changes.
 
+## Shipped 2026-07-23 (three-sprint session)
+1. Code-splitting: Analyst/Calendar/MailerLists are React.lazy; xlsx loads
+   on demand. Main chunk 1,500 kB -> 811 kB (gzip 216 kB).
+2. Production Analytics: weeklyActivityTrend / buildConversionFunnel /
+   buildWeeklyDigest in the shared engine; Dashboard "Production Trends"
+   section (8-week chart + funnel); Friday 5 PM ET weekly digest email via
+   the daily-activity API (modes weekly-digest / weekly-digest-due /
+   weekly-digest-preview) and the existing GitHub cron.
+3. Owners / Properties: search box (matches groups, linked properties, and
+   contacts) + relationship filter in the Database ownership tab.
+4. `lead_source_notes`: Source Notes field on contact detail, update-only
+   with graceful fallback. **Brandon must run
+   sql/contact_lead_source_notes_migration.sql in Supabase** before the
+   field saves; until then saves return a clear migration message.
+
 ## Recommended Next Work
-1. Production Analytics sprint: weekly/monthly activity trends, conversion
-   funnel (calls → conversations → meetings → pipeline), owner-identification
-   velocity, weekly digest edition of the daily activity email.
-2. Code-split the large bundle (lazy-load Analyst + Calendar; main chunk is
-   ~1.5 MB).
-3. Polish Owners / Properties search/filtering and owner radar UX.
-4. Add `lead_source_notes` if source context is needed.
+1. Owner radar UX polish (candidate ranking/dismissal ergonomics).
+2. Owner-identification velocity view once enough milestone data accrues.
+3. Consider splitting the Calendar chunk further (msal-browser is ~230 kB).
 
 ## Opening Prompt Suggestion
 For a future coding session, say:

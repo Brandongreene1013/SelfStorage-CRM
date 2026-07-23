@@ -667,6 +667,7 @@ function updatePayloadFromFields(fields) {
   if (fields.facilityName !== undefined) dbFields.facility_name = fields.facilityName;
   if (fields.relationshipType !== undefined) dbFields.relationship_type = fields.relationshipType;
   if (fields.leadSource !== undefined) dbFields.lead_source = fields.leadSource;
+  if (fields.leadSourceNotes !== undefined) dbFields.lead_source_notes = fields.leadSourceNotes;
   if (fields.ownershipGroupId !== undefined) dbFields.ownership_group_id = fields.ownershipGroupId || null;
   if (fields.phone !== undefined) dbFields.phone = fields.phone;
   if (fields.alternatePhones !== undefined) dbFields.alternate_phones = fields.alternatePhones;
@@ -856,6 +857,7 @@ function dbToContact(row) {
     facilityName: row.facility_name ?? '',
     relationshipType: normalizeRelationshipType(row.relationship_type ?? ''),
     leadSource: row.lead_source ?? '',
+    leadSourceNotes: row.lead_source_notes ?? '',
     ownershipGroupId: row.ownership_group_id ?? null,
     phone: row.phone ?? '',
     alternatePhones: Array.isArray(row.alternate_phones) ? row.alternate_phones : [],
@@ -1409,6 +1411,9 @@ export function useDatabase() {
     }
     if (error && fields.linkedinUrl !== undefined && isMissingColumnError(error, 'linkedin_url')) {
       return { error: 'Run sql/contact_linkedin_url_migration.sql in Supabase, then refresh to save LinkedIn links.' };
+    }
+    if (error && fields.leadSourceNotes !== undefined && isMissingColumnError(error, 'lead_source_notes')) {
+      return { error: 'Run sql/contact_lead_source_notes_migration.sql in Supabase, then refresh to save source notes.' };
     }
     if (error && fields.ownedProperties !== undefined && isMissingColumnError(error, 'owned_properties')) {
       return { error: 'Run sql/contact_owned_properties_migration.sql in Supabase, then refresh to save properties.' };

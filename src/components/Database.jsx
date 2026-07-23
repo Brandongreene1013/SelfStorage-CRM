@@ -707,10 +707,29 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
   const [propertyDrafts, setPropertyDrafts] = useState({});
   const [newPropertyDrafts, setNewPropertyDrafts] = useState({});
   const [message, setMessage] = useState('');
+  const [groupSearch, setGroupSearch] = useState('');
+  const [relationshipFilter, setRelationshipFilter] = useState('all');
 
   const groups = ownershipApi?.groups ?? [];
   const propertiesByGroup = ownershipApi?.propertiesByGroup ?? new Map();
-  const selectedGroup = groups.find(g => g.id === selectedId) ?? groups[0] ?? null;
+  // Search matches the group itself plus its linked properties and contacts,
+  // so "Athens" or a contact's name finds the right ownership group.
+  const filteredGroups = useMemo(() => {
+    const query = groupSearch.trim().toLowerCase();
+    return groups.filter(group => {
+      if (relationshipFilter !== 'all' && group.relationshipType !== relationshipFilter) return false;
+      if (!query) return true;
+      const properties = propertiesByGroup.get(group.id) ?? [];
+      const linked = contacts.filter(c => c.ownershipGroupId === group.id);
+      const haystack = [
+        group.displayName, group.ownerEntity, group.notes,
+        ...properties.flatMap(p => [p.facilityName, p.address, p.city, p.state, p.market]),
+        ...linked.flatMap(c => [c.ownerName, c.facilityName, c.phone, c.email]),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return query.split(/\s+/).every(term => haystack.includes(term));
+    });
+  }, [groups, propertiesByGroup, contacts, groupSearch, relationshipFilter]);
+  const selectedGroup = groups.find(g => g.id === selectedId) ?? filteredGroups[0] ?? null;
   const selectedProperties = selectedGroup ? (propertiesByGroup.get(selectedGroup.id) ?? []) : [];
   const linkedContacts = selectedGroup ? contacts.filter(c => c.ownershipGroupId === selectedGroup.id) : [];
 
@@ -839,8 +858,30 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
         <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-4 py-3 border-b border-slate-800">Ownership Groups</p>
+            <div className="px-3 py-2.5 border-b border-slate-800 space-y-2">
+              <input
+                value={groupSearch}
+                onChange={e => setGroupSearch(e.target.value)}
+                placeholder="Search groups, properties, contacts..."
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+              />
+              <div className="flex items-center gap-2">
+                <select
+                  value={relationshipFilter}
+                  onChange={e => setRelationshipFilter(e.target.value)}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="all">All relationships</option>
+                  {RELATIONSHIP_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                </select>
+                <span className="text-[11px] text-slate-500 whitespace-nowrap tabular-nums">{filteredGroups.length} / {groups.length}</span>
+              </div>
+            </div>
             <div className="divide-y divide-slate-800/70 max-h-[42rem] overflow-y-auto">
-              {groups.map(group => {
+              {filteredGroups.length === 0 && (
+                <p className="px-4 py-6 text-xs text-slate-600 italic text-center">No groups match this search.</p>
+              )}
+              {filteredGroups.map(group => {
                 const properties = propertiesByGroup.get(group.id) ?? [];
                 const contactCount = contacts.filter(c => c.ownershipGroupId === group.id).length;
                 const rel = relationshipMeta(group.relationshipType);
@@ -1366,6 +1407,8 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
                 ))}
               </select>
             </div>
+            <EditableField label="Source Notes" value={contact.leadSourceNotes} placeholder="How did this lead come about?"
+              onChange={field('leadSourceNotes')} />
             <div className="grid grid-cols-2 gap-4">
               <EditableField label="Phone" value={contact.phone} placeholder="Click to add phone" onChange={field('phone')} mono
                 href={contact.phone ? `tel:${contact.phone}` : null} />

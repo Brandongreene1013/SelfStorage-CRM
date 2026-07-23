@@ -761,7 +761,7 @@ function ProductionTrends({ trend, funnel }) {
   const barWidth = Math.min(16, (groupWidth - 10) / TREND_SERIES.length);
   const maxValue = Math.max(1, ...trend.flatMap(week => TREND_SERIES.map(series => week.metrics[series.key])));
   const yFor = valueOf => plot.bottom - (valueOf / maxValue) * plotHeight;
-  const gridValues = [0.5, 1].map(fraction => Math.round(maxValue * fraction)).filter(v => v > 0);
+  const gridValues = [...new Set([0.5, 1].map(fraction => Math.round(maxValue * fraction)))].filter(v => v > 0);
   const maxFunnelCount = Math.max(1, ...funnel.stages.map(stage => stage.count));
 
   return (
