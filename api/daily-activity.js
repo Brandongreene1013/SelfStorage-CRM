@@ -40,13 +40,14 @@ export default async function handler(req, res) {
         generatedAt: new Date().toISOString(),
         counts: {
           ownersIdentified: 1,
-          uniqueOwnersWorked: 1,
-          totalOwnerActions: 1,
+          ownersWorked: 1,
+          actions: 1,
           conversations: 1,
-          additionsToDatabase: 0,
-          bovProposals: 0,
           calls: 1,
           voicemails: 0,
+          emails: 0,
+          tractiqReportsSent: 0,
+          meetingsSet: 0,
         },
         importantItems: [{
           label: 'Daily Activity Intelligence',

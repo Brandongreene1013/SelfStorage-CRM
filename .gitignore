@@ -26,3 +26,6 @@ backups/
 *.sln
 *.sw?
 .vercel
+
+# QA scratch output (screenshots/PDFs from doc generation checks)
+.docx-qa/

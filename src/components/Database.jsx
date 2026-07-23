@@ -17,6 +17,7 @@ import { ACTION_TYPES, CALL_ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCE
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, buildCallbackTaskQueue, mergeQueueContact, TASK_TYPE_MAP } from './tasks';
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
+import { createActivityEventId } from '../lib/activityAnalytics';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -1221,6 +1222,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
       ? appendDateToLogNote(notes, 'Callback date', callbackDate)
       : notes;
     const actionEntry = {
+      eventId: createActivityEventId(),
       type: status,
       date: activityDate,
       priority: 'normal',
@@ -1323,9 +1325,6 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
 
         <div className="flex-1 overflow-auto p-5 space-y-5">
 
-          {/* ── Owner Research Hub (Sprint 12) ── */}
-          <OwnerResearchPanel contact={contact} onAddNote={addResearchNote} />
-
           {/* ── Same-owner radar: link multi-property owners ── */}
           <EstateTransitionPanel
             contact={contact}
@@ -1399,6 +1398,16 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
               compact
             />
           </div>
+
+          <details className="group border border-slate-700 rounded-xl bg-slate-900/40">
+            <summary className="cursor-pointer list-none flex items-center justify-between gap-3 px-4 py-3 text-xs font-bold text-slate-400 hover:text-white">
+              <span>Owner research links</span>
+              <span className="text-slate-600 group-open:rotate-90 transition-transform">&gt;</span>
+            </summary>
+            <div className="px-3 pb-3">
+              <OwnerResearchPanel contact={contact} onAddNote={addResearchNote} />
+            </div>
+          </details>
 
           <OwnershipLinksPanel contact={contact} ownershipApi={ownershipApi} onUpdate={onUpdate} />
           <AdditionalPhonesEditor
@@ -2779,6 +2788,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       ? appendDateToLogNote(note, 'Callback date', callbackDate)
       : note;
     const actionEntry = {
+      eventId: createActivityEventId(),
       type: status,
       date: activityDate || new Date().toISOString().slice(0, 10),
       priority: 'normal',
@@ -3983,7 +3993,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 key={`owner-${current.id}`}
                 value={current.ownerName}
                 placeholder="Click to add owner name"
-                onSave={(v) => onUpdateContact?.(current.id, { ownerName: v })}
+                onSave={(v) => onUpdateContact?.(current.id, { ownerName: v, trackOwnerIdentification: true })}
                 textClassName="text-3xl font-black text-white leading-tight"
                 inputClassName="text-3xl font-black text-white"
               />

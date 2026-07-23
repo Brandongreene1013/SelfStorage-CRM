@@ -16,6 +16,7 @@ export function useMeetings() {
       clientId: row.client_id,
       location: normalizeMeetingText(row.location),
       notes: normalizeDisplayText(row.notes),
+      createdAt: row.created_at ?? null,
     };
   }
 
@@ -53,8 +54,11 @@ export function useMeetings() {
       .select()
       .single();
     if (!error && row) {
-      setMeetings(prev => [...prev, dbToMeeting(row)]);
+      const meeting = dbToMeeting(row);
+      setMeetings(prev => [...prev, meeting]);
+      return { meeting };
     }
+    return { error: error?.message || 'Could not save meeting.' };
   }, []);
 
   const updateMeeting = useCallback(async (id, data) => {
@@ -65,15 +69,20 @@ export function useMeetings() {
       .select()
       .single();
     if (!error && row) {
-      setMeetings(prev => prev.map(m => m.id === id ? dbToMeeting(row) : m));
+      const meeting = dbToMeeting(row);
+      setMeetings(prev => prev.map(m => m.id === id ? meeting : m));
+      return { meeting };
     }
+    return { error: error?.message || 'Could not update meeting.' };
   }, []);
 
   const deleteMeeting = useCallback(async (id) => {
     const { error } = await supabase.from('meetings').delete().eq('id', id);
     if (!error) {
       setMeetings(prev => prev.filter(m => m.id !== id));
+      return { ok: true };
     }
+    return { error: error?.message || 'Could not delete meeting.' };
   }, []);
 
   return { meetings, addMeeting, updateMeeting, deleteMeeting };

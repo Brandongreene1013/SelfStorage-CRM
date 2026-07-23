@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ACTION_TYPES, CALL_ACTION_TYPES, TASK_TYPES, TASK_PRIORITIES, TASK_QUICK_PICKS } from '../data/constants';
 import ModalLayout from './ui/ModalLayout';
+import { createActivityEventId } from '../lib/activityAnalytics';
 
 const ACTION_TYPE_MAP = Object.fromEntries([...ACTION_TYPES, ...CALL_ACTION_TYPES].map(type => [type.value, type]));
 
@@ -49,7 +50,9 @@ export default function ActionCenterModal({
   const willLog = Boolean(onLogAction && logType);
   const willSchedule = Boolean(onSaveTask && title.trim());
   const canSave = focusedAction ? willLog : focusedTask ? willSchedule : willLog || willSchedule;
-  const displayedActionTypes = focusedAction ? CALL_ACTION_TYPES : ACTION_TYPES;
+  const displayedActionTypes = focusedAction
+    ? [...CALL_ACTION_TYPES, ...ACTION_TYPES.filter(action => action.value !== 'call')]
+    : ACTION_TYPES;
   const heading = focusedAction ? 'Log Action' : focusedTask ? 'Add Task' : 'Log & Next Action';
   const saveLabel = focusedAction ? 'Save Action'
     : focusedTask ? 'Save Task'
@@ -68,6 +71,7 @@ export default function ActionCenterModal({
     try {
       if (willLog) {
         const result = await onLogAction({
+          eventId: createActivityEventId(),
           type: logType,
           date: logDate,
           priority: logPriority,

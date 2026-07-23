@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { selectAllRows } from '../lib/selectAllRows';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
 import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } from '../lib/dealValue';
+import { createActivityEventId } from '../lib/activityAnalytics';
 
 function isMissingColumnError(error, columnName) {
   if (!error) return false;
@@ -36,7 +37,9 @@ function buildDealValueLogEntry(data) {
   const pctText = numberOrNull(data.projectedCommissionPct) !== null ? formatPercent(data.projectedCommissionPct) : 'no commission %';
   const feeText = commission !== null ? formatMoney(commission) : '$0';
   return {
-    type: 'bov',
+    eventId: createActivityEventId(),
+    type: 'deal_value_updated',
+    analytics: false,
     date: new Date().toISOString().slice(0, 10),
     note: `Commission registered: ${feeText} projected on ${priceText} at ${pctText}`,
     at: new Date().toISOString(),

@@ -19,12 +19,28 @@ function fmt(iso) {
 }
 
 // Flattens every logged action across clients + contacts into one timeline.
-export default function RecentActivity({ clients = [], contacts = [], limit = 15 }) {
-  const acts = [];
+export default function RecentActivity({
+  clients = [],
+  contacts = [],
+  events,
+  limit = 15,
+  onOpenContact,
+  onOpenClient,
+}) {
+  const acts = events ? events.map(event => ({
+    ...event,
+    type: event.type,
+    at: event.occurredAt,
+    who: event.label,
+    note: event.detail,
+    src: event.relatedType,
+    relatedId: event.relatedId,
+    key: event.key,
+  })) : [];
   clients.forEach(c => (c.actionLog ?? []).forEach(e =>
-    acts.push({ ...e, who: c.name, sub: c.facilityName, src: 'Client' })));
+    !events && acts.push({ ...e, who: c.name, sub: c.facilityName, src: 'client', relatedId: c.id })));
   contacts.forEach(c => (c.actionLog ?? []).forEach(e =>
-    acts.push({ ...e, who: c.ownerName || c.facilityName, sub: c.facilityName, src: 'Contact' })));
+    !events && acts.push({ ...e, who: c.ownerName || c.facilityName, sub: c.facilityName, src: 'contact', relatedId: c.id })));
 
   acts.sort((a, b) => new Date(ts(b)) - new Date(ts(a)));
   const recent = acts.slice(0, limit);
@@ -41,8 +57,19 @@ export default function RecentActivity({ clients = [], contacts = [], limit = 15
         <div className="space-y-2 max-h-80 overflow-auto pr-1">
           {recent.map((e, i) => {
             const t = TYPE_MAP[e.type];
+            const onOpen = e.src === 'contact'
+              ? () => onOpenContact?.(e.relatedId)
+              : e.src === 'client'
+                ? () => onOpenClient?.(e.relatedId)
+                : null;
             return (
-              <div key={i} className="flex items-start gap-2.5 text-sm">
+              <button
+                type="button"
+                key={e.key || e.eventId || e.messageId || `${ts(e)}-${e.relatedId || i}`}
+                onClick={onOpen || undefined}
+                disabled={!onOpen}
+                className="w-full flex items-start gap-2.5 text-sm text-left rounded-md px-1 py-0.5 hover:bg-slate-800/70 disabled:hover:bg-transparent"
+              >
                 <span className="flex-shrink-0 mt-0.5">{t?.icon ?? '•'}</span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
@@ -55,7 +82,7 @@ export default function RecentActivity({ clients = [], contacts = [], limit = 15
                     {e.sub ? <span className="text-slate-600"> · {e.sub}</span> : null}
                   </p>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>

@@ -4,6 +4,7 @@ import { buildContactOutcomeFields } from '../lib/contactMutations';
 import { selectAllRows } from '../lib/selectAllRows';
 import { buildMergePlan } from '../lib/duplicateReview';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
+import { withOwnerIdentificationMilestone } from '../lib/activityAnalytics';
 import { DEFAULT_RELATIONSHIP_TYPE, RELATIONSHIP_TYPES } from '../data/constants';
 
 const US_STATES = {
@@ -661,6 +662,7 @@ function mergeOwnedProperties(existing = [], incoming = []) {
 function updatePayloadFromFields(fields) {
   const dbFields = {};
   if (fields.ownerName !== undefined) dbFields.owner_name = fields.ownerName;
+  if (fields.ownerIdentifiedAt !== undefined) dbFields.owner_identified_at = fields.ownerIdentifiedAt;
   if (fields.ownerEntity !== undefined) dbFields.owner_entity = fields.ownerEntity;
   if (fields.facilityName !== undefined) dbFields.facility_name = fields.facilityName;
   if (fields.relationshipType !== undefined) dbFields.relationship_type = fields.relationshipType;
@@ -849,6 +851,7 @@ function dbToContact(row) {
     id: row.id,
     listId: row.list_id,
     ownerName: row.owner_name ?? '',
+    ownerIdentifiedAt: row.owner_identified_at ?? null,
     ownerEntity: row.owner_entity ?? '',
     facilityName: row.facility_name ?? '',
     relationshipType: normalizeRelationshipType(row.relationship_type ?? ''),
@@ -936,6 +939,7 @@ export function useDatabase() {
   const [lists, setLists] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [masterListId, setMasterListId] = useState(null);
+  const [analyticsMigrationNeeded, setAnalyticsMigrationNeeded] = useState(false);
   // Sprint 12/13 — duplicate groups marked "Not a duplicate": full records
   // ({ pairKey, note, createdAt }) so the Dismissed view can show when/why,
   // plus where they're persisted ('supabase' | 'local') for honest UI messaging.
@@ -994,6 +998,11 @@ export function useDatabase() {
     let loadedLists = [];
     if (!listsRes.error && listsRes.data) loadedLists = listsRes.data.map(dbToList);
     if (!contactsRes.error && contactsRes.data) setContacts(contactsRes.data.map(dbToContact));
+    const { error: analyticsColumnError } = await supabase
+      .from('contacts')
+      .select('owner_identified_at')
+      .limit(1);
+    setAnalyticsMigrationNeeded(isMissingColumnError(analyticsColumnError, 'owner_identified_at'));
 
     // Find or create Master Database list
     let master = loadedLists.find(l => l.name === MASTER_DB_NAME);
@@ -1375,8 +1384,23 @@ export function useDatabase() {
 
   */
   const updateContact = useCallback(async (contactId, fields) => {
+    const existing = contacts.find(contact => contact.id === contactId);
+    const { trackOwnerIdentification, ...persistedFields } = fields;
+    fields = trackOwnerIdentification
+      ? withOwnerIdentificationMilestone(existing, persistedFields)
+      : persistedFields;
     const dbFields = updatePayloadFromFields(fields);
     let { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
+    if (error && fields.ownerIdentifiedAt !== undefined && isMissingColumnError(error, 'owner_identified_at')) {
+      setAnalyticsMigrationNeeded(true);
+      const { owner_identified_at: _ownerIdentifiedAtColumn, ...withoutOwnerMilestone } = dbFields;
+      const retry = await supabase.from('contacts').update(withoutOwnerMilestone).eq('id', contactId);
+      error = retry.error;
+      if (!error) {
+        const { ownerIdentifiedAt: _ownerIdentifiedAt, ...withoutAppMilestone } = fields;
+        fields = withoutAppMilestone;
+      }
+    }
     if (error && isMissingColumnError(error, 'alternate_phones')) {
       return { error: 'alternate_phones_migration_needed' };
     }
@@ -1451,7 +1475,7 @@ export function useDatabase() {
       return { ok: true };
     }
     return { error: error.message };
-  }, []);
+  }, [contacts]);
 
   // Replace a contact's activity log wholesale (review actions), with optional email backfill
   const mutateContactLog = useCallback(async (contactId, { log, email }) => {
@@ -1656,6 +1680,7 @@ export function useDatabase() {
     lists,
     contacts,
     masterListId,
+    analyticsMigrationNeeded,
     importList,
     importIntoList,
     mergeDuplicateContact,

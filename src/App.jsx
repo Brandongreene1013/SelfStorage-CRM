@@ -111,8 +111,6 @@ export default function App() {
   const [backupStatus, setBackupStatus] = useState('');
   const mailerApi = useMailerLists(); // mailer lists — shared so the ✉️ buttons and the Mailers tab stay in sync
 
-  // CRM meetings + synced Outlook calendar events, for the dashboard widget
-  const allMeetings = [...meetings, ...calendarEvents];
   const [view, setView] = useState('Dashboard');
 
   // ── Email "needs review" matches: build the flagged list + confirm/reassign/dismiss ──
@@ -420,7 +418,8 @@ export default function App() {
           <Dashboard
             clients={clients}
             contacts={db.contacts}
-            meetings={allMeetings}
+            meetings={meetings}
+            calendarEvents={calendarEvents}
             masterListId={db.masterListId}
             onNavigateCalendar={() => setView('Calendar')}
             onStartCallMode={handleStartCallMode}
@@ -432,6 +431,7 @@ export default function App() {
             onLogClientAction={logClientAction}
             onDeleteClientAction={deleteClientAction}
             dealValueMigrationNeeded={dealValueMigrationNeeded}
+            analyticsMigrationNeeded={db.analyticsMigrationNeeded}
             taskApi={taskApi}
             review={{
               items: reviewItems,

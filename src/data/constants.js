@@ -62,6 +62,7 @@ export const LEAD_TEMPS = [
 export const ACTION_TYPES = [
   { value: 'call',     label: 'Follow-Up Call',   icon: '📞' },
   { value: 'email',    label: 'Send Email',       icon: '📧' },
+  { value: 'tractiq_report_sent', label: 'TractIQ Report Sent', icon: '📈' },
   { value: 'research', label: 'Market Research',  icon: '🔍' },
   { value: 'meeting',  label: 'Schedule Meeting', icon: '📅' },
   { value: 'bov',      label: 'BOV Presentation', icon: '📊' },
@@ -87,6 +88,7 @@ export const TASK_TYPES = [
   { value: 'email',               label: 'Email',                icon: '📧' },
   { value: 'meeting',             label: 'Meeting',              icon: '📅' },
   { value: 'send_report',         label: 'Send Report',          icon: '📈' },
+  { value: 'tractiq_report',      label: 'TractIQ Report',       icon: '📈' },
   { value: 'request_financials',  label: 'Request Financials',   icon: '📄' },
   { value: 'bov',                 label: 'BOV',                  icon: '📊' },
   { value: 'follow_up',           label: 'Follow Up',            icon: '🔁' },
@@ -105,7 +107,7 @@ export const TASK_PRIORITIES = [
 // common broker follow-ups (Sprint 2 brief).
 export const TASK_QUICK_PICKS = [
   { title: 'Call back tomorrow',            taskType: 'call',               offsetDays: 1 },
-  { title: 'Send TractIQ report',           taskType: 'send_report',        offsetDays: 1 },
+  { title: 'Send TractIQ report',           taskType: 'tractiq_report',     offsetDays: 1 },
   { title: 'Ask for T-12',                  taskType: 'request_financials', offsetDays: 3 },
   { title: 'Ask for rent roll',             taskType: 'request_financials', offsetDays: 3 },
   { title: 'Schedule valuation call',       taskType: 'meeting',            offsetDays: 2 },

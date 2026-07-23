@@ -4,13 +4,15 @@ import FunnelChart from './FunnelChart';
 import RecentActivity from './RecentActivity';
 import NeedsReview from './NeedsReview';
 import ActionCenterModal from './ActionCenterModal';
-import { useDailyProgress, PROGRESS_FIELDS } from '../hooks/useDailyProgress';
+import { PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 import { buildCommissionSummary, formatMoney } from '../lib/dealValue';
 import { normalizeDisplayText, normalizeMeetingText } from '../lib/textNormalize';
+import { buildActivityAnalytics, easternToday } from '../lib/activityAnalytics';
+import { mergeDashboardMeetings } from '../lib/calendarEvents';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState, ModalLayout } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = easternToday;
 
 // â”€â”€â”€ Attack List / Needs Follow-Up / Pipeline Attention builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // These read the universal tasks table plus Database contacts and Clients â€”
@@ -119,17 +121,17 @@ function buildPipelineAttention(taskApi, clients, meetings) {
 }
 
 // â”€â”€â”€ Today Command Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function CommandHeader({ today, overdueCount, dueTodayCount, bovsDueCount, todayCallbacks, overdueCallbacks, onStartCallMode }) {
+function CommandHeader({ today, overdueCount, dueTodayCount, todayMeetings, todayCallbacks, overdueCallbacks, onStartCallMode }) {
   const dateLabel = new Date().toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
   const stats = [
     { label: 'Due Today', value: dueTodayCount, accent: dueTodayCount > 0 ? 'text-amber-300' : 'text-slate-500' },
     { label: 'Overdue', value: overdueCount, accent: overdueCount > 0 ? 'text-red-300' : 'text-slate-500' },
     { label: 'Callbacks', value: todayCallbacks, accent: todayCallbacks > 0 ? 'text-cyan-300' : 'text-slate-500' },
     { label: 'Overdue CB', value: overdueCallbacks, accent: overdueCallbacks > 0 ? 'text-red-300' : 'text-slate-500' },
+    { label: 'Meetings', value: todayMeetings, accent: todayMeetings > 0 ? 'text-purple-300' : 'text-slate-500' },
+    { label: 'Owners Worked', value: today.ownersWorked, accent: today.ownersWorked > 0 ? 'text-emerald-300' : 'text-slate-500' },
     { label: 'Calls', value: today.calls, accent: today.calls > 0 ? 'text-blue-300' : 'text-slate-500' },
-    { label: 'Convos', value: today.conversations, accent: today.conversations > 0 ? 'text-emerald-300' : 'text-slate-500' },
-    { label: 'BOVs Due', value: bovsDueCount, accent: bovsDueCount > 0 ? 'text-purple-300' : 'text-slate-500' },
-    { label: 'DB Adds', value: today.additionsToDatabase, accent: today.additionsToDatabase > 0 ? 'text-emerald-300' : 'text-slate-500' },
+    { label: 'Actions', value: today.actions, accent: today.actions > 0 ? 'text-amber-300' : 'text-slate-500' },
   ];
 
   return (
@@ -372,8 +374,6 @@ function BrokerCommandCenter({
   overdueCallbacks,
   overdueCount,
   dueTodayCount,
-  completedTodayCount,
-  callbacksCreatedToday,
   onCallContact,
   onEditClient,
   onStartCallMode,
@@ -431,13 +431,13 @@ function BrokerCommandCenter({
     { label: 'Calls', value: today.calls, tone: 'text-blue-300' },
     { label: 'Convos', value: today.conversations, tone: 'text-emerald-300' },
     { label: 'Owners ID', value: today.ownersIdentified, tone: 'text-cyan-300' },
-    { label: 'DB Adds', value: today.additionsToDatabase, tone: 'text-amber-300' },
+    { label: 'Actions', value: today.actions, tone: 'text-amber-300' },
   ];
   const weekItems = [
     { label: 'Week calls', value: weeklyProduction.calls, tone: 'text-blue-300' },
     { label: 'Week convos', value: weeklyProduction.conversations, tone: 'text-emerald-300' },
-    { label: 'Tasks done', value: completedTodayCount, tone: 'text-purple-300' },
-    { label: 'Callbacks made', value: callbacksCreatedToday, tone: 'text-cyan-300' },
+    { label: 'Week emails', value: weeklyProduction.emails, tone: 'text-purple-300' },
+    { label: 'Owners worked', value: weeklyProduction.ownersWorked, tone: 'text-cyan-300' },
   ];
   const alertItems = [
     { label: 'Overdue tasks', value: overdueCount, tone: overdueCount > 0 ? 'text-red-300' : 'text-slate-600' },
@@ -706,23 +706,20 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
 }
 
 // â”€â”€â”€ Weekly Production Scorecard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function WeeklyProductionScorecard({ data, completedTodayCount, callbacksCreatedToday }) {
+function WeeklyProductionScorecard({ data }) {
   const monday = new Date();
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
   const weekLabel = `${monday.toLocaleDateString('default', { month: 'short', day: 'numeric' })} - Today`;
   const fields = [
     ['calls', 'Calls'],
-    ['conversations', 'Conversations'],
     ['voicemails', 'Voicemails'],
+    ['conversations', 'Conversations'],
+    ['emails', 'Emails'],
+    ['tractiqReportsSent', 'TractIQ Reports'],
+    ['meetingsSet', 'Meetings Set'],
     ['ownersIdentified', 'Owners Identified'],
-    ['additionsToDatabase', 'Database Adds'],
-    ['bovProposals', 'BOVs Sent'],
-    ['uniqueOwnersWorked', 'Owners Worked'],
-    ['totalOwnerActions', 'Actions Logged'],
-  ];
-  const systemStats = [
-    ['Tasks Completed', completedTodayCount],
-    ['Callbacks Created', callbacksCreatedToday],
+    ['ownersWorked', 'Owners Worked'],
+    ['actions', 'Actions'],
   ];
 
   return (
@@ -730,17 +727,11 @@ function WeeklyProductionScorecard({ data, completedTodayCount, callbacksCreated
       title="Weekly Production"
       subtitle={weekLabel}
       className="p-3"
-      bodyClassName="grid grid-cols-2 sm:grid-cols-5 xl:grid-cols-10 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800"
+      bodyClassName="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-9 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800"
     >
       {fields.map(([key, label]) => (
         <div key={key} className="bg-slate-950/60 px-3 py-2 min-w-0">
           <p className="text-lg font-black leading-none tabular-nums text-slate-100">{data[key] ?? 0}</p>
-          <p className="text-[10px] font-semibold text-slate-500 mt-1 truncate">{label}</p>
-        </div>
-      ))}
-      {systemStats.map(([label, value]) => (
-        <div key={label} className="bg-slate-950/60 px-3 py-2 min-w-0">
-          <p className="text-lg font-black leading-none tabular-nums text-slate-100">{value ?? 0}</p>
           <p className="text-[10px] font-semibold text-slate-500 mt-1 truncate">{label}</p>
         </div>
       ))}
@@ -926,81 +917,32 @@ function ManualActivityModal({ onLog, onClose }) {
   );
 }
 
-function DailyProduction({ today, increment, decrement, addValues, setValue, todayLabel, completedTodayCount, callbacksCreatedToday, migrationNeeded }) {
-  const [showLogger, setShowLogger] = useState(false);
+function DailyProduction({ today, todayLabel }) {
   const fields = [
     ['calls', 'Calls'],
-    ['conversations', 'Conversations'],
     ['voicemails', 'Voicemails'],
-    ['additionsToDatabase', 'DB Adds'],
-    ['ownersIdentified', 'Owners ID'],
-    ['bovProposals', 'BOVs'],
-    ['uniqueOwnersWorked', 'Owners Worked'],
-    ['totalOwnerActions', 'Actions'],
+    ['conversations', 'Conversations'],
+    ['emails', 'Emails'],
+    ['tractiqReportsSent', 'TractIQ Reports Sent'],
+    ['meetingsSet', 'Meetings Set'],
+    ['ownersIdentified', 'Owners Identified'],
+    ['ownersWorked', 'Owners Worked'],
+    ['actions', 'Actions'],
   ];
 
   return (
     <SectionCard
       title="Daily Activity"
-      subtitle={`${todayLabel} · autosaved`}
+      subtitle={`${todayLabel} · derived from saved CRM activity`}
       className="p-4"
-      actions={
-        <button
-          onClick={() => setShowLogger(true)}
-          className="h-8 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-black text-amber-300 hover:bg-amber-500/15 transition-all"
-        >
-          Manual Activity Logger
-        </button>
-      }
     >
-      <div className="space-y-3">
-        {migrationNeeded && (
-          <p className="text-xs text-red-300 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">
-            Run <code>sql/daily_progress_scorecard_migration.sql</code> in Supabase, then refresh to save all scorecard fields.
-          </p>
-        )}
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
-          <p className="text-xs text-slate-500">What work have I completed today?</p>
-          <div className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2 py-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span className="text-[11px] font-bold text-emerald-300">Saved</span>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
-          {fields.map(([key, label]) => {
-            const f = PROGRESS_FIELDS.find(item => item.key === key);
-            return (
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
+        {fields.map(([key, label]) => (
             <div key={key} className="bg-slate-950/60 px-4 py-3">
               <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 leading-tight">{label}</span>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <input
-                  type="number"
-                  min="0"
-                  value={today[key] ?? 0}
-                  onChange={e => setValue(key, e.target.value)}
-                  onFocus={e => e.target.select()}
-                  className={`min-w-0 flex-1 bg-transparent text-3xl font-black leading-none tabular-nums ${f?.accent ?? 'text-slate-100'} focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                  title={`Enter today's ${label}`}
-                />
-                <div className="flex items-center gap-1.5">
-                  <button onClick={() => decrement(key)} title={`Subtract one ${label}`} className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 text-slate-600 hover:text-red-300 hover:border-red-500/30 text-xs font-black transition-all">-</button>
-                  <button onClick={() => increment(key)} title={`Add one ${label}`} className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 text-slate-500 hover:text-emerald-300 hover:border-emerald-500/30 text-xs font-black transition-all">+</button>
-                </div>
-              </div>
+              <p className="mt-2 text-3xl font-black leading-none tabular-nums text-slate-100">{today[key] ?? 0}</p>
             </div>
-          )})}
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2">
-            <p className="text-lg font-black text-emerald-300 leading-none">{completedTodayCount}</p>
-            <p className="text-[11px] text-slate-600 mt-1">Tasks completed</p>
-          </div>
-          <div className="bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2">
-            <p className="text-lg font-black text-purple-300 leading-none">{callbacksCreatedToday}</p>
-            <p className="text-[11px] text-slate-600 mt-1">Callbacks created</p>
-          </div>
-        </div>
-        {showLogger && <ManualActivityModal onLog={addValues} onClose={() => setShowLogger(false)} />}
+        ))}
       </div>
     </SectionCard>
   );
@@ -1228,10 +1170,13 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
 }
 
 // â”€â”€â”€ Upcoming Meetings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
+function UpcomingMeetingsWidget({ meetings, clients, onNavigate, onEditClient }) {
   const today = todayStr();
+  const endOfWindow = new Date(`${today}T12:00:00Z`);
+  endOfWindow.setUTCDate(endOfWindow.getUTCDate() + 7);
+  const endDate = endOfWindow.toISOString().slice(0, 10);
   const upcoming = [...meetings]
-    .filter(m => m.date >= today)
+    .filter(m => m.date >= today && m.date <= endDate)
     .sort((a, b) => (a.date + (a.startTime ?? '')).localeCompare(b.date + (b.startTime ?? '')))
     .slice(0, 5);
   const todayCount = meetings.filter(m => m.date === today).length;
@@ -1313,7 +1258,11 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
               </>
             );
 
-            return m.outlookUrl ? (
+            return client ? (
+              <button key={m.id} onClick={() => onEditClient?.(client)} className={clickableClass} title={`Open ${client.name}`}>
+                {content}
+              </button>
+            ) : m.outlookUrl ? (
               <a key={m.id} href={m.outlookUrl} target="_blank" rel="noopener noreferrer" className={clickableClass} title={title}>
                 {content}
               </a>
@@ -1334,7 +1283,7 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate }) {
 }
 
 // â”€â”€â”€ Universal Tasks (Sprint 2) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function DashboardTasks({ taskApi }) {
+function DashboardTasks({ taskApi, contacts, clients, onOpenContact, onEditClient }) {
   const [quickTitle, setQuickTitle] = useState('');
   const [showFullModal, setShowFullModal] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -1403,7 +1352,26 @@ function DashboardTasks({ taskApi }) {
           {items.map(t => (
             completed
               ? <div key={t.id} className="text-xs text-slate-500 line-through px-3 py-1">{t.title}</div>
-              : <TaskRow key={t.id} task={t} onComplete={completeTask} onDelete={deleteTask} onEdit={setEditingTask} />
+              : <TaskRow
+                  key={t.id}
+                  task={t}
+                  onComplete={completeTask}
+                  onDelete={deleteTask}
+                  onEdit={setEditingTask}
+                  relatedMissing={
+                    (t.relatedType === 'contact' && !contacts.some(contact => contact.id === t.relatedId))
+                    || (t.relatedType === 'client' && !clients.some(client => client.id === t.relatedId))
+                  }
+                  onOpenRelated={task => {
+                    if (task.relatedType === 'contact') {
+                      const contact = contacts.find(item => item.id === task.relatedId);
+                      if (contact) onOpenContact?.(contact);
+                    } else if (task.relatedType === 'client') {
+                      const client = clients.find(item => item.id === task.relatedId);
+                      if (client) onEditClient?.(client);
+                    }
+                  }}
+                />
           ))}
         </div>
       </div>
@@ -1525,8 +1493,8 @@ function DashboardTasks({ taskApi }) {
 
 // â”€â”€â”€ Main Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function Dashboard({
-  clients, contacts = [], meetings = [], onNavigateCalendar,
-  onStartCallMode, onOpenContact, onEditClient, onLogClientAction, onDeleteClientAction, onMoveToMasterDB, masterListId, review, taskApi, dealValueMigrationNeeded,
+  clients, contacts = [], meetings = [], calendarEvents = [], onNavigateCalendar,
+  onStartCallMode, onOpenContact, onEditClient, onLogClientAction, onDeleteClientAction, onMoveToMasterDB, masterListId, review, taskApi, dealValueMigrationNeeded, analyticsMigrationNeeded,
 }) {
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
@@ -1541,18 +1509,19 @@ export default function Dashboard({
     count: clients.filter(c => c.stageId === s.id).length,
   }));
 
-  const { today, increment, decrement, addValues, setValue, getWeek, getMonth, getYear, getSpecificMonth, migrationNeeded } = useDailyProgress();
-  const [analyticsRange, setAnalyticsRange] = useState('Week');
-  const [selectedMonth, setSelectedMonth] = useState(
-    () => new Date().toISOString().slice(0, 7)
-  );
   const [showReporting, setShowReporting] = useState(false);
-
-  const analyticsData = analyticsRange === 'Week' ? getWeek()
-    : analyticsRange === 'Month' ? getMonth()
-    : analyticsRange === 'Year' ? getYear()
-    : getSpecificMonth(selectedMonth);
-  const weeklyProduction = getWeek();
+  const analytics = useMemo(() => buildActivityAnalytics({
+    clients,
+    contacts,
+    tasks: taskApi?.tasks ?? [],
+    meetings,
+  }), [clients, contacts, taskApi?.tasks, meetings]);
+  const today = analytics.today;
+  const weeklyProduction = analytics.week;
+  const dashboardMeetings = useMemo(
+    () => mergeDashboardMeetings(meetings, calendarEvents),
+    [meetings, calendarEvents],
+  );
 
   const todayLabel = new Date().toLocaleDateString('default', {
     weekday: 'long', month: 'short', day: 'numeric',
@@ -1570,7 +1539,7 @@ export default function Dashboard({
 
   const attackRows = useMemo(() => buildAttackList(taskApi, contacts, clients), [taskApi, contacts, clients]);
   const followUpRows = useMemo(() => buildNeedsFollowUp(taskApi, contacts, clients, masterListId), [taskApi, contacts, clients, masterListId]);
-  const attentionRows = useMemo(() => buildPipelineAttention(taskApi, clients, meetings), [taskApi, clients, meetings]);
+  const attentionRows = useMemo(() => buildPipelineAttention(taskApi, clients, dashboardMeetings), [taskApi, clients, dashboardMeetings]);
 
   const overdueCount = taskApi?.groups?.overdue?.length ?? 0;
   const dueTodayCount = taskApi?.groups?.dueToday?.length ?? 0;
@@ -1591,35 +1560,56 @@ export default function Dashboard({
       t.taskType === 'call' && t.source === 'database' && (t.createdAt ?? '').slice(0, 10) === today
     ).length;
   }, [taskApi]);
+  const todayMeetingCount = dashboardMeetings.filter(meeting => meeting.date === todayStr()).length;
+
+  const openActivity = event => {
+    if (event.relatedType === 'contact') {
+      const contact = contacts.find(item => item.id === event.relatedId);
+      if (contact) onOpenContact?.(contact);
+    } else if (event.relatedType === 'client') {
+      const client = clients.find(item => item.id === event.relatedId);
+      if (client) onEditClient?.(client);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4">
-      <WeeklyProductionScorecard
-        data={weeklyProduction}
-        completedTodayCount={completedTodayCount}
-        callbacksCreatedToday={callbacksCreatedToday}
+      <CommandHeader
+        today={today}
+        overdueCount={overdueCount}
+        dueTodayCount={dueTodayCount}
+        todayMeetings={todayMeetingCount}
+        todayCallbacks={todayCallbacks}
+        overdueCallbacks={overdueCallbacks}
+        onStartCallMode={onStartCallMode}
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(300px,0.9fr)_minmax(360px,1.1fr)_minmax(320px,0.8fr)] gap-4 items-start">
+      {analyticsMigrationNeeded && (
+        <p role="alert" className="text-xs text-amber-200 bg-amber-950/30 border border-amber-700/40 rounded-lg px-3 py-2">
+          Owner identification tracking needs the one-time <code>sql/analytics_integrity_migration.sql</code> migration. Other activity metrics remain live.
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(340px,0.95fr)_minmax(420px,1.15fr)_minmax(320px,0.9fr)] gap-4 items-start">
         <DailyProduction
           today={today}
-          increment={increment}
-          decrement={decrement}
-          addValues={addValues}
-          setValue={setValue}
           todayLabel={todayLabel}
-          completedTodayCount={completedTodayCount}
-          callbacksCreatedToday={callbacksCreatedToday}
-          migrationNeeded={migrationNeeded}
         />
 
-        <DashboardTasks taskApi={taskApi} />
+        <DashboardTasks
+          taskApi={taskApi}
+          contacts={contacts}
+          clients={clients}
+          onOpenContact={onOpenContact}
+          onEditClient={onEditClient}
+        />
 
         <div className="space-y-4 min-w-0">
           <UpcomingMeetingsWidget
-            meetings={meetings}
+            meetings={dashboardMeetings}
             clients={clients}
             onNavigate={onNavigateCalendar}
+            onEditClient={onEditClient}
           />
           {review && (
             <NeedsReview
@@ -1632,6 +1622,8 @@ export default function Dashboard({
           )}
         </div>
       </div>
+
+      <WeeklyProductionScorecard data={weeklyProduction} />
 
       <BrokerCommandCenter
         attackRows={attackRows}
@@ -1646,8 +1638,6 @@ export default function Dashboard({
         overdueCallbacks={overdueCallbacks}
         overdueCount={overdueCount}
         dueTodayCount={dueTodayCount}
-        completedTodayCount={completedTodayCount}
-        callbacksCreatedToday={callbacksCreatedToday}
         onCallContact={onOpenContact}
         onEditClient={onEditClient}
         onStartCallMode={onStartCallMode}
@@ -1657,7 +1647,12 @@ export default function Dashboard({
         taskApi={taskApi}
       />
 
-      <DailyActivityIntelligenceReview />
+      <RecentActivity
+        events={analytics.events}
+        limit={12}
+        onOpenContact={relatedId => openActivity({ relatedType: 'contact', relatedId })}
+        onOpenClient={relatedId => openActivity({ relatedType: 'client', relatedId })}
+      />
 
       <div className="pt-4" data-dashboard-financial-section>
         <CommissionCounter
@@ -1690,15 +1685,6 @@ export default function Dashboard({
               totalUnits={totalUnits}
               totalSqft={totalSqft}
             />
-            <div className="grid grid-cols-1 gap-4">
-              <ProductivityAnalytics
-                analyticsRange={analyticsRange}
-                setAnalyticsRange={setAnalyticsRange}
-                analyticsData={analyticsData}
-                selectedMonth={selectedMonth}
-                setSelectedMonth={setSelectedMonth}
-              />
-            </div>
             <FunnelChart clients={clients} filter="All" />
           </div>
         ) : (

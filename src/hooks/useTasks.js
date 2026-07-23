@@ -20,6 +20,12 @@ function isMissingColumnError(error) {
   return /column .* does not exist|could not find .* column/i.test(error.message ?? '');
 }
 
+function isAnalyticsTaskMigrationError(error, taskType) {
+  return taskType === 'tractiq_report'
+    && error?.code === '23514'
+    && /tasks_task_type_check/i.test(`${error.message ?? ''} ${error.details ?? ''}`);
+}
+
 // DB row (snake_case, may be pre- or post-migration shape) → app camelCase
 function dbToTask(row) {
   return {
@@ -70,7 +76,10 @@ export function useTasks() {
     };
     const { data, error } = await supabase.from('tasks').insert([row]).select().single();
     if (error) {
-      if (isMissingColumnError(error)) { setMigrationNeeded(true); return { error: 'migration_needed' }; }
+      if (isMissingColumnError(error) || isAnalyticsTaskMigrationError(error, row.task_type)) {
+        setMigrationNeeded(true);
+        return { error: 'migration_needed' };
+      }
       return { error: error.message };
     }
     setTasks(prev => [dbToTask(data), ...prev]);
@@ -89,7 +98,10 @@ export function useTasks() {
 
     const { data, error } = await supabase.from('tasks').update(db).eq('id', id).select().single();
     if (error) {
-      if (isMissingColumnError(error)) { setMigrationNeeded(true); return { error: 'migration_needed' }; }
+      if (isMissingColumnError(error) || isAnalyticsTaskMigrationError(error, db.task_type)) {
+        setMigrationNeeded(true);
+        return { error: 'migration_needed' };
+      }
       return { error: error.message };
     }
     setTasks(prev => prev.map(t => t.id === id ? dbToTask(data) : t));
@@ -110,7 +122,9 @@ export function useTasks() {
 
   const deleteTask = useCallback(async (id) => {
     const { error } = await supabase.from('tasks').delete().eq('id', id);
-    if (!error) setTasks(prev => prev.filter(t => t.id !== id));
+    if (error) return { error: error.message };
+    setTasks(prev => prev.filter(t => t.id !== id));
+    return { ok: true };
   }, []);
 
   // Tasks tied to a specific client/contact/etc — used by ClientCard,

@@ -13,7 +13,7 @@ Production/default branch:
 `claude/storage-investment-crm-vV018`
 
 Latest production commit as of the last synced production check:
-`04e4f5d` — Redesign dashboard command center
+see `git log` — the analytics integrity sprint (shared activity analytics engine, `owner_identified_at` migration, CI workflow) shipped 2026-07-23
 
 ## Read First
 Before code changes, read:
@@ -123,12 +123,32 @@ Before risky imports, delete flows, migrations, or mass updates:
 3. Make the change.
 4. Verify against live Supabase with guarded records.
 
+## Analytics Integrity Foundation (shipped 2026-07-23)
+- `api/_activityAnalytics.js` is the single source of truth for activity event
+  classification and metric aggregation. The frontend consumes it via the
+  one-line re-export `src/lib/activityAnalytics.js` (do NOT fork the logic).
+  Same pattern for calendar normalization: `src/lib/calendarEvents.js`.
+- `sql/analytics_integrity_migration.sql` adds `contacts.owner_identified_at`
+  (immutable first-identification milestone, no historical backfill) and the
+  `tractiq_report` task type. **Brandon must run it in the Supabase SQL Editor
+  after a backup.** Until then the app runs in graceful-fallback mode and the
+  Dashboard shows a migration-needed banner; milestone data is NOT recorded.
+- Tests: `tests/activityAnalytics.test.mjs` + `tests/calendarEvents.test.mjs`
+  are wired into `npm test`.
+- CI: `.github/workflows/ci.yml` runs lint + test + build on every push. It
+  does not gate the Vercel deploy — treat a red X as an urgent signal.
+- `STORAGE_HUNTERS_CRM_CHATGPT_CONTEXT.md` is the self-contained product
+  briefing for outside-tool discussions; keep it current on major changes.
+
 ## Recommended Next Work
-1. Finish the Storage Hero -> Storage Hunters CRM rename intentionally.
-2. Confirm Dashboard daily counters against Brandon's real activity expectations.
-3. Polish Owners / Properties search/filtering and owner radar UX.
-4. Add `lead_source_notes` if source context is needed.
-5. Consider code-splitting the large bundle.
+1. Production Analytics sprint: weekly/monthly activity trends, conversion
+   funnel (calls → conversations → meetings → pipeline), owner-identification
+   velocity, weekly digest edition of the daily activity email.
+2. Code-split the large bundle (lazy-load Analyst + Calendar; main chunk is
+   ~1.5 MB).
+3. Finish the Storage Hero -> Storage Hunters CRM rename intentionally.
+4. Polish Owners / Properties search/filtering and owner radar UX.
+5. Add `lead_source_notes` if source context is needed.
 
 ## Opening Prompt Suggestion
 For a future coding session, say:
