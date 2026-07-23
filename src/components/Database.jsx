@@ -5,7 +5,7 @@ import DuplicateReview from './DuplicateReview';
 import { findDuplicateGroups } from '../lib/duplicateReview';
 import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
 import { buildWhitepagesLink, normalizeLinkedinUrl } from '../lib/researchLinks';
-import { buildRelatedOwnerCandidates, normalizePropertyAddress, subjectPropertyPayload } from '../lib/ownerRadar';
+import { buildRelatedOwnerCandidates, buildSharedContactInfoIndex, normalizePropertyAddress, subjectPropertyPayload } from '../lib/ownerRadar';
 import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
 import ClientCard from './ClientCard';
@@ -2425,11 +2425,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     contacts.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
     [contacts]
   );
+  // Emails/phones shared across many distinct owners (placeholders, catch-alls)
+  // computed once and threaded into both matchers so junk contact info can't
+  // manufacture confident matches or false duplicate clusters.
+  const sharedContactInfo = useMemo(() => buildSharedContactInfoIndex(contacts), [contacts]);
   // Sprint 11 — duplicate group count for the sidebar badge. Recomputed only
   // when contacts/dismissals change; the review panel recomputes with task counts.
   const duplicateGroupCount = useMemo(
-    () => findDuplicateGroups(contacts).filter(g => !dismissedDuplicateKeys?.has(g.key)).length,
-    [contacts, dismissedDuplicateKeys]
+    () => findDuplicateGroups(contacts, { sharedContactInfo }).filter(g => !dismissedDuplicateKeys?.has(g.key)).length,
+    [contacts, sharedContactInfo, dismissedDuplicateKeys]
   );
 
   const importHistory = useMemo(() => {
@@ -2959,6 +2963,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               ownershipApi={ownershipApi}
               mailerApi={mailerApi}
               dismissedDuplicateKeys={dismissedDuplicateKeys}
+              sharedContactInfo={sharedContactInfo}
               onDismissRelatedOwner={dismissDuplicateGroup}
               queueLabel={activeQueueDef?.label ?? 'Call Mode'}
               queueReasonText={activeQueueDef?.reason ?? ''}
@@ -3506,7 +3511,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, sharedContactInfo, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
   const queueCurrent = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const latestContact = allContacts.find(c => c.id === queueCurrent?.id);
   // Queue builders attach task/reason metadata that the base contact does not
@@ -3533,7 +3538,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const noteSaved = noteSavedFor === current?.id;
   const activePostOutcome = postOutcome;
   const masterStatus = current?.listId === masterListId ? 'in' : movedMasterId === current?.id ? 'moved' : 'available';
-  const relatedOwnerCandidates = buildRelatedOwnerCandidates(current, contacts, masterListId, { dismissedKeys: dismissedDuplicateKeys });
+  const relatedOwnerCandidates = buildRelatedOwnerCandidates(current, contacts, masterListId, { dismissedKeys: dismissedDuplicateKeys, sharedContactInfo });
 
   // "Not the same owner" — reuse the shared duplicate_dismissals store so the
   // wrong suggestion stays gone (and a matching Duplicate Review dismissal is
@@ -4126,7 +4131,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   </p>
                   <p className="text-xs text-slate-500 mt-1">Owners already in your Master Database that share contact info with this call record.</p>
                 </div>
-                {relatedOwnerCandidates.map(({ contact: candidate, signals, confidence, pairKey }) => {
+                {relatedOwnerCandidates.map(({ contact: candidate, signals, confidence, pairKey, sharedSignal }) => {
                   const properties = candidate.ownershipGroupId
                     ? (ownershipApi?.propertiesByGroup?.get(candidate.ownershipGroupId) ?? [])
                     : [];
@@ -4147,11 +4152,16 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                         </div>
                         <div className="mt-1.5 flex flex-wrap gap-1">
                           {signals.map(signal => (
-                            <span key={signal.type} className="text-[10px] font-bold border border-blue-500/30 bg-blue-500/10 text-blue-200 rounded-full px-1.5 py-0.5">
-                              {signal.label}
+                            <span key={signal.type} className={`text-[10px] font-bold border rounded-full px-1.5 py-0.5 ${signal.shared ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-blue-500/30 bg-blue-500/10 text-blue-200'}`}>
+                              {signal.label}{signal.shared ? ' · shared' : ''}
                             </span>
                           ))}
                         </div>
+                        {sharedSignal && (
+                          <p className="mt-1.5 text-[11px] text-amber-300/90 leading-snug">
+                            ⚠ Shared contact info — this email/phone is used by several owners, so verify before linking.
+                          </p>
+                        )}
                         <div className="mt-2 space-y-1">
                           {properties.length > 0 ? properties.map(property => (
                             <div key={property.id} className="text-xs text-slate-400 break-words">

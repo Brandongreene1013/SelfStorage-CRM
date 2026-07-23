@@ -6,6 +6,8 @@
 // incoming rows against existing contacts. Here we compare existing contacts
 // against each other and cluster likely duplicates into reviewable groups.
 
+import { buildSharedContactInfoIndex, isSharedEmail, isSharedPhone } from './ownerRadar.js';
+
 const ADDRESS_TOKEN_MAP = {
   street: 'st', avenue: 'ave', road: 'rd', drive: 'dr', lane: 'ln',
   boulevard: 'blvd', highway: 'hwy', parkway: 'pkwy', place: 'pl',
@@ -97,8 +99,10 @@ const HIGH_CONFIDENCE_REASONS = new Set([
   DUPLICATE_REASONS.SAME_EMAIL,
 ]);
 
-// Compare one pair of contacts and return every matching reason.
-function pairReasons(a, b) {
+// Compare one pair of contacts and return every matching reason. A shared
+// email/phone (same value across many owners — a placeholder or catch-all) is
+// ignored as an identity signal, so junk contact info can't drive a cluster.
+function pairReasons(a, b, sharedInfo) {
   const reasons = [];
 
   const aPhones = contactPhoneKeys(a);
@@ -107,6 +111,7 @@ function pairReasons(a, b) {
   for (const [key, aKind] of aPhones) {
     const bKind = bPhones.get(key);
     if (!bKind) continue;
+    if (isSharedPhone(sharedInfo, key)) continue;
     if (aKind === 'primary' && bKind === 'primary') { phoneReason = DUPLICATE_REASONS.SAME_PHONE; break; }
     phoneReason = DUPLICATE_REASONS.ALTERNATE_PHONE_MATCH;
   }
@@ -114,7 +119,7 @@ function pairReasons(a, b) {
 
   const aEmail = (a.email ?? '').trim().toLowerCase();
   const bEmail = (b.email ?? '').trim().toLowerCase();
-  if (aEmail && aEmail === bEmail) reasons.push(DUPLICATE_REASONS.SAME_EMAIL);
+  if (aEmail && aEmail === bEmail && !isSharedEmail(sharedInfo, aEmail)) reasons.push(DUPLICATE_REASONS.SAME_EMAIL);
 
   const aAddr = normalizeAddress(a.address);
   const bAddr = normalizeAddress(b.address);
@@ -156,8 +161,10 @@ export function confidenceForReasons(reasons) {
 
 // ── Candidate generation ─────────────────────────────────────────────────────
 // Bucket contacts by shared keys so we only run pairReasons on plausible pairs
-// instead of all n² combinations.
-function candidatePairs(contacts) {
+// instead of all n² combinations. Shared email/phone values (placeholders /
+// catch-alls attached to many owners) are not bucketed — they would create a
+// large junk bucket and no real duplicate, the same instinct as the >40 guard.
+function candidatePairs(contacts, sharedInfo) {
   const buckets = new Map();
   function add(bucketKey, contact) {
     if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
@@ -165,9 +172,12 @@ function candidatePairs(contacts) {
   }
 
   contacts.forEach(c => {
-    for (const key of contactPhoneKeys(c).keys()) add(`p:${key}`, c);
+    for (const key of contactPhoneKeys(c).keys()) {
+      if (isSharedPhone(sharedInfo, key)) continue;
+      add(`p:${key}`, c);
+    }
     const email = (c.email ?? '').trim().toLowerCase();
-    if (email) add(`e:${email}`, c);
+    if (email && !isSharedEmail(sharedInfo, email)) add(`e:${email}`, c);
     const addr = normalizeAddress(c.address);
     if (addr) add(`a:${addr}`, c);
     const market = marketKey(c);
@@ -252,15 +262,16 @@ export function keepSignals(contact, { openTaskCount = 0 } = {}) {
 // ── Group detection ──────────────────────────────────────────────────────────
 // Returns duplicate groups sorted High-confidence first:
 // { key, confidence, reasons, memberIds, recommendedKeepId }
-export function findDuplicateGroups(contacts, { getOpenTaskCount } = {}) {
+export function findDuplicateGroups(contacts, { getOpenTaskCount, sharedContactInfo } = {}) {
   const openTaskCount = (id) => getOpenTaskCount ? getOpenTaskCount(id) : 0;
-  const pairs = candidatePairs(contacts);
+  const sharedInfo = sharedContactInfo ?? buildSharedContactInfoIndex(contacts);
+  const pairs = candidatePairs(contacts, sharedInfo);
 
   // Union-find style clustering over confirmed pairs.
   const groupOf = new Map(); // contactId -> group
   const groups = [];
   for (const [a, b] of pairs) {
-    const reasons = pairReasons(a, b);
+    const reasons = pairReasons(a, b, sharedInfo);
     if (reasons.length === 0) continue;
     let ga = groupOf.get(a.id);
     let gb = groupOf.get(b.id);

@@ -40,6 +40,62 @@ function usableOwnerIdentity(contact) {
   return name && !GENERIC_OWNER_NAMES.has(name) ? name : '';
 }
 
+// Canonical phone for the shared-info index: last 10 digits (matches the
+// duplicate-review engine's phoneKey), so a lookup here and there agree.
+function canonicalPhone(value = '') {
+  const digits = String(value).replace(/\D/g, '');
+  const trimmed = digits.length > 10 ? digits.slice(-10) : digits;
+  return trimmed.length >= 7 ? trimmed : '';
+}
+
+// A "distinct owner" for shared-info counting: the ownership group if linked,
+// else the normalized owner name, else the contact's own id. This deliberately
+// counts by identity, not raw rows, so one owner's three properties don't make
+// their real personal email look shared.
+function ownerIdentityKey(contact) {
+  if (contact?.ownershipGroupId) return `group:${contact.ownershipGroupId}`;
+  const name = normalizeIdentity(contact?.ownerName || contact?.ownerEntity);
+  if (name && !GENERIC_OWNER_NAMES.has(name)) return `name:${name}`;
+  return `contact:${contact?.id ?? ''}`;
+}
+
+// An email or phone attached to at least this many distinct owners is treated
+// as low-value contact info (a placeholder like info@, a shared office line, a
+// scraped catch-all) — not a reliable identity signal.
+export const SHARED_CONTACT_MIN_OWNERS = 3;
+
+// Scan the whole contact set once and return the emails/phones that are shared
+// across SHARED_CONTACT_MIN_OWNERS+ distinct owners. Pure; callers memoize it
+// and thread it into the matchers so junk contact info stops manufacturing
+// confident matches.
+export function buildSharedContactInfoIndex(contacts = [], minOwners = SHARED_CONTACT_MIN_OWNERS) {
+  const emailOwners = new Map();
+  const phoneOwners = new Map();
+  const add = (map, key, ownerKey) => {
+    if (!key) return;
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key).add(ownerKey);
+  };
+  (contacts ?? []).forEach(contact => {
+    const ownerKey = ownerIdentityKey(contact);
+    add(emailOwners, normalizeEmail(contact?.email), ownerKey);
+    [contact?.phone, ...((contact?.alternatePhones ?? []).map(p => p?.phone))]
+      .forEach(phone => add(phoneOwners, canonicalPhone(phone), ownerKey));
+  });
+  const collectShared = map => new Set(
+    [...map].filter(([, owners]) => owners.size >= minOwners).map(([key]) => key),
+  );
+  return { sharedEmails: collectShared(emailOwners), sharedPhones: collectShared(phoneOwners), minOwners };
+}
+
+export function isSharedEmail(index, email) {
+  return Boolean(index?.sharedEmails?.has(normalizeEmail(email)));
+}
+
+export function isSharedPhone(index, phone) {
+  return Boolean(index?.sharedPhones?.has(canonicalPhone(phone)));
+}
+
 function contactDisplayName(contact) {
   return contact?.ownerName || contact?.ownerEntity || contact?.facilityName || contact?.address || 'Unknown owner';
 }
@@ -52,18 +108,19 @@ export function relatedOwnerPairKey(idA, idB) {
   return [String(idA ?? ''), String(idB ?? '')].sort().join('|');
 }
 
-// Each match signal, strongest first. Exact contact-info matches (email/phone)
-// are near-certain; a name-only match is a softer hint because owner names
-// collide ("John Smith", family LLCs). Confidence is driven off this: any
-// exact contact-info signal => High, name-only => Medium.
+// Each match signal, strongest first. A one-to-one email/phone match is
+// near-certain (exact); a name-only match is a softer hint because owner names
+// collide ("John Smith", family LLCs). A shared email/phone (same value across
+// many owners) is NOT exact — it is downgraded to a soft hint. Confidence: any
+// exact (non-shared) contact-info signal => High, otherwise => Medium.
 const SIGNAL_META = {
-  email: { label: 'Same email', weight: 100, exact: true },
-  phone: { label: 'Same phone', weight: 90, exact: true },
-  name: { label: 'Same owner name', weight: 60, exact: false },
+  email: { label: 'Same email', weight: 100 },
+  phone: { label: 'Same phone', weight: 90 },
+  name: { label: 'Same owner name', weight: 60 },
 };
 
 function candidateConfidence(signals) {
-  return signals.some(signal => SIGNAL_META[signal.type]?.exact) ? 'High' : 'Medium';
+  return signals.some(signal => signal.exact) ? 'High' : 'Medium';
 }
 
 // Call Mode only: candidates must be existing Master Database contacts. Exact
@@ -72,11 +129,16 @@ function candidateConfidence(signals) {
 //
 // `options.dismissedKeys` is a Set of relatedOwnerPairKey() strings the broker
 // has marked "not the same owner"; those candidates are filtered out so a wrong
-// suggestion stays gone. Results are ranked so exact contact-info matches (High)
-// always sit above name-only hints (Medium), never crowded out.
+// suggestion stays gone. `options.sharedContactInfo` is a
+// buildSharedContactInfoIndex() result (computed here if omitted) — a match on a
+// shared email/phone is demoted to a soft hint, and a candidate whose ONLY
+// evidence is shared contact info is dropped so junk data stops manufacturing
+// phantom Strong matches. Results are ranked so genuine exact matches (High)
+// always sit above soft hints (Medium), never crowded out.
 export function buildRelatedOwnerCandidates(subject, contacts, masterListId, options = {}) {
   if (!subject || !masterListId || subject.listId === masterListId) return [];
   const dismissedKeys = options.dismissedKeys ?? new Set();
+  const sharedInfo = options.sharedContactInfo ?? buildSharedContactInfoIndex(contacts);
   const subjectEmail = normalizeEmail(subject.email);
   const subjectPhones = new Set([subject.phone, ...(subject.alternatePhones ?? []).map(p => p.phone)]
     .map(normalizePhone).filter(phone => phone.length >= 7));
@@ -90,21 +152,28 @@ export function buildRelatedOwnerCandidates(subject, contacts, masterListId, opt
     const candidatePhones = [candidate.phone, ...(candidate.alternatePhones ?? []).map(p => p.phone)]
       .map(normalizePhone).filter(phone => phone.length >= 7);
     const emailMatch = !!subjectEmail && subjectEmail === candidateEmail;
-    const phoneMatch = candidatePhones.some(phone => subjectPhones.has(phone));
+    const matchedPhone = candidatePhones.find(phone => subjectPhones.has(phone)) || '';
+    const phoneMatch = !!matchedPhone;
     const candidateName = usableOwnerIdentity(candidate);
     const nameMatch = !!subjectName && !!candidateName && subjectName === candidateName;
     if (!emailMatch && !phoneMatch && !nameMatch) return;
 
+    const emailShared = emailMatch && isSharedEmail(sharedInfo, candidateEmail);
+    const phoneShared = phoneMatch && isSharedPhone(sharedInfo, matchedPhone);
     const signals = [];
-    if (emailMatch) signals.push({ type: 'email', label: SIGNAL_META.email.label });
-    if (phoneMatch) signals.push({ type: 'phone', label: SIGNAL_META.phone.label });
-    if (nameMatch) signals.push({ type: 'name', label: SIGNAL_META.name.label });
+    if (emailMatch) signals.push({ type: 'email', label: SIGNAL_META.email.label, exact: !emailShared, shared: emailShared });
+    if (phoneMatch) signals.push({ type: 'phone', label: SIGNAL_META.phone.label, exact: !phoneShared, shared: phoneShared });
+    if (nameMatch) signals.push({ type: 'name', label: SIGNAL_META.name.label, exact: false, shared: false });
+    // Drop candidates whose only evidence is shared/junk contact info.
+    if (!signals.some(signal => !signal.shared)) return;
+
     ranked.push({
       contact: candidate,
       pairKey: relatedOwnerPairKey(subject.id, candidate.id),
-      score: signals.reduce((sum, signal) => sum + (SIGNAL_META[signal.type]?.weight ?? 0), 0),
+      score: signals.reduce((sum, signal) => sum + (signal.shared ? 0 : (SIGNAL_META[signal.type]?.weight ?? 0)), 0),
       confidence: candidateConfidence(signals),
       signals,
+      sharedSignal: signals.some(signal => signal.shared),
       reason: signals.map(signal => signal.label).join(' · '),
     });
   });
