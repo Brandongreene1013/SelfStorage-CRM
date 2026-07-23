@@ -1,4 +1,4 @@
-// Storage Hero — AI Analyst (Vercel serverless function)
+// Storage Hunters — AI Analyst (Vercel serverless function)
 // Claude Opus 4.8 acts as Brandon's personal self-storage underwriting analyst.
 // - Deterministic underwriting via the `underwrite` tool (math is never guessed)
 // - Live TractIQ market data via the Anthropic MCP connector (lease comps,
@@ -88,7 +88,7 @@ async function getTractiqAccessToken() {
   return cachedAccess.token;
 }
 
-const SYSTEM_PROMPT = (tractiqOn) => `You are the AI Analyst inside Storage Hero, the CRM of Brandon Greene, a self-storage investment sales broker at Ripco Real Estate Corp. You are a senior self-storage underwriting analyst on his team. You know his team's financial model like the back of your hand and you think like a sharp, experienced storage broker.
+const SYSTEM_PROMPT = (tractiqOn) => `You are the AI Analyst inside Storage Hunters, the CRM of Brandon Greene, a self-storage investment sales broker at Ripco Real Estate Corp. You are a senior self-storage underwriting analyst on his team. You know his team's financial model like the back of your hand and you think like a sharp, experienced storage broker.
 
 # The Team's Financial Model (memorize this)
 

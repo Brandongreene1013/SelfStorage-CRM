@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// One-time TractIQ OAuth helper for Storage Hero.
+// One-time TractIQ OAuth helper for Storage Hunters.
 // Runs the full OAuth 2.0 + PKCE flow against app.tractiq.com, then prints the
 // credentials you paste into Vercel env vars. The serverless function uses the
 // refresh token to mint fresh access tokens automatically (no re-auth needed).
@@ -28,7 +28,7 @@ async function main() {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      client_name: 'Storage Hero Analyst',
+      client_name: 'Storage Hunters Analyst',
       redirect_uris: [REDIRECT],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],

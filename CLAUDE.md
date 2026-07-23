@@ -1,4 +1,4 @@
-# Storage Hero CRM — Project Context
+# Storage Hunters CRM — Project Context
 
 Custom CRM + deal-analysis tool for **Brandon Greene**, a self-storage investment sales broker at **Ripco Real Estate Corp**. Used daily as his operating system: sourcing facility owners → cold calling → building relationships → exclusive listings → brokering the sale.
 

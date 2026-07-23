@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Storage Hero — Underwriting Engine
+// Storage Hunters — Underwriting Engine
 // Encodes Brandon's team's self-storage financial model (Ripco).
 // Deterministic, accurate, instant. The AI Analyst calls this — it never does
 // the arithmetic itself.

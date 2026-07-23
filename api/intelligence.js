@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_KEY;
   if (!apiKey) return res.status(500).json({ error: 'API key not configured' });
 
-  const systemPrompt = `You are an AI assistant built into Storage Hero, a self-storage investment brokerage CRM used by a commercial real estate broker at Ripco Real Estate Corp.
+  const systemPrompt = `You are an AI assistant built into Storage Hunters, a self-storage investment brokerage CRM used by a commercial real estate broker at Ripco Real Estate Corp.
 
 Your job is to help the broker with deal intelligence tasks:
 - Identifying property ownership (owner name, LLC/entity)

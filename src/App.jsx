@@ -318,7 +318,7 @@ export default function App() {
       {/* Header */}
       <header className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          {/* Storage Hero logo — Superman-inspired shield */}
+          {/* Storage Hunters logo — Superman-inspired shield */}
           <div className="w-10 h-10 flex-shrink-0" style={{ filter: 'drop-shadow(0 2px 6px rgba(245,158,11,0.5))' }}>
             <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
               {/* Shield shape */}
@@ -334,7 +334,7 @@ export default function App() {
             </svg>
           </div>
           <div>
-            <h1 className="text-base font-black text-white leading-tight tracking-tight">Storage Hero</h1>
+            <h1 className="text-base font-black text-white leading-tight tracking-tight">Storage Hunters</h1>
             <p className="text-xs text-slate-500 leading-tight">Investment Brokerage Pipeline</p>
           </div>
         </div>

@@ -28,7 +28,7 @@ The repo moved far beyond the old Sprint 7 handoff. Do not rely on stale summari
 ## Current Project Shape
 Storage Hunters CRM is Brandon Greene's custom self-storage brokerage operating system. It covers owner sourcing, imports, cold calling, Call Mode, follow-up tasks, pipeline management, mailer lists, ownership/property relationship tracking, calendar sync, backups, and AI underwriting.
 
-The live UI still says `Storage Hero` in several places. That rename gap is known and should be handled deliberately, not fixed piecemeal during unrelated work.
+The Storage Hero -> Storage Hunters rename shipped 2026-07-23 (UI header, page title, PWA manifest, AI prompts, code comments). The `storageHero.*` localStorage keys were deliberately kept — renaming them would wipe saved call-queue positions, call sessions, location anchors, and duplicate dismissals.
 
 ## Current Verification Snapshot — 2026-07-14
 Local:
@@ -147,9 +147,8 @@ Before risky imports, delete flows, migrations, or mass updates:
    velocity, weekly digest edition of the daily activity email.
 2. Code-split the large bundle (lazy-load Analyst + Calendar; main chunk is
    ~1.5 MB).
-3. Finish the Storage Hero -> Storage Hunters CRM rename intentionally.
-4. Polish Owners / Properties search/filtering and owner radar UX.
-5. Add `lead_source_notes` if source context is needed.
+3. Polish Owners / Properties search/filtering and owner radar UX.
+4. Add `lead_source_notes` if source context is needed.
 
 ## Opening Prompt Suggestion
 For a future coding session, say:
