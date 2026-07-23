@@ -44,11 +44,39 @@ function contactDisplayName(contact) {
   return contact?.ownerName || contact?.ownerEntity || contact?.facilityName || contact?.address || 'Unknown owner';
 }
 
+// Stable key for a subject↔candidate pair, order-independent. Matches the
+// duplicate-group key format in duplicateReview.js (sorted ids joined by '|')
+// so a "not the same owner" dismissal here and a duplicate-group dismissal in
+// the Duplicate Review center share one row in `duplicate_dismissals`.
+export function relatedOwnerPairKey(idA, idB) {
+  return [String(idA ?? ''), String(idB ?? '')].sort().join('|');
+}
+
+// Each match signal, strongest first. Exact contact-info matches (email/phone)
+// are near-certain; a name-only match is a softer hint because owner names
+// collide ("John Smith", family LLCs). Confidence is driven off this: any
+// exact contact-info signal => High, name-only => Medium.
+const SIGNAL_META = {
+  email: { label: 'Same email', weight: 100, exact: true },
+  phone: { label: 'Same phone', weight: 90, exact: true },
+  name: { label: 'Same owner name', weight: 60, exact: false },
+};
+
+function candidateConfidence(signals) {
+  return signals.some(signal => SIGNAL_META[signal.type]?.exact) ? 'High' : 'Medium';
+}
+
 // Call Mode only: candidates must be existing Master Database contacts. Exact
 // email/phone/name signals avoid the location-only false positives from the
 // prior fuzzy matcher.
-export function buildRelatedOwnerCandidates(subject, contacts, masterListId) {
+//
+// `options.dismissedKeys` is a Set of relatedOwnerPairKey() strings the broker
+// has marked "not the same owner"; those candidates are filtered out so a wrong
+// suggestion stays gone. Results are ranked so exact contact-info matches (High)
+// always sit above name-only hints (Medium), never crowded out.
+export function buildRelatedOwnerCandidates(subject, contacts, masterListId, options = {}) {
   if (!subject || !masterListId || subject.listId === masterListId) return [];
+  const dismissedKeys = options.dismissedKeys ?? new Set();
   const subjectEmail = normalizeEmail(subject.email);
   const subjectPhones = new Set([subject.phone, ...(subject.alternatePhones ?? []).map(p => p.phone)]
     .map(normalizePhone).filter(phone => phone.length >= 7));
@@ -57,6 +85,7 @@ export function buildRelatedOwnerCandidates(subject, contacts, masterListId) {
 
   contacts.forEach(candidate => {
     if (!candidate || candidate.id === subject.id || candidate.listId !== masterListId) return;
+    if (dismissedKeys.has(relatedOwnerPairKey(subject.id, candidate.id))) return;
     const candidateEmail = normalizeEmail(candidate.email);
     const candidatePhones = [candidate.phone, ...(candidate.alternatePhones ?? []).map(p => p.phone)]
       .map(normalizePhone).filter(phone => phone.length >= 7);
@@ -66,14 +95,17 @@ export function buildRelatedOwnerCandidates(subject, contacts, masterListId) {
     const nameMatch = !!subjectName && !!candidateName && subjectName === candidateName;
     if (!emailMatch && !phoneMatch && !nameMatch) return;
 
-    const reasons = [];
-    if (emailMatch) reasons.push('Same email');
-    if (phoneMatch) reasons.push('Same phone');
-    if (nameMatch) reasons.push('Same owner name');
+    const signals = [];
+    if (emailMatch) signals.push({ type: 'email', label: SIGNAL_META.email.label });
+    if (phoneMatch) signals.push({ type: 'phone', label: SIGNAL_META.phone.label });
+    if (nameMatch) signals.push({ type: 'name', label: SIGNAL_META.name.label });
     ranked.push({
       contact: candidate,
-      score: (emailMatch ? 100 : 0) + (phoneMatch ? 90 : 0) + (nameMatch ? 60 : 0),
-      reason: reasons.join(' · '),
+      pairKey: relatedOwnerPairKey(subject.id, candidate.id),
+      score: signals.reduce((sum, signal) => sum + (SIGNAL_META[signal.type]?.weight ?? 0), 0),
+      confidence: candidateConfidence(signals),
+      signals,
+      reason: signals.map(signal => signal.label).join(' · '),
     });
   });
 

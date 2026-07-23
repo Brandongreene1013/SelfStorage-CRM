@@ -714,21 +714,20 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
   const propertiesByGroup = ownershipApi?.propertiesByGroup ?? new Map();
   // Search matches the group itself plus its linked properties and contacts,
   // so "Athens" or a contact's name finds the right ownership group.
-  const filteredGroups = useMemo(() => {
-    const query = groupSearch.trim().toLowerCase();
-    return groups.filter(group => {
-      if (relationshipFilter !== 'all' && group.relationshipType !== relationshipFilter) return false;
-      if (!query) return true;
-      const properties = propertiesByGroup.get(group.id) ?? [];
-      const linked = contacts.filter(c => c.ownershipGroupId === group.id);
-      const haystack = [
-        group.displayName, group.ownerEntity, group.notes,
-        ...properties.flatMap(p => [p.facilityName, p.address, p.city, p.state, p.market]),
-        ...linked.flatMap(c => [c.ownerName, c.facilityName, c.phone, c.email]),
-      ].filter(Boolean).join(' ').toLowerCase();
-      return query.split(/\s+/).every(term => haystack.includes(term));
-    });
-  }, [groups, propertiesByGroup, contacts, groupSearch, relationshipFilter]);
+  // (React Compiler memoizes this — no manual useMemo needed.)
+  const query = groupSearch.trim().toLowerCase();
+  const filteredGroups = groups.filter(group => {
+    if (relationshipFilter !== 'all' && group.relationshipType !== relationshipFilter) return false;
+    if (!query) return true;
+    const properties = propertiesByGroup.get(group.id) ?? [];
+    const linked = contacts.filter(c => c.ownershipGroupId === group.id);
+    const haystack = [
+      group.displayName, group.ownerEntity, group.notes,
+      ...properties.flatMap(p => [p.facilityName, p.address, p.city, p.state, p.market]),
+      ...linked.flatMap(c => [c.ownerName, c.facilityName, c.phone, c.email]),
+    ].filter(Boolean).join(' ').toLowerCase();
+    return query.split(/\s+/).every(term => haystack.includes(term));
+  });
   const selectedGroup = groups.find(g => g.id === selectedId) ?? filteredGroups[0] ?? null;
   const selectedProperties = selectedGroup ? (propertiesByGroup.get(selectedGroup.id) ?? []) : [];
   const linkedContacts = selectedGroup ? contacts.filter(c => c.ownershipGroupId === selectedGroup.id) : [];
@@ -1021,205 +1020,6 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
     </div>
   );
 }
-
-// ── Multi-property owners ─────────────────────────────────────────────────────
-// Additional properties an owner holds beyond the card's primary
-// facility/address. Stored as jsonb on the contact (owned_properties).
-/* Legacy contact-owned property editor and destructive merge radar. Kept only
-   in repository history; canonical ownership groups/properties replace it. */
-/*
-function OwnedPropertiesEditor({ contact, onUpdate }) {
-  const [draft, setDraft] = useState({ facilityName: '', address: '' });
-  const entries = contact.ownedProperties ?? [];
-  const inputCls = 'bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500';
-
-  function commit(rows) { onUpdate?.(contact.id, { ownedProperties: rows }); }
-  function addDraft() {
-    if (!draft.facilityName.trim() && !draft.address.trim()) return;
-    commit([...entries, {
-      facilityName: draft.facilityName.trim(),
-      address: draft.address.trim(),
-      state: '',
-      addedAt: new Date().toISOString(),
-    }]);
-    setDraft({ facilityName: '', address: '' });
-  }
-
-  return (
-    <div>
-      <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">
-        🏢 Additional Properties{entries.length > 0 ? ` (${entries.length})` : ''}
-      </label>
-      {entries.length > 0 && (
-        <div className="space-y-1 mb-2">
-          {entries.map((p, i) => (
-            <div key={`${p.addedAt ?? ''}-${i}`} className="flex items-center gap-2 bg-slate-900/70 border border-slate-700/70 rounded-lg px-3 py-2">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-slate-200 truncate">{p.facilityName || 'Unnamed facility'}</p>
-                {p.address && (
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address)}`}
-                    target="_blank" rel="noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    className="text-xs text-slate-500 hover:text-amber-400 truncate block"
-                  >
-                    {p.address}
-                  </a>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => commit(entries.filter((_, j) => j !== i))}
-                className="text-slate-600 hover:text-red-400 text-xs flex-shrink-0"
-                title="Remove property"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <input
-          value={draft.facilityName}
-          onChange={e => setDraft(d => ({ ...d, facilityName: e.target.value }))}
-          placeholder="Facility name"
-          className={`${inputCls} flex-1 min-w-0`}
-        />
-        <input
-          value={draft.address}
-          onChange={e => setDraft(d => ({ ...d, address: e.target.value }))}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDraft(); } }}
-          placeholder="Address"
-          className={`${inputCls} flex-1 min-w-0`}
-        />
-        <button
-          type="button"
-          onClick={addDraft}
-          disabled={!draft.facilityName.trim() && !draft.address.trim()}
-          className="text-xs font-bold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-lg px-3 py-2 transition-all disabled:opacity-40 flex-shrink-0"
-        >
-          + Add Property
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Low-key related-owner hint: same/similar ownership, facility, or market
-// signals on a different property. One click can fold the weaker row into the
-// stronger card as an additional property.
-function SameOwnerRadar({ contact, allContacts = [], lists = [], onMerge, onMerged, candidateIndex }) {
-  const [confirmId, setConfirmId] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const matches = useMemo(
-    () => findSameOwnerMatches(contact, allContacts, { candidateIndex, limit: 4 }),
-    [contact, allContacts, candidateIndex]
-  );
-  if (matches.length === 0) return null;
-
-  const listName = (c) => lists.find(l => l.id === c.listId)?.name ?? '';
-  const portfolioMatches = matches.filter(m => m.kind === 'portfolio').length;
-
-  function matchLabel(match) {
-    if (match.kind === 'duplicate') return 'Duplicate cleanup';
-    if (match.kind === 'portfolio') return 'Same owner';
-    return 'Related hint';
-  }
-
-  function confidenceClass(confidence) {
-    if (confidence === 'High') return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300';
-    if (confidence === 'Medium') return 'bg-amber-500/10 border-amber-500/30 text-amber-300';
-    return 'bg-slate-800 border-slate-700 text-slate-500';
-  }
-
-  async function fold(match) {
-    if (!onMerge || match.kind === 'duplicate') return;
-    // Keep whichever record has more work on it; the other becomes a property.
-    const currentIsMaster = keepScore(contact) >= keepScore(match.contact);
-    const masterId = currentIsMaster ? contact.id : match.contact.id;
-    const weakerId = currentIsMaster ? match.contact.id : contact.id;
-    setBusy(true); setError(null);
-    const res = await onMerge(masterId, weakerId);
-    setBusy(false);
-    setConfirmId(null);
-    if (res?.error) { setError(res.error); return; }
-    onMerged?.(masterId);
-  }
-
-  return (
-    <div className="bg-slate-900/50 border border-slate-800 rounded-lg px-3 py-2 space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Possible related records</p>
-          <p className="text-[11px] text-slate-600">
-            {portfolioMatches > 0 ? `${portfolioMatches} likely same-owner portfolio link${portfolioMatches === 1 ? '' : 's'}` : 'Duplicates and ownership hints to review'}
-          </p>
-        </div>
-        <span className="text-[11px] text-slate-600">{matches.length} match{matches.length === 1 ? '' : 'es'}</span>
-      </div>
-      {matches.map(m => {
-        const c = m.contact;
-        const name = c.ownerName || c.facilityName || 'Unknown';
-        const currentIsMaster = keepScore(contact) >= keepScore(c);
-        const canMerge = Boolean(onMerge) && m.kind === 'portfolio';
-        return (
-          <div key={c.id} className="flex flex-wrap items-center gap-2 border-t border-slate-800/70 pt-2 first:border-t-0 first:pt-0">
-            <div className="flex-1 min-w-[180px]">
-              <p className="text-xs text-slate-200 font-semibold truncate">
-                {name}
-                <span className="text-slate-500 font-normal"> · {c.facilityName || c.address || 'no property'}</span>
-              </p>
-              <p className="text-[11px] text-slate-600 truncate">
-                {m.reasons.join(' · ')}{listName(c) ? ` · ${listName(c)}` : ''}
-              </p>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                <span className={`text-[10px] font-bold border rounded-full px-1.5 py-0.5 ${confidenceClass(m.confidence)}`}>
-                  {m.confidence}
-                </span>
-                <span className="text-[10px] font-bold border border-slate-700 bg-slate-800/70 text-slate-500 rounded-full px-1.5 py-0.5">
-                  {matchLabel(m)}
-                </span>
-              </div>
-            </div>
-            {m.kind === 'duplicate' ? (
-              <span className="text-[11px] text-slate-500 border border-slate-800 rounded-md px-2 py-1">
-                Same property - use Duplicate Review
-              </span>
-            ) : !canMerge ? (
-              <span className="text-[11px] text-slate-600 border border-slate-800 rounded-md px-2 py-1">Review only</span>
-            ) : confirmId === c.id ? (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] text-slate-500">
-                  {currentIsMaster ? 'Pull their property into this card?' : `Fold this row into ${name}'s card?`}
-                </span>
-                <button
-                  onClick={() => fold(m)}
-                  disabled={busy}
-                  className="text-[11px] font-bold bg-slate-700 hover:bg-slate-600 text-slate-100 rounded-md px-2 py-1 disabled:opacity-50"
-                >
-                  {busy ? 'Merging…' : 'Yes, merge'}
-                </button>
-                <button onClick={() => setConfirmId(null)} className="text-[11px] text-slate-600 hover:text-slate-300 px-1.5 py-1">Cancel</button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setConfirmId(c.id)}
-                className="text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-slate-200 rounded-md px-2 py-1 transition-all"
-              >
-                {currentIsMaster ? 'Link property' : 'Add to record'}
-              </button>
-            )}
-          </div>
-        );
-      })}
-      {error && <p className="text-xs text-red-400">{error}</p>}
-    </div>
-  );
-}
-
-*/
 
 function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onLogAction, onDeleteAction, onDeleteCallHistory, onLinkInheritor, onCreateInheritor, taskApi, ownershipApi, mailerApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
@@ -3158,6 +2958,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               taskApi={taskApi}
               ownershipApi={ownershipApi}
               mailerApi={mailerApi}
+              dismissedDuplicateKeys={dismissedDuplicateKeys}
+              onDismissRelatedOwner={dismissDuplicateGroup}
               queueLabel={activeQueueDef?.label ?? 'Call Mode'}
               queueReasonText={activeQueueDef?.reason ?? ''}
               locationLabel={callQueueSource === 'activeList' ? locationAnchor?.label : null}
@@ -3704,7 +3506,7 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
   const queueCurrent = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const latestContact = allContacts.find(c => c.id === queueCurrent?.id);
   // Queue builders attach task/reason metadata that the base contact does not
@@ -3724,13 +3526,24 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const [deletingCallIndex, setDeletingCallIndex] = useState(null);
   const [movedMasterId, setMovedMasterId] = useState(null);
   const [propertyAssociation, setPropertyAssociation] = useState({ contactId: null, candidateId: null, status: '', message: '' });
+  const [dismissingCandidateId, setDismissingCandidateId] = useState(null);
   const contactNote = current?.notes ?? '';
   const noteText = noteDraft.contactId === current?.id ? noteDraft.text : contactNote;
   const hasNoteChanges = noteText !== contactNote;
   const noteSaved = noteSavedFor === current?.id;
   const activePostOutcome = postOutcome;
   const masterStatus = current?.listId === masterListId ? 'in' : movedMasterId === current?.id ? 'moved' : 'available';
-  const relatedOwnerCandidates = buildRelatedOwnerCandidates(current, contacts, masterListId);
+  const relatedOwnerCandidates = buildRelatedOwnerCandidates(current, contacts, masterListId, { dismissedKeys: dismissedDuplicateKeys });
+
+  // "Not the same owner" — reuse the shared duplicate_dismissals store so the
+  // wrong suggestion stays gone (and a matching Duplicate Review dismissal is
+  // honored here too, since both use the same pair key).
+  async function dismissRelatedOwner(candidate, pairKey) {
+    if (!current || !onDismissRelatedOwner) return;
+    setDismissingCandidateId(candidate.id);
+    await onDismissRelatedOwner(pairKey, [current.id, candidate.id], 'Not the same owner (Call Mode)');
+    setDismissingCandidateId(null);
+  }
 
   async function saveNotes() {
     if (!current) return;
@@ -4308,41 +4121,69 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             {relatedOwnerCandidates.length > 0 && (
               <div className="bg-blue-500/5 border border-blue-500/25 rounded-xl p-4 space-y-3">
                 <div>
-                  <p className="text-xs font-black text-blue-300 uppercase tracking-wide">Possible Related Record</p>
-                  <p className="text-xs text-slate-500 mt-1">Matches shown here are owners from the Master Database.</p>
+                  <p className="text-xs font-black text-blue-300 uppercase tracking-wide">
+                    {relatedOwnerCandidates.length === 1 ? 'Possible Related Record' : `${relatedOwnerCandidates.length} Possible Related Records`}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">Owners already in your Master Database that share contact info with this call record.</p>
                 </div>
-                {relatedOwnerCandidates.map(({ contact: candidate, reason }) => {
+                {relatedOwnerCandidates.map(({ contact: candidate, signals, confidence, pairKey }) => {
                   const properties = candidate.ownershipGroupId
                     ? (ownershipApi?.propertiesByGroup?.get(candidate.ownershipGroupId) ?? [])
                     : [];
                   const state = propertyAssociation.contactId === current.id && propertyAssociation.candidateId === candidate.id
                     ? propertyAssociation
                     : null;
+                  const isDismissing = dismissingCandidateId === candidate.id;
+                  const facilityLabel = current.facilityName?.trim() || current.address?.trim() || 'this facility';
+                  const ownerLabel = candidate.ownerName || candidate.ownerEntity || 'this owner';
                   return (
                     <div key={candidate.id} className="bg-slate-950/60 border border-slate-700/80 rounded-lg px-3 py-3">
-                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold text-white break-words">{candidate.ownerName || candidate.ownerEntity || 'Unknown owner'}</p>
-                          <p className="text-xs text-blue-300 mt-1">{reason}</p>
-                          <div className="mt-2 space-y-1">
-                            {properties.length > 0 ? properties.map(property => (
-                              <div key={property.id} className="text-xs text-slate-400 break-words">
-                                <p className="font-semibold text-slate-300">{property.facilityName || 'Unnamed facility'}</p>
-                                <p>{property.address || 'Address not entered'}</p>
-                              </div>
-                            )) : (
-                              <div className="text-xs text-slate-400 break-words">
-                                <p className="font-semibold text-slate-300">{candidate.facilityName || 'Unnamed facility'}</p>
-                                <p>{candidate.address || 'Address not entered'}</p>
-                              </div>
-                            )}
-                          </div>
+                      <div className="min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-bold text-white break-words min-w-0">{candidate.ownerName || candidate.ownerEntity || 'Unknown owner'}</p>
+                          <span className={`flex-shrink-0 text-[10px] font-black uppercase tracking-wide border rounded-full px-2 py-0.5 ${confidence === 'High' ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-amber-500/10 border-amber-500/40 text-amber-300'}`}>
+                            {confidence === 'High' ? 'Strong match' : 'Possible match'}
+                          </span>
                         </div>
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {signals.map(signal => (
+                            <span key={signal.type} className="text-[10px] font-bold border border-blue-500/30 bg-blue-500/10 text-blue-200 rounded-full px-1.5 py-0.5">
+                              {signal.label}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="mt-2 space-y-1">
+                          {properties.length > 0 ? properties.map(property => (
+                            <div key={property.id} className="text-xs text-slate-400 break-words">
+                              <p className="font-semibold text-slate-300">{property.facilityName || 'Unnamed facility'}</p>
+                              <p>{property.address || 'Address not entered'}</p>
+                            </div>
+                          )) : (
+                            <div className="text-xs text-slate-400 break-words">
+                              <p className="font-semibold text-slate-300">{candidate.facilityName || 'Unnamed facility'}</p>
+                              <p>{candidate.address || 'Address not entered'}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-2.5 leading-snug">
+                        <span className="font-semibold text-slate-400">Add facility to owner</span> links <span className="text-slate-300">{facilityLabel}</span> as a property under <span className="text-slate-300">{ownerLabel}</span>. This call record stays exactly as it is — nothing is merged or deleted.
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         <button type="button" onClick={() => addCurrentFacilityToOwner(candidate.id)}
-                          disabled={!current.address?.trim() || state?.status === 'saving'}
-                          className="w-full sm:w-auto flex-shrink-0 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-200 font-bold rounded-lg px-3 py-2 text-xs disabled:opacity-40">
+                          disabled={!current.address?.trim() || state?.status === 'saving' || isDismissing}
+                          title={!current.address?.trim() ? 'Add a facility address to this record first' : undefined}
+                          className="flex-1 sm:flex-none bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-200 font-bold rounded-lg px-3 py-2 text-xs disabled:opacity-40">
                           {state?.status === 'saving' ? 'Adding…' : 'Add facility to owner'}
                         </button>
+                        {onDismissRelatedOwner && (
+                          <button type="button" onClick={() => dismissRelatedOwner(candidate, pairKey)}
+                            disabled={isDismissing || state?.status === 'saving'}
+                            title="Stop suggesting this owner for this record"
+                            className="flex-shrink-0 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-slate-200 font-bold rounded-lg px-3 py-2 text-xs disabled:opacity-40">
+                            {isDismissing ? 'Dismissing…' : 'Not the same owner'}
+                          </button>
+                        )}
                       </div>
                       {state?.message && (
                         <p className={`text-xs mt-2 font-semibold ${state.status === 'success' ? 'text-green-400' : state.status === 'exists' ? 'text-amber-400' : state.status === 'saving' ? 'text-blue-300' : 'text-red-400'}`}>
