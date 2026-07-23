@@ -164,10 +164,38 @@ mailer_lists/members, daily_* tables, duplicate_dismissals, lists). The
 clients.contact_id FK was round-trip tested with a guarded link/unlink.
 No pending migrations.
 
+## Owner radar UX polish (shipped 2026-07-23)
+- The live related-owner surface is the Call Mode "Possible Related Record"
+  panel (`buildRelatedOwnerCandidates` in `src/lib/ownerRadar.js`, rendered in
+  `CallQueue` in `Database.jsx`). Its action links the current facility as a
+  property under a Master owner — it does NOT merge or delete.
+- Candidates now carry structured `signals` + `confidence` (High = exact
+  email/phone match, Medium = name-only) + a stable `pairKey`. Panel shows a
+  confidence badge, per-signal chips, an explicit "nothing is merged or
+  deleted" outcome line, and a "Not the same owner" dismiss button.
+- Dismissals reuse the shared `duplicate_dismissals` store (Supabase, with
+  localStorage fallback) via the same pair-key format as the Duplicate Review
+  center, so a dismissal in either place is honored in both. `pairKey` MUST be
+  passed through from the candidate object — it lives on the result, not the
+  contact (a destructuring miss there silently breaks the Supabase write).
+- Removed the dead, commented-out legacy `OwnedPropertiesEditor` +
+  `SameOwnerRadar` block (referenced undefined `findSameOwnerMatches`/
+  `keepScore`; never rendered). `findSameOwnerMatches` does not exist anywhere.
+- The real merge/keep-signal surface is the **Duplicate Review center**
+  (`DuplicateReview.jsx` / `duplicateReview.js`), which already shows keep
+  signals and a merge plan. It was not changed this sprint.
+- Tests: confidence/signals/pairKey/dismissal-filtering/ranking in
+  `tests/ownerRadar.test.mjs`.
+
 ## Recommended Next Work
-1. Owner radar UX polish (candidate ranking/dismissal ergonomics).
-2. Owner-identification velocity view once enough milestone data accrues.
-3. Consider splitting the Calendar chunk further (msal-browser is ~230 kB).
+1. Owner-identification velocity view once enough milestone data accrues.
+2. Consider splitting the Calendar chunk further (msal-browser is ~230 kB).
+3. Pre-existing (not radar): a "duplicate React key" warning fires somewhere in
+   the Database/Call Mode tree — worth tracking down; unrelated to owner radar.
+4. Data-quality note: some call records share one email across many Master
+   owners (placeholder/scraped emails), so "Same email" can produce several
+   Strong matches. The dismiss button is the intended escape hatch; a future
+   refinement could down-weight an email shared across 3+ distinct owners.
 
 ## Opening Prompt Suggestion
 For a future coding session, say:
