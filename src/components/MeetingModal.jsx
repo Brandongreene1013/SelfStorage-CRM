@@ -13,6 +13,8 @@ const EMPTY = {
 
 export default function MeetingModal({ meeting, defaultDate, clients, onSave, onClose }) {
   const [form, setForm] = useState({ ...EMPTY, date: defaultDate ?? '' });
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
   const isEdit = Boolean(meeting);
 
   useEffect(() => {
@@ -34,10 +36,16 @@ export default function MeetingModal({ meeting, defaultDate, clients, onSave, on
     setForm(prev => ({ ...prev, [name]: value }));
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!form.title.trim() || !form.date) return;
-    onSave(form);
+    setSaving(true);
+    setError(null);
+    const result = await onSave(form);
+    setSaving(false);
+    // On success the parent closes this modal; on failure it stays open so the
+    // entered meeting isn't lost.
+    if (result?.error) setError(result.error);
   }
 
   const inputCls = 'w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 text-sm focus:outline-none focus:border-amber-500 placeholder:text-slate-500';
@@ -113,6 +121,12 @@ export default function MeetingModal({ meeting, defaultDate, clients, onSave, on
             />
           </div>
 
+          {error && (
+            <p role="alert" className="text-xs text-red-300 bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2">
+              Couldn't save this meeting — {error}. Your entry is still here; try again.
+            </p>
+          )}
+
           <div className="flex gap-3 pt-1">
             <button
               type="button"
@@ -123,9 +137,10 @@ export default function MeetingModal({ meeting, defaultDate, clients, onSave, on
             </button>
             <button
               type="submit"
-              className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition-all"
+              disabled={saving}
+              className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition-all disabled:opacity-50"
             >
-              {isEdit ? 'Save Changes' : 'Schedule Meeting'}
+              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Schedule Meeting'}
             </button>
           </div>
         </form>

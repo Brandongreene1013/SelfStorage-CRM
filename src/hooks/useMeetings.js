@@ -26,7 +26,7 @@ export function useMeetings() {
       date: data.date,
       start_time: data.startTime,
       end_time: data.endTime,
-      client_id: data.clientId ?? null,
+      client_id: data.clientId || null, // '' from the "None" option must become null, not an invalid uuid
       location: normalizeMeetingText(data.location),
       notes: normalizeDisplayText(data.notes),
     };

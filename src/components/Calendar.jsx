@@ -46,14 +46,16 @@ export default function Calendar({ meetings, calendarEvents = [], clients, onAdd
     .sort((a, b) => (a.date + (a.startTime ?? '')).localeCompare(b.date + (b.startTime ?? '')))
     .slice(0, 6);
 
-  function handleSave(data) {
-    if (editingMeeting) {
-      onUpdate(editingMeeting.id, data);
-    } else {
-      onAdd(data);
-    }
+  async function handleSave(data) {
+    // Only close on a successful write, so a failed save doesn't discard the
+    // meeting the broker just entered. The modal shows the error and stays open.
+    const result = editingMeeting
+      ? await onUpdate(editingMeeting.id, data)
+      : await onAdd(data);
+    if (result?.error) return result;
     setShowModal(false);
     setEditingMeeting(null);
+    return result;
   }
 
   const cells = [];
