@@ -187,15 +187,34 @@ No pending migrations.
 - Tests: confidence/signals/pairKey/dismissal-filtering/ranking in
   `tests/ownerRadar.test.mjs`.
 
+## Matching resilience to junk contact info (shipped 2026-07-23)
+- `buildSharedContactInfoIndex(contacts)` in `src/lib/ownerRadar.js` finds
+  emails/phones shared across `SHARED_CONTACT_MIN_OWNERS` (3) distinct owners
+  (by ownership group or normalized name, not raw rows). `isSharedEmail` /
+  `isSharedPhone` helpers. It is imported by `duplicateReview.js`, so that file
+  now imports from ownerRadar with an explicit `.js` extension (Node ESM needs
+  it for the test).
+- `buildRelatedOwnerCandidates`: a shared email/phone signal is non-exact (can't
+  drive High), a candidate whose ONLY evidence is shared is dropped, and results
+  carry a `sharedSignal` flag. Genuine one-to-one matches still read High.
+- `findDuplicateGroups`: accepts/computes `sharedContactInfo`; `candidatePairs`
+  skips email/phone buckets for shared values and `pairReasons` ignores shared
+  email/phone, so junk info can't drive a duplicate cluster.
+- `Database.jsx` memoizes the index once and threads it into both matchers; the
+  Call Mode panel styles shared chips amber ("· shared") with a verify note.
+- Tests: `tests/ownerRadar.test.mjs` (shared demote/drop) and the new
+  `tests/duplicateReview.test.mjs`, both wired into `npm test`.
+- Verified live: the Cleburne record that showed 4 "Strong match" owners on one
+  shared email now shows 1 genuine Strong match (Carmon Eason, real phone+name)
+  with the shared email flagged.
+
 ## Recommended Next Work
 1. Owner-identification velocity view once enough milestone data accrues.
 2. Consider splitting the Calendar chunk further (msal-browser is ~230 kB).
-3. Pre-existing (not radar): a "duplicate React key" warning fires somewhere in
-   the Database/Call Mode tree — worth tracking down; unrelated to owner radar.
-4. Data-quality note: some call records share one email across many Master
-   owners (placeholder/scraped emails), so "Same email" can produce several
-   Strong matches. The dismiss button is the intended escape hatch; a future
-   refinement could down-weight an email shared across 3+ distinct owners.
+3. Pre-existing (not radar/matching): a "duplicate React key" warning fires
+   somewhere in the Database/Call Mode tree — worth tracking down.
+4. Possible follow-up: expose the shared-info threshold or a "flagged bad email"
+   cleanup view so Brandon can fix placeholder/scraped emails at the source.
 
 ## Opening Prompt Suggestion
 For a future coding session, say:
