@@ -218,10 +218,20 @@ No pending migrations.
   current code across every view with real data — it was stale console-buffer
   noise from an old session. No fix needed; removed from the backlog.
 
+## Silent write-failure audit (in progress)
+- FIXED 2026-07-23: Call Mode `saveNotes()` reported failed saves as "Saved" and
+  advanced past them, losing call notes. Now returns its result, shows a red
+  "Save failed" state, and blocks next/prev + outcome navigation on failure.
+- `updateContact` returns `{ ok: true }` | `{ error: message }`; the pattern to
+  audit elsewhere is call sites that `await` a mutation and ignore that result.
+- FIXED 2026-07-23: `ContactDetailModal` note save was fire-and-forget on blur
+  and "Save & Close". Now awaits the result, shows the same red error state, and
+  Save & Close only closes on success (research-note append surfaces errors too).
+- STILL TO AUDIT: task saves, meeting saves, and other useCRM/useMeetings
+  mutations for the same ignore-the-result pattern.
+
 ## Robustness backlog (hardening toward a foolproof CRM)
-1. Audit silent write failures: confirm contact/task/note/meeting saves surface
-   errors to the user rather than failing quietly (spot-check useDatabase.js,
-   useCRM.js, useMeetings.js return values and their call sites).
+1. Finish the silent write-failure audit (see above).
 2. Owner-identification velocity view once enough milestone data accrues.
 3. Split the Calendar chunk further (msal-browser is ~230 kB).
 4. "Flagged bad email" cleanup view so Brandon can fix placeholder/scraped

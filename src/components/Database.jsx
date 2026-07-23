@@ -1023,6 +1023,7 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
 
 function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onLogAction, onDeleteAction, onDeleteCallHistory, onLinkInheritor, onCreateInheritor, taskApi, ownershipApi, mailerApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
+  const [noteError, setNoteError]   = useState(null);
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
   const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
   // Conversation and appointment can still offer a follow-up. Call Back creates
@@ -1042,14 +1043,19 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
   const source = contactSource(contact, lists);
   const rel = relationshipMeta(contact.relationshipType);
 
-  function saveNotes() { onNotesChange(contact.id, notes); }
+  async function saveNotes() {
+    const result = await onNotesChange(contact.id, notes);
+    setNoteError(result?.error ?? null);
+    return result ?? { ok: true };
+  }
 
   // Sprint 12 — research notes append through the modal's own notes state so
   // an unsaved draft in the textarea is never clobbered.
-  function addResearchNote(line) {
+  async function addResearchNote(line) {
     const next = [notes, line].filter(Boolean).join('\n');
     setNotes(next);
-    onNotesChange(contact.id, next);
+    const result = await onNotesChange(contact.id, next);
+    setNoteError(result?.error ?? null);
   }
 
   async function handleOutcome(status) {
@@ -1267,8 +1273,13 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
               onBlur={saveNotes}
               rows={4}
               placeholder="Log your call notes — interest level, next steps, what they said..."
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 resize-none"
+              className={`w-full bg-slate-800 border rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none resize-none ${noteError ? 'border-red-500/70 focus:border-red-500' : 'border-slate-700 focus:border-amber-500'}`}
             />
+            {noteError && (
+              <p role="alert" className="mt-1.5 text-xs text-red-300 bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2">
+                Couldn't save this note — {noteError}. Your text is still here; fix the issue and it will save on your next edit or Save &amp; Close.
+              </p>
+            )}
           </div>
 
           {/* ── Log Outcome ── */}
@@ -1383,7 +1394,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
             className="text-xs text-red-500 hover:text-red-400 transition-colors font-semibold">
             Delete Contact
           </button>
-          <button onClick={() => { saveNotes(); onClose(); }}
+          <button onClick={async () => { const result = await saveNotes(); if (!result?.error) onClose(); }}
             className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-5 py-2 rounded-xl text-sm transition-all">
             Save & Close
           </button>
