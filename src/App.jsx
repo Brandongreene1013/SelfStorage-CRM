@@ -15,6 +15,7 @@ import Dashboard from './components/Dashboard';
 const Calendar = lazy(() => import('./components/Calendar'));
 import Database from './components/Database';
 const Analyst = lazy(() => import('./components/Analyst'));
+import ErrorBoundary from './components/ErrorBoundary';
 import { PIPELINE_STAGES } from './data/constants';
 import { SearchToolbar, FilterPills, EmptyState, PageHeader, Button } from './components/ui';
 import { downloadCrmBackup } from './lib/crmBackupExport';
@@ -414,6 +415,9 @@ export default function App() {
 
       {/* Main */}
       <main className="flex-1 p-6 overflow-auto">
+        {/* Per-view safety net: key={view} remounts (and clears) the boundary
+            on tab switch, so a crash in one view never blocks the others. */}
+        <ErrorBoundary key={view} label={view}>
         {view === 'Dashboard' && (
           <Dashboard
             clients={clients}
@@ -540,6 +544,7 @@ export default function App() {
             />
           )}
         </Suspense>
+        </ErrorBoundary>
       </main>
 
       {/* Modals */}
