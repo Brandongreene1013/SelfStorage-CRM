@@ -233,11 +233,20 @@ No pending migrations.
   `meetingToDb` sent `''` (the "None" client option) to the uuid `client_id`
   column via `?? null`, so EVERY client-less meeting failed silently. Fixed to
   `|| null`. Both verified live.
-- AUDITED clean: `TaskModal` already awaits, checks `result.error`, and only
-  closes on success.
-- STILL TO AUDIT: `useCRM` client add/update/deal-value and any other mutation
-  call sites for the same ignore-the-result pattern. Consider exporting
-  `meetingToDb` to unit-test the client_id normalization.
+- AUDITED clean: `TaskModal`, `ClientModal`, `handleSaveEdit`, and
+  `handleContactToClients` all await, check `result.error`, and only close/
+  proceed on success. Client numeric/uuid fields are sanitized before the DB
+  (ClientModal `=== '' ? null` / `numberOrNull`; App.jsx passes real uuids or
+  null), so the meeting `client_id` bug has no client-side equivalent.
+- LOWER-PRIORITY (not data-loss): `moveClientToStage` (Pipeline drag-drop) is
+  pessimistic — on a failed DB update the card stays in its old column (UI and
+  DB stay consistent) but no error is shown, so a failed drag silently snaps
+  back. Worth surfacing a toast; no data is lost.
+- OPTIONAL: export `meetingToDb` to unit-test the client_id normalization.
+
+Silent write-failure audit is substantially complete: every data-loss path
+found (call notes ×2, meeting save + client_id) is fixed; task and client
+paths were already safe.
 
 ## Robustness backlog (hardening toward a foolproof CRM)
 1. Finish the silent write-failure audit (see above).
