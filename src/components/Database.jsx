@@ -3519,6 +3519,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const current = mergeQueueContact(queueCurrent, latestContact);
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
+  const [noteSaveError, setNoteSaveError] = useState(null);
   const [postOutcome, setPostOutcome] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -3536,6 +3537,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const noteText = noteDraft.contactId === current?.id ? noteDraft.text : contactNote;
   const hasNoteChanges = noteText !== contactNote;
   const noteSaved = noteSavedFor === current?.id;
+  const noteErr = noteSaveError?.contactId === current?.id ? noteSaveError.message : null;
   const activePostOutcome = postOutcome;
   const masterStatus = current?.listId === masterListId ? 'in' : movedMasterId === current?.id ? 'moved' : 'available';
   const relatedOwnerCandidates = buildRelatedOwnerCandidates(current, contacts, masterListId, { dismissedKeys: dismissedDuplicateKeys, sharedContactInfo });
@@ -3551,15 +3553,27 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   }
 
   async function saveNotes() {
-    if (!current) return;
-    await onSaveNotes(current.id, noteText);
+    if (!current) return { ok: true };
+    const result = await onSaveNotes(current.id, noteText);
+    if (result?.error) {
+      // Never report a failed save as saved — the note would be lost.
+      setNoteSaveError({ contactId: current.id, message: result.error });
+      setNoteSavedFor(null);
+      return result;
+    }
+    setNoteSaveError(null);
     setNoteSavedFor(current.id);
     setTimeout(() => setNoteSavedFor(null), 1800);
+    return { ok: true };
   }
 
   async function go(delta) {
     if (!current) return;
-    if (hasNoteChanges) await saveNotes();
+    // Don't advance past a note that failed to save, or the broker loses it.
+    if (hasNoteChanges) {
+      const result = await saveNotes();
+      if (result?.error) return;
+    }
     setIndex(Math.min(queue.length - 1, Math.max(0, index + delta)));
   }
 
@@ -3645,7 +3659,10 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   }
   async function handleOutcome(status) {
     if (!current || outcomeSaving || activePostOutcome) return;
-    if (hasNoteChanges) await saveNotes();
+    if (hasNoteChanges) {
+      const result = await saveNotes();
+      if (result?.error) return; // surface the save failure before logging an outcome
+    }
     if (status === 'callback' && !callbackDate) {
       alert('Pick a callback date before logging Call Back.');
       return;
@@ -4111,15 +4128,20 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-semibold text-slate-400 uppercase">Call Notes</label>
-              <span className={`text-xs ${noteSaved ? 'text-green-400' : hasNoteChanges ? 'text-amber-400' : 'text-slate-600'}`}>{noteSaved ? 'Saved' : hasNoteChanges ? 'Unsaved' : 'Saved'}</span>
+              <span className={`text-xs ${noteErr ? 'text-red-400' : noteSaved ? 'text-green-400' : hasNoteChanges ? 'text-amber-400' : 'text-slate-600'}`}>{noteErr ? 'Save failed' : noteSaved ? 'Saved' : hasNoteChanges ? 'Unsaved' : 'Saved'}</span>
             </div>
             <textarea
               value={noteText}
               onChange={e => setNoteDraft({ contactId: current.id, text: e.target.value })}
               rows={7}
               placeholder="What did they say? Motivation, objections, timing, pricing expectations..."
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 resize-none"
+              className={`w-full bg-slate-800 border rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none resize-none ${noteErr ? 'border-red-500/70 focus:border-red-500' : 'border-slate-700 focus:border-amber-500'}`}
             />
+            {noteErr && (
+              <p role="alert" className="mt-1.5 text-xs text-red-300 bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2">
+                Couldn't save this note — {noteErr}. Your text is still here; fix the issue and click Save Note. It won't be lost by moving on.
+              </p>
+            )}
           </div>
 
           <div className="space-y-3">
