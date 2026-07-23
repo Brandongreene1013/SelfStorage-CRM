@@ -208,13 +208,24 @@ No pending migrations.
   shared email now shows 1 genuine Strong match (Carmon Eason, real phone+name)
   with the shared email flagged.
 
-## Recommended Next Work
-1. Owner-identification velocity view once enough milestone data accrues.
-2. Consider splitting the Calendar chunk further (msal-browser is ~230 kB).
-3. Pre-existing (not radar/matching): a "duplicate React key" warning fires
-   somewhere in the Database/Call Mode tree — worth tracking down.
-4. Possible follow-up: expose the shared-info threshold or a "flagged bad email"
-   cleanup view so Brandon can fix placeholder/scraped emails at the source.
+## Error boundaries (shipped 2026-07-23)
+- `src/components/ErrorBoundary.jsx` catches render/lifecycle errors and shows a
+  dark-theme recovery panel (Try again + Reload app). `main.jsx` wraps `<App>`
+  (catastrophic net); `App.jsx` wraps the main view area with a boundary
+  `key={view}` so a crash in one tab keeps the nav alive and recovers on tab
+  switch. Verified with a temporary throw probe (removed).
+- The previously-suspected "duplicate React key" warning was NOT reproducible in
+  current code across every view with real data — it was stale console-buffer
+  noise from an old session. No fix needed; removed from the backlog.
+
+## Robustness backlog (hardening toward a foolproof CRM)
+1. Audit silent write failures: confirm contact/task/note/meeting saves surface
+   errors to the user rather than failing quietly (spot-check useDatabase.js,
+   useCRM.js, useMeetings.js return values and their call sites).
+2. Owner-identification velocity view once enough milestone data accrues.
+3. Split the Calendar chunk further (msal-browser is ~230 kB).
+4. "Flagged bad email" cleanup view so Brandon can fix placeholder/scraped
+   emails at the source (builds on the shared-contact-info index).
 
 ## Opening Prompt Suggestion
 For a future coding session, say:
