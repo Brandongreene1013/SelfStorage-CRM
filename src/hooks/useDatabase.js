@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
+import { buildContactOutcomeFields } from '../lib/contactMutations';
 import { selectAllRows } from '../lib/selectAllRows';
 import { buildMergePlan } from '../lib/duplicateReview';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
@@ -1488,20 +1489,22 @@ export function useDatabase() {
     return { ok: true };
   }, [contacts]);
 
-  const deleteContactCallHistory = useCallback((contactId, historyIndex) => {
-    setContacts(prev => {
-      const c = prev.find(x => x.id === contactId);
-      if (!c) return prev;
-      const nextHistory = (c.callHistory ?? []).filter((_, idx) => idx !== historyIndex);
-      const lastCall = nextHistory[nextHistory.length - 1];
-      supabase.from('contacts').update({
-        call_history: nextHistory,
-        last_called: lastCall?.date ?? null,
-        updated_at: new Date().toISOString(),
-      }).eq('id', contactId).then(() => {});
-      return prev.map(x => x.id === contactId ? { ...x, callHistory: nextHistory, lastCalled: lastCall?.date ?? null } : x);
-    });
-  }, []);
+  const deleteContactCallHistory = useCallback(async (contactId, historyIndex) => {
+    const contact = contacts.find(item => item.id === contactId);
+    if (!contact) return { error: 'Contact not found. Refresh and try again.' };
+    const nextHistory = (contact.callHistory ?? []).filter((_, index) => index !== historyIndex);
+    const lastCall = nextHistory[nextHistory.length - 1];
+    const { error } = await supabase.from('contacts').update({
+      call_history: nextHistory,
+      last_called: lastCall?.date ?? null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', contactId);
+    if (error) return { error: error.message };
+    setContacts(prev => prev.map(item => item.id === contactId
+      ? { ...item, callHistory: nextHistory, lastCalled: lastCall?.date ?? null }
+      : item));
+    return { ok: true };
+  }, [contacts]);
 
   // Move a contact into a different list (drag-and-drop between Database lists)
   const moveContactToList = useCallback(async (contactId, listId) => {
@@ -1510,25 +1513,19 @@ export function useDatabase() {
     if (!error) setContacts(prev => prev.map(c => c.id === contactId ? { ...c, listId } : c));
   }, []);
 
-  const updateContactStatus = useCallback(async (contactId, status, callNote, activityDate) => {
-    const now = activityDate || new Date().toISOString().slice(0, 10);
+  const updateContactStatus = useCallback(async (contactId, status, callNote, activityDate, options = {}) => {
     const contact = contacts.find(c => c.id === contactId);
-    if (!contact) return;
-    const newHistory = [...(contact.callHistory ?? []), { date: now, outcome: status, notes: callNote ?? '' }];
-
-    await updateContact(contactId, {
-      status,
-      callHistory: newHistory,
-      lastCalled: now,
-    });
+    if (!contact) return { error: 'Contact not found. Refresh and try again.' };
+    const fields = buildContactOutcomeFields(contact, status, callNote, activityDate, options);
+    return updateContact(contactId, fields);
   }, [contacts, updateContact]);
 
   const updateContactCallback = useCallback(async (contactId, callbackDate) => {
-    await updateContact(contactId, { callbackDate, status: 'callback' });
+    return updateContact(contactId, { callbackDate, status: 'callback' });
   }, [updateContact]);
 
   const updateContactNotes = useCallback(async (contactId, notes) => {
-    await updateContact(contactId, { notes });
+    return updateContact(contactId, { notes });
   }, [updateContact]);
 
   // Copy a contact into the Master Database list

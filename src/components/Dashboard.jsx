@@ -1340,6 +1340,8 @@ function DashboardTasks({ taskApi }) {
   const [showCompleted, setShowCompleted] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [filter, setFilter] = useState('open');
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [quickError, setQuickError] = useState('');
 
   if (!taskApi) return null;
   const { loading, migrationNeeded, groups, createTask, completeTask, deleteTask } = taskApi;
@@ -1355,9 +1357,28 @@ function DashboardTasks({ taskApi }) {
 
   async function quickAdd() {
     const title = quickTitle.trim();
-    if (!title) return;
-    setQuickTitle('');
-    await createTask({ title, taskType: 'general', dueDate: new Date().toISOString().slice(0, 10), source: 'dashboard' });
+    if (!title || quickSaving) return;
+    setQuickSaving(true);
+    setQuickError('');
+    try {
+      const result = await createTask({
+        title,
+        taskType: 'general',
+        dueDate: new Date().toISOString().slice(0, 10),
+        source: 'dashboard',
+      });
+      if (result?.error) {
+        setQuickError(result.error === 'migration_needed'
+          ? 'The task database needs its one-time migration before this can be saved.'
+          : result.error);
+        return;
+      }
+      setQuickTitle('');
+    } catch (error) {
+      setQuickError(error?.message || 'Could not save this task. Please try again.');
+    } finally {
+      setQuickSaving(false);
+    }
   }
 
   function visibleGroups() {
@@ -1376,7 +1397,7 @@ function DashboardTasks({ taskApi }) {
   function group(label, items, tone, completed = false) {
     if (items.length === 0) return null;
     return (
-      <div>
+      <div key={label}>
         <p className={`text-xs font-bold uppercase tracking-wide mb-1.5 ${tone}`}>{label} ({items.length})</p>
         <div className="space-y-1.5">
           {items.map(t => (
@@ -1413,19 +1434,21 @@ function DashboardTasks({ taskApi }) {
           value={quickTitle}
           onChange={e => setQuickTitle(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') quickAdd(); }}
+          disabled={quickSaving}
           placeholder="Quick add a task (due today)..."
-          className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition-colors"
+          className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition-colors disabled:opacity-60"
         />
         <button
           onClick={quickAdd}
-          disabled={!quickTitle.trim()}
+          disabled={!quickTitle.trim() || quickSaving}
           className={`px-3 py-2 rounded-lg text-sm font-bold transition-all ${
-            quickTitle.trim() ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+            quickTitle.trim() && !quickSaving ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-800 text-slate-600 cursor-not-allowed'
           }`}
         >
-          +
+          {quickSaving ? '...' : '+'}
         </button>
       </div>
+      {quickError && <p role="alert" className="text-xs text-red-400">{quickError}</p>}
 
       <div className="flex flex-wrap gap-1 rounded-lg bg-slate-950/60 border border-slate-800 p-1">
         {filters.map(([key, label, count]) => (

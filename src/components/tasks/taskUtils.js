@@ -1,4 +1,4 @@
-import { ACTION_TYPES, TASK_TYPES } from '../../data/constants';
+import { ACTION_TYPES, TASK_TYPES } from '../../data/constants.js';
 
 const ACTION_TO_TASK_TYPE = {
   call: 'call',
@@ -79,6 +79,11 @@ export function buildCallbackTaskQueue(contacts, tasks = [], { overdue = false, 
   }
   rows.sort((a, b) => a.queueDueDate.localeCompare(b.queueDueDate));
   return rows;
+}
+
+export function mergeQueueContact(queueContact, latestContact) {
+  if (!queueContact) return null;
+  return latestContact ? { ...queueContact, ...latestContact } : queueContact;
 }
 
 export function legacyActionDefaults(actionType, actionDate, actionNote) {
