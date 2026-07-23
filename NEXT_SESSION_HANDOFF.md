@@ -130,9 +130,10 @@ Before risky imports, delete flows, migrations, or mass updates:
   Same pattern for calendar normalization: `src/lib/calendarEvents.js`.
 - `sql/analytics_integrity_migration.sql` adds `contacts.owner_identified_at`
   (immutable first-identification milestone, no historical backfill) and the
-  `tractiq_report` task type. **Brandon must run it in the Supabase SQL Editor
-  after a backup.** Until then the app runs in graceful-fallback mode and the
-  Dashboard shows a migration-needed banner; milestone data is NOT recorded.
+  `tractiq_report` task type. **Already run against live Supabase — verified
+  2026-07-23** (column probe + guarded `tractiq_report` task insert/delete).
+  If it ever needs re-running it is idempotent; the app degrades gracefully
+  and shows a Dashboard banner when the column is missing.
 - Tests: `tests/activityAnalytics.test.mjs` + `tests/calendarEvents.test.mjs`
   are wired into `npm test`.
 - CI: `.github/workflows/ci.yml` runs lint + test + build on every push. It
