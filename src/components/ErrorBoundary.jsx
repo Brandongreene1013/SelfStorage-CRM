@@ -41,7 +41,7 @@ export default class ErrorBoundary extends Component {
       <div className="flex items-center justify-center p-6">
         <div className="max-w-lg w-full bg-slate-900 border border-red-900/50 rounded-2xl p-6 text-center">
           <div className="text-3xl mb-2">⚠️</div>
-          <h2 className="text-lg font-black text-white">Something went wrong{scope}</h2>
+          <h2 className="text-lg font-bold text-white">Something went wrong{scope}</h2>
           <p className="text-sm text-slate-400 mt-2">
             The app hit an unexpected error and stopped this view to protect your data. Your saved work in Supabase is unaffected.
           </p>

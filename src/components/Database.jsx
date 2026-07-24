@@ -315,15 +315,15 @@ function PrimaryPhoneEditor({ phone = '', onSave }) {
           <button
             onClick={commit}
             disabled={saving}
-            className="bg-green-500 hover:bg-green-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-950 font-black px-3 py-2 rounded-lg text-xs"
+            className="bg-green-500 hover:bg-green-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-950 font-bold px-3 py-2 rounded-lg text-xs"
           >
             {saving ? 'Saving' : 'Save'}
           </button>
         </div>
       ) : phone ? (
-        <a href={`tel:${phone}`} className="block text-2xl font-black text-green-400 font-mono hover:text-green-300">{phone}</a>
+        <a href={`tel:${phone}`} className="block text-2xl font-bold text-green-400 font-mono hover:text-green-300">{phone}</a>
       ) : (
-        <p className="text-2xl font-black text-slate-600">No phone</p>
+        <p className="text-2xl font-bold text-slate-600">No phone</p>
       )}
       {saved && <p className="text-xs text-green-300 mt-1">Saved</p>}
     </div>
@@ -832,7 +832,7 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
   if (ownershipApi?.loadError) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center">
-        <h2 className="text-lg font-black text-white">Owners / Properties unavailable</h2>
+        <h2 className="text-lg font-bold text-white">Owners / Properties unavailable</h2>
         <p className="text-sm text-amber-400 mt-2">{ownershipApi.loadError}</p>
       </div>
     );
@@ -842,7 +842,7 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
     <div className="space-y-4">
       <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-black text-white">Owners / Properties</h2>
+          <h2 className="text-lg font-bold text-white">Owners / Properties</h2>
           <p className="text-xs text-slate-500 mt-1">Manage ownership groups, linked contacts, and facilities without leaving Database.</p>
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -1140,7 +1140,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
                 {rel.short}
               </StatusBadge>
               {contact.isDeceased && (
-                <span className="text-xs font-black text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md">Deceased</span>
+                <span className="text-xs font-bold text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md">Deceased</span>
               )}
               {contact.market && (
                 <span className="text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
@@ -1158,11 +1158,11 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
             />
             <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" onClick={() => setActivityMode('task')} disabled={!taskApi?.createTask}
-                className="min-h-10 min-w-28 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-black text-amber-300 hover:bg-amber-500/20 disabled:opacity-40">
+                className="min-h-10 min-w-28 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20 disabled:opacity-40">
                 + Task
               </button>
               <button type="button" onClick={() => setActivityMode('action')} disabled={!onLogAction}
-                className="min-h-10 min-w-28 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-xs font-black text-blue-300 hover:bg-blue-500/20 disabled:opacity-40">
+                className="min-h-10 min-w-28 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-xs font-bold text-blue-300 hover:bg-blue-500/20 disabled:opacity-40">
                 + Action
               </button>
             </div>
@@ -1311,7 +1311,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
                       <button
                         type="button"
                         onClick={() => onDeleteAction(contact.id, index)}
-                        className="text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
+                        className="text-slate-600 hover:text-red-400 font-bold px-1 flex-shrink-0"
                         title="Delete this activity"
                       >
                         x
@@ -1375,7 +1375,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
                       <button
                         onClick={() => handleDeleteCallHistory(index)}
                         disabled={deletingCallIndex !== null}
-                        className="ml-auto text-slate-600 hover:text-red-400 disabled:opacity-40 font-black px-1 flex-shrink-0"
+                        className="ml-auto text-slate-600 hover:text-red-400 disabled:opacity-40 font-bold px-1 flex-shrink-0"
                         title="Delete logged call"
                       >
                         x
@@ -1489,7 +1489,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
             {rel.short}
           </StatusBadge>
           {contact.isDeceased && (
-            <span className="text-xs font-black text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md whitespace-nowrap">Deceased</span>
+            <span className="text-xs font-bold text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md whitespace-nowrap">Deceased</span>
           )}
           {contact._distanceMiles != null && (
             <span className="text-xs font-semibold text-sky-300 bg-sky-500/10 border border-sky-500/25 px-2 py-0.5 rounded-md whitespace-nowrap">
@@ -1507,7 +1507,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
             }
             return temp ? (
               <button onClick={cycleTemp} title="Click to change lead temperature"
-                className={`text-xs font-black px-2.5 py-1 rounded-md border transition-all whitespace-nowrap ${temp.bg} ${temp.border} ${temp.text}`}>
+                className={`text-xs font-bold px-2.5 py-1 rounded-md border transition-all whitespace-nowrap ${temp.bg} ${temp.border} ${temp.text}`}>
                 {temp.icon} {temp.label}
               </button>
             ) : (
@@ -1529,7 +1529,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
             Drag
           </button>
           {contact.market && (
-            <span className="text-xs text-amber-400/70 font-black whitespace-nowrap">{contact.market}</span>
+            <span className="text-xs text-amber-400/70 font-bold whitespace-nowrap">{contact.market}</span>
           )}
           <SourceBadge source={source} />
           {(() => {
@@ -1573,7 +1573,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
         onClick={e => { e.stopPropagation(); onClick(); }}
         className="block w-full text-left mb-3"
       >
-        <h3 className="font-black text-white text-base leading-tight group-hover:text-amber-400 transition-colors line-clamp-1">
+        <h3 className="font-bold text-white text-base leading-tight group-hover:text-amber-400 transition-colors line-clamp-1">
           {contact.ownerName || <span className="text-slate-500 italic text-sm font-semibold">Unknown Owner</span>}
         </h3>
       </button>
@@ -1646,7 +1646,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           >
             <span>{nextTaskType?.icon ?? '>'}</span>
             <span className="font-semibold truncate">{nextTask.title}</span>
-            {nextTaskDue && <span className="font-black ml-auto flex-shrink-0">{nextTaskDue.label}</span>}
+            {nextTaskDue && <span className="font-bold ml-auto flex-shrink-0">{nextTaskDue.label}</span>}
           </button>
         ) : actionType ? (
           <button
@@ -1661,7 +1661,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           >
             <span>{actionType.icon}</span>
             <span className="font-semibold truncate">{actionType.label}</span>
-            {fallbackDue && <span className="font-black ml-auto flex-shrink-0">{fallbackDue.label}</span>}
+            {fallbackDue && <span className="font-bold ml-auto flex-shrink-0">{fallbackDue.label}</span>}
           </button>
         ) : null}
       </div>
@@ -1675,11 +1675,11 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           />
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={event => { event.stopPropagation(); setActivityMode('task'); }} disabled={!taskApi?.createTask}
-              className="min-h-10 text-xs font-black text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
+              className="min-h-10 text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
               + Task
             </button>
             <button type="button" onClick={event => { event.stopPropagation(); setActivityMode('action'); }} disabled={!onLogAction}
-              className="min-h-10 text-xs font-black text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
+              className="min-h-10 text-xs font-bold text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
               + Action
             </button>
           </div>
@@ -1772,7 +1772,7 @@ function AddContactModal({ listName, onSave, onClose }) {
     <ModalLayout onClose={onClose} className="flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-slate-800 flex-shrink-0">
           <div>
-            <h2 className="text-base font-black text-white">Add Contact</h2>
+            <h2 className="text-base font-bold text-white">Add Contact</h2>
             <p className="text-xs text-slate-500 mt-0.5">Adding to: <span className="text-amber-400">{listName}</span></p>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
@@ -2145,7 +2145,7 @@ function CallModeQueuePicker({ queues, onSelect, onExit, resumeInfo, onResume, o
     <div className="space-y-4">
       <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-black text-white">Choose a Call Mode queue</h2>
+          <h2 className="text-lg font-bold text-white">Choose a Call Mode queue</h2>
           <p className="text-xs text-slate-500 mt-1.5 max-w-xl">
             Pick a queue, call one owner at a time, log the result, and set the next action.
           </p>
@@ -2159,7 +2159,7 @@ function CallModeQueuePicker({ queues, onSelect, onExit, resumeInfo, onResume, o
       {resumeInfo && (
         <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl px-5 py-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-black text-amber-300">
+            <p className="text-sm font-bold text-amber-300">
               Resume call session: {resumeInfo.resumeIndex + 1} of {resumeInfo.currentTotal} contacts — {resumeInfo.label}
             </p>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -2168,7 +2168,7 @@ function CallModeQueuePicker({ queues, onSelect, onExit, resumeInfo, onResume, o
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button onClick={onResume} className="text-xs font-black bg-amber-500 hover:bg-amber-400 text-slate-900 px-4 py-2 rounded-lg transition-all">
+            <button onClick={onResume} className="text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-900 px-4 py-2 rounded-lg transition-all">
               ▶ Resume
             </button>
             <button onClick={onClearSession} className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-2 transition-all">
@@ -2188,8 +2188,8 @@ function CallModeQueuePicker({ queues, onSelect, onExit, resumeInfo, onResume, o
             }`}
           >
             <div className="flex items-center justify-between gap-2 mb-1.5">
-              <h3 className="text-sm font-black text-white">{q.label}</h3>
-              <span className={`text-lg font-black ${q.queue.length > 0 ? 'text-amber-400' : 'text-slate-700'}`}>{q.queue.length}</span>
+              <h3 className="text-sm font-bold text-white">{q.label}</h3>
+              <span className={`text-lg font-bold ${q.queue.length > 0 ? 'text-amber-400' : 'text-slate-700'}`}>{q.queue.length}</span>
             </div>
             <p className="text-xs text-slate-500 leading-snug">{q.reason}</p>
             {q.disabled && <p className="text-xs text-slate-600 italic mt-2">Select a list on the left first.</p>}
@@ -2734,7 +2734,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           onClick={() => setShowImport(true)}
           className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-3 py-2 rounded-xl text-sm transition-all flex items-center justify-center gap-1.5 shadow"
         >
-          <span className="text-lg font-black leading-none">+</span> Import
+          <span className="text-lg font-bold leading-none">+</span> Import
         </button>
         <button
           onClick={() => setShowNewList(true)}
@@ -2999,19 +2999,19 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         <div className="grid grid-cols-4 gap-3">
           <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3">
             <p className="text-xs text-slate-500 font-semibold uppercase">Contacts</p>
-            <p className="text-2xl font-black text-white">{filtered.length}</p>
+            <p className="text-2xl font-bold text-white">{filtered.length}</p>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3">
             <p className="text-xs text-slate-500 font-semibold uppercase">Called</p>
-            <p className="text-2xl font-black text-blue-400">{filtered.filter(c => c.status !== 'fresh').length}</p>
+            <p className="text-2xl font-bold text-blue-400">{filtered.filter(c => c.status !== 'fresh').length}</p>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3">
             <p className="text-xs text-slate-500 font-semibold uppercase">Conversations</p>
-            <p className="text-2xl font-black text-green-400">{filtered.filter(c => c.status === 'conversation').length}</p>
+            <p className="text-2xl font-bold text-green-400">{filtered.filter(c => c.status === 'conversation').length}</p>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3">
             <p className="text-xs text-slate-500 font-semibold uppercase">Appts Set</p>
-            <p className="text-2xl font-black text-amber-400">{filtered.filter(c => c.status === 'appointment').length}</p>
+            <p className="text-2xl font-bold text-amber-400">{filtered.filter(c => c.status === 'appointment').length}</p>
           </div>
         </div>
 
@@ -3098,7 +3098,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     selectQueue('activeList');
                   }}
                   disabled={callQueue.length === 0}
-                  className={`bg-amber-500/15 border border-amber-500/40 text-amber-400 font-black px-3 py-2 rounded-lg text-xs transition-all ${
+                  className={`bg-amber-500/15 border border-amber-500/40 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs transition-all ${
                     callQueue.length > 0 ? 'hover:bg-amber-500/25' : 'opacity-50 cursor-not-allowed'
                   }`}
                 >
@@ -3244,7 +3244,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       {/* New Blank List modal */}
       {showNewList && (
         <ModalLayout onClose={() => setShowNewList(false)} size="sm" className="p-6 space-y-4">
-            <h2 className="text-base font-black text-white">Create Blank List</h2>
+            <h2 className="text-base font-bold text-white">Create Blank List</h2>
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">List Name *</label>
               <input
@@ -3833,7 +3833,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
       <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
           <div>
-            <h2 className="text-lg font-black text-white">{queueLabel ?? 'Call Mode'} — {index + 1} of {queue.length}</h2>
+            <h2 className="text-lg font-bold text-white">{queueLabel ?? 'Call Mode'} — {index + 1} of {queue.length}</h2>
             {queueReasonText && <p className="text-xs text-slate-500 mt-0.5">{queueReasonText}</p>}
           </div>
           <div className="flex items-center gap-2">
@@ -3875,7 +3875,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 )}
                 <SourceBadge source={current.source} />
                 {current.isDeceased && (
-                  <span className="text-xs font-black text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md">Deceased</span>
+                  <span className="text-xs font-bold text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md">Deceased</span>
                 )}
               </div>
               <HeaderInlineField
@@ -3883,8 +3883,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 value={current.ownerName}
                 placeholder="Click to add owner name"
                 onSave={(v) => onUpdateContact?.(current.id, { ownerName: v, trackOwnerIdentification: true })}
-                textClassName="text-3xl font-black text-white leading-tight"
-                inputClassName="text-3xl font-black text-white"
+                textClassName="text-3xl font-bold text-white leading-tight"
+                inputClassName="text-3xl font-bold text-white"
               />
               <HeaderInlineField
                 key={`facility-${current.id}`}
@@ -3949,7 +3949,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           <div className="sticky top-2 z-20 bg-slate-950/95 border border-slate-800 rounded-2xl p-4 shadow-2xl shadow-slate-950/30">
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>
-                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Dialer Controls</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Dialer Controls</p>
                 <p className="text-sm font-bold text-white">Log the call, decide the next step, keep moving.</p>
               </div>
               <StatusBadge variant={STATUS_VARIANT[current.status] ?? 'slate'} pill={false} className="font-bold">
@@ -3971,7 +3971,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             </div>
             {latestCall && (
               <div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs">
-                <span className="font-black uppercase tracking-wide text-slate-600">Last logged</span>
+                <span className="font-bold uppercase tracking-wide text-slate-600">Last logged</span>
                 <span className="min-w-0 flex-1 truncate text-slate-300">
                   {STATUS_LABELS[latestCall.outcome] ?? latestCall.outcome}{latestCall.notes ? ` - ${latestCall.notes}` : ''}{latestCall.date ? ` - ${latestCall.date}` : ''}
                 </span>
@@ -3980,7 +3980,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                     type="button"
                     onClick={() => handleDeleteCallHistory(latestCallEntry.index)}
                     disabled={deletingCallIndex !== null}
-                    className="text-slate-500 hover:text-red-400 disabled:opacity-40 font-black px-1 flex-shrink-0"
+                    className="text-slate-500 hover:text-red-400 disabled:opacity-40 font-bold px-1 flex-shrink-0"
                     title="Delete logged call"
                   >
                     ×
@@ -4019,7 +4019,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             <div className="mt-3 flex flex-wrap gap-1.5">
               {CALL_MODE_SHORTCUTS.map(([key, label]) => (
                 <span key={`${key}-${label}`} className="rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1 text-[11px] text-slate-500">
-                  <span className="font-black text-slate-300">{key}</span> {label}
+                  <span className="font-bold text-slate-300">{key}</span> {label}
                 </span>
               ))}
             </div>
@@ -4029,14 +4029,14 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-3 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div>
-                  <p className="text-sm text-amber-300 font-black">
+                  <p className="text-sm text-amber-300 font-bold">
                     Post-call decision: {STATUS_LABELS[activePostOutcome.status] ?? activePostOutcome.status}
                   </p>
                   <p className="text-xs text-slate-400 mt-0.5">
                     {contactDisplayName(activePostOutcome.contactSnapshot)} is locked here until you choose the next step.
                   </p>
                 </div>
-                <span className={`rounded-lg border px-2.5 py-1 text-xs font-black ${
+                <span className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${
                   activePostOutcome.contactSnapshot?.listId === masterListId || activePostOutcome.movedToMaster
                     ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
                     : 'border-slate-700 bg-slate-900 text-slate-400'
@@ -4059,19 +4059,19 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
                 {activePostOutcome.contactSnapshot?.listId !== masterListId && !activePostOutcome.movedToMaster && (
                   <button onClick={() => finalizePostOutcome({ moveToMaster: true })} disabled={postOutcomeSaving}
-                    className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 disabled:opacity-50 font-black px-4 py-2.5 rounded-xl text-xs transition-all">
+                    className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 disabled:opacity-50 font-bold px-4 py-2.5 rounded-xl text-xs transition-all">
                     Move to Master DB + Next
                   </button>
                 )}
                 {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) && (
                   <button onClick={() => finalizePostOutcome({ addFollowUp: true })} disabled={postOutcomeSaving}
-                    className="bg-amber-500 hover:bg-amber-400 text-slate-900 disabled:opacity-50 font-black px-4 py-2.5 rounded-xl text-xs transition-all">
+                    className="bg-amber-500 hover:bg-amber-400 text-slate-900 disabled:opacity-50 font-bold px-4 py-2.5 rounded-xl text-xs transition-all">
                     Add Follow-Up + Next
                   </button>
                 )}
                 {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) && activePostOutcome.contactSnapshot?.listId !== masterListId && !activePostOutcome.movedToMaster && (
                   <button onClick={() => finalizePostOutcome({ moveToMaster: true, addFollowUp: true })} disabled={postOutcomeSaving}
-                    className="bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 disabled:opacity-50 font-black px-4 py-2.5 rounded-xl text-xs transition-all">
+                    className="bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 disabled:opacity-50 font-bold px-4 py-2.5 rounded-xl text-xs transition-all">
                     Master DB + Follow-Up + Next
                   </button>
                 )}
@@ -4159,7 +4159,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             {relatedOwnerCandidates.length > 0 && (
               <div className="bg-blue-500/5 border border-blue-500/25 rounded-xl p-4 space-y-3">
                 <div>
-                  <p className="text-xs font-black text-blue-300 uppercase tracking-wide">
+                  <p className="text-xs font-bold text-blue-300 uppercase tracking-wide">
                     {relatedOwnerCandidates.length === 1 ? 'Possible Related Record' : `${relatedOwnerCandidates.length} Possible Related Records`}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">Owners already in your Master Database that share contact info with this call record.</p>
@@ -4179,7 +4179,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                       <div className="min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm font-bold text-white break-words min-w-0">{candidate.ownerName || candidate.ownerEntity || 'Unknown owner'}</p>
-                          <span className={`flex-shrink-0 text-[10px] font-black uppercase tracking-wide border rounded-full px-2 py-0.5 ${confidence === 'High' ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-amber-500/10 border-amber-500/40 text-amber-300'}`}>
+                          <span className={`flex-shrink-0 text-[10px] font-bold uppercase tracking-wide border rounded-full px-2 py-0.5 ${confidence === 'High' ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-amber-500/10 border-amber-500/40 text-amber-300'}`}>
                             {confidence === 'High' ? 'Strong match' : 'Possible match'}
                           </span>
                         </div>
@@ -4265,16 +4265,16 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           </div>
 
           <div className={`${sidePanel === 'research' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
-            <h3 className="text-sm font-black text-white mb-3">Research</h3>
+            <h3 className="text-sm font-bold text-white mb-3">Research</h3>
             {/* Sprint 12 — compact strip: Maps · Whitepages · Google · LinkedIn · County · SOS */}
             <ResearchStrip contact={current} />
           </div>
 
           <div className={`${sidePanel === 'tasks' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-black text-white">Tasks</h3>
+              <h3 className="text-sm font-bold text-white">Tasks</h3>
               <button type="button" onClick={() => setActivityMode('task')}
-                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-black text-amber-300 hover:bg-amber-500/20">
+                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20">
                 + Task
               </button>
             </div>
@@ -4284,9 +4284,9 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
 
           <div className={`${sidePanel === 'actions' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
             <div className="flex items-center justify-between gap-3 mb-3">
-              <h3 className="text-sm font-black text-white">Actions</h3>
+              <h3 className="text-sm font-bold text-white">Actions</h3>
               <button type="button" onClick={() => setActivityMode('action')}
-                className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-xs font-black text-blue-300 hover:bg-blue-500/20">
+                className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-xs font-bold text-blue-300 hover:bg-blue-500/20">
                 + Action
               </button>
             </div>
@@ -4304,7 +4304,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                       </div>
                       {onDeleteAction && (
                         <button type="button" onClick={() => onDeleteAction(current.id, index)}
-                          className="flex-shrink-0 px-1 font-black text-slate-600 hover:text-red-400" title="Delete activity">
+                          className="flex-shrink-0 px-1 font-bold text-slate-600 hover:text-red-400" title="Delete activity">
                           ×
                         </button>
                       )}
@@ -4318,7 +4318,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           </div>
 
           <div className={`${sidePanel === 'history' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
-            <h3 className="text-sm font-black text-white mb-3">Call History</h3>
+            <h3 className="text-sm font-bold text-white mb-3">Call History</h3>
             {current.callHistory?.length > 0 ? (
               <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
                 {current.callHistory.map((h, index) => ({ h, index })).reverse().slice(0, 8).map(({ h, index }) => (
@@ -4331,7 +4331,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                           <button
                             onClick={() => handleDeleteCallHistory(index)}
                             disabled={deletingCallIndex !== null}
-                            className="text-slate-600 hover:text-red-400 disabled:opacity-40 font-black px-1"
+                            className="text-slate-600 hover:text-red-400 disabled:opacity-40 font-bold px-1"
                             title="Delete logged call"
                           >
                             x
@@ -4350,23 +4350,23 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
 
           {masterListId && (
             masterStatus === 'moved' ? (
-              <div className="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-black px-4 py-3 rounded-2xl text-sm text-center">
+              <div className="w-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-bold px-4 py-3 rounded-2xl text-sm text-center">
                 Moved to Master Database
               </div>
             ) : masterStatus === 'in' ? (
-              <div className="w-full bg-amber-500/10 border border-amber-500/30 text-amber-400/80 font-black px-4 py-3 rounded-2xl text-sm text-center">
+              <div className="w-full bg-amber-500/10 border border-amber-500/30 text-amber-400/80 font-bold px-4 py-3 rounded-2xl text-sm text-center">
                 In Master Database
               </div>
             ) : (
               <button onClick={moveCurrentToMaster}
-                className="w-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 font-black px-4 py-3 rounded-2xl text-sm transition-all">
+                className="w-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 font-bold px-4 py-3 rounded-2xl text-sm transition-all">
                 Move to Master Database
               </button>
             )
           )}
           {onPromote && (
             <button onClick={() => onPromote(current)}
-              className="w-full bg-blue-600/20 hover:bg-blue-600/30 border border-blue-600/40 text-blue-300 font-black px-4 py-3 rounded-2xl text-sm transition-all">
+              className="w-full bg-blue-600/20 hover:bg-blue-600/30 border border-blue-600/40 text-blue-300 font-bold px-4 py-3 rounded-2xl text-sm transition-all">
               Promote to Client / Pipeline
             </button>
           )}
@@ -4398,7 +4398,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
         <ModalLayout onClose={() => setEstateContactId(null)} size="lg" className="p-5 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-base font-black text-white">Estate / Inheritance</h2>
+              <h2 className="text-base font-bold text-white">Estate / Inheritance</h2>
               <p className="text-xs text-slate-500 mt-0.5">{contactDisplayName(allContacts.find(c => c.id === estateContactId))}</p>
             </div>
             <button type="button" onClick={() => setEstateContactId(null)} className="text-slate-500 hover:text-white text-xl leading-none">x</button>
@@ -4436,7 +4436,7 @@ function MarketsView({ contacts }) {
           return (
             <div key={s.state} className="bg-slate-900 border border-slate-800 rounded-xl p-3">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-lg font-black text-white">{s.state}</span>
+                <span className="text-lg font-bold text-white">{s.state}</span>
                 <span className="text-xs text-slate-500">{s.total}</span>
               </div>
               <div className="w-full bg-slate-700 rounded-full h-1.5 mb-1.5">

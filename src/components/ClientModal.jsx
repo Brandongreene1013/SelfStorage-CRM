@@ -313,7 +313,7 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
             </div>
             <div className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
               <p className={labelCls}>Projected Commission</p>
-              <p className="text-lg font-black text-emerald-400 leading-tight">
+              <p className="text-lg font-bold text-emerald-400 leading-tight">
                 {projectedCommission ? formatMoney(projectedCommission) : '$0'}
               </p>
               <p className="text-[11px] text-slate-500 mt-0.5">

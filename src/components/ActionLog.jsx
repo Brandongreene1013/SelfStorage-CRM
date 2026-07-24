@@ -30,7 +30,7 @@ export function LastActionLine({ actionLog, onDeleteLast }) {
             e.stopPropagation();
             onDeleteLast(actionLog.length - 1);
           }}
-          className="ml-0.5 text-slate-600 hover:text-red-400 font-black px-1 flex-shrink-0"
+          className="ml-0.5 text-slate-600 hover:text-red-400 font-bold px-1 flex-shrink-0"
           title="Delete this activity"
         >
           ×
@@ -65,7 +65,7 @@ export function LogActionModal({ name, subtitle, actionLog = [], onSave, onDelet
     <ModalLayout onClose={onClose}>
       <div className="flex items-center justify-between p-5 border-b border-slate-800">
         <div>
-          <h2 className="text-base font-black text-white">Log Action</h2>
+          <h2 className="text-base font-bold text-white">Log Action</h2>
           <p className="text-xs text-slate-500 mt-0.5">{name}{subtitle ? ` - ${subtitle}` : ''}</p>
         </div>
         <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">✕</button>
@@ -113,7 +113,7 @@ export function LogActionModal({ name, subtitle, actionLog = [], onSave, onDelet
                   {onDelete && (
                     <button
                       onClick={() => handleDelete(index)}
-                      className="text-slate-600 hover:text-red-400 font-black px-1"
+                      className="text-slate-600 hover:text-red-400 font-bold px-1"
                       title="Delete activity"
                     >
                       x

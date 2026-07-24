@@ -24,7 +24,7 @@ export default function FunnelChart({ clients, filter }) {
             <div key={stage.id} className="flex items-center gap-3 group">
               {/* Stage number */}
               <div
-                className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white shadow"
+                className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow"
                 style={{ background: stage.hex }}
               >
                 {stage.id}

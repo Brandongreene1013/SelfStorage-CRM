@@ -234,7 +234,7 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
       {/* ── Left: lists ── */}
       <div className="w-full lg:w-72 flex-shrink-0 space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Mailer Lists</h3>
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Mailer Lists</h3>
           <button
             onClick={() => setShowNewList(v => !v)}
             className="text-xs font-bold text-amber-500 hover:text-amber-400 transition-colors"
@@ -292,7 +292,7 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-slate-800">
               <div className="min-w-0">
-                <h2 className="text-lg font-black text-white truncate">✉️ {activeList.name}</h2>
+                <h2 className="text-lg font-bold text-white truncate">✉️ {activeList.name}</h2>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {rows.length} recipient{rows.length === 1 ? '' : 's'}
                   {missingAddressCount > 0 && (

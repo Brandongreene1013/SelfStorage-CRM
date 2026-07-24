@@ -61,7 +61,7 @@ export default function TaskModal({ context, defaults = {}, emphasizeDueDate = f
     <ModalLayout onClose={onClose} size="md">
       <div className="flex items-center justify-between p-5 border-b border-slate-800">
         <div>
-          <h2 className="text-base font-black text-white">{heading}</h2>
+          <h2 className="text-base font-bold text-white">{heading}</h2>
           {context?.relatedName && (
             <p className="text-xs text-slate-500 mt-0.5">For {context.relatedName}</p>
           )}

@@ -105,7 +105,7 @@ export default function ActionCenterModal({
   }
 
   const recent = actionLog.map((entry, index) => ({ entry, index })).reverse().slice(0, 5);
-  const sectionLabel = 'text-xs font-black uppercase tracking-widest';
+  const sectionLabel = 'text-xs font-bold uppercase tracking-widest';
   const fieldLabel = 'block text-xs font-bold text-slate-400 uppercase tracking-wide mb-1.5';
   const inputClass = 'w-full min-w-0 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition-colors';
 
@@ -113,7 +113,7 @@ export default function ActionCenterModal({
     <ModalLayout onClose={onClose} size="md" className="max-h-[90vh] flex flex-col overflow-hidden">
       <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-800 flex-shrink-0">
         <div className="min-w-0">
-          <h2 className="text-base font-black text-white">{heading}</h2>
+          <h2 className="text-base font-bold text-white">{heading}</h2>
           <p className="text-xs text-slate-500 mt-0.5 truncate">{name}{subtitle ? ` · ${subtitle}` : ''}</p>
         </div>
         <button type="button" onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">×</button>
@@ -214,7 +214,7 @@ export default function ActionCenterModal({
                     {entry.priority && entry.priority !== 'normal' && <span className={`font-bold ${priority?.text ?? 'text-slate-500'}`}>{priority?.label}</span>}
                     <span className="text-slate-600 flex-shrink-0">{entry.date}</span>
                     {onDeleteAction && (
-                      <button type="button" onClick={() => onDeleteAction(index)} className="text-slate-600 hover:text-red-400 font-black px-1" title="Delete activity">×</button>
+                      <button type="button" onClick={() => onDeleteAction(index)} className="text-slate-600 hover:text-red-400 font-bold px-1" title="Delete activity">×</button>
                     )}
                   </div>
                 );

@@ -40,7 +40,7 @@ function metric(label, value, tone = 'slate') {
   }[tone];
   return (
     <div className={`border rounded-lg px-3 py-2 ${toneClass}`}>
-      <p className="text-lg font-black leading-tight">{value}</p>
+      <p className="text-lg font-bold leading-tight">{value}</p>
       <p className="text-[11px] text-slate-400">{label}</p>
     </div>
   );
@@ -181,7 +181,7 @@ export default function ImportListModal({
     <ModalLayout onClose={onClose} size="2xl" className="max-h-[92vh] flex flex-col">
       <div className="flex items-center justify-between p-5 border-b border-slate-800">
         <div>
-          <h2 className="text-lg font-black text-white">
+          <h2 className="text-lg font-bold text-white">
             {intoFixed ? `Bulk Upload to ${fixedListName}` : 'Import Cold Call List'}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">Supports .xlsx, .xls, .csv, and .tsv</p>
@@ -396,7 +396,7 @@ export default function ImportListModal({
 
         {importResult && (
           <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
-            <p className="text-sm font-black text-emerald-300 mb-2">Import complete: {importResult.listName}</p>
+            <p className="text-sm font-bold text-emerald-300 mb-2">Import complete: {importResult.listName}</p>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {metric('Rows imported', importResult.count ?? 0, 'green')}
               {metric('Rows skipped', importResult.skipped ?? 0, (importResult.skipped ?? 0) ? 'amber' : 'slate')}
@@ -434,7 +434,7 @@ export default function ImportListModal({
                   <button onClick={() => onOpenImportedList?.(importResult.list.id)} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-3 py-2 rounded-lg text-xs transition-all">
                     Open Imported List
                   </button>
-                  <button onClick={() => onStartImportedCallSession?.(importResult.list.id)} className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-black px-3 py-2 rounded-lg text-xs transition-all">
+                  <button onClick={() => onStartImportedCallSession?.(importResult.list.id)} className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-3 py-2 rounded-lg text-xs transition-all">
                     Start Call Session
                   </button>
                 </>

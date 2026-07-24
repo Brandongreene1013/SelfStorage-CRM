@@ -23,6 +23,13 @@
     @apply min-h-screen w-full text-left;
   }
 
+  /* Form controls: smooth, consistent focus/hover transitions app-wide */
+  input,
+  select,
+  textarea {
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
   /* Numeric fields read as a spec sheet, not prose — tabular, aligned figures */
   .tabular-nums,
   th,

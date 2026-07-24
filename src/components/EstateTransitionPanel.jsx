@@ -106,7 +106,7 @@ export default function EstateTransitionPanel({
       : 'border-slate-700 bg-slate-800/50'} ${compact ? 'mt-3' : ''}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-black uppercase text-slate-300">Estate / Inheritance</p>
+          <p className="text-xs font-bold uppercase text-slate-300">Estate / Inheritance</p>
           <p className="text-xs text-slate-500 mt-0.5">Keep the original owner history and connect who inherited the property.</p>
         </div>
         <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer">
@@ -176,7 +176,7 @@ export default function EstateTransitionPanel({
                   placeholder="Or type a new relative's name"
                   className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500" />
                 <button type="button" onClick={createAndLink} disabled={busy || !newRelativeName.trim()}
-                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg px-3 py-2 text-xs disabled:opacity-40 disabled:cursor-not-allowed">
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg px-3 py-2 text-xs disabled:opacity-40 disabled:cursor-not-allowed">
                   Create + Link
                 </button>
               </div>

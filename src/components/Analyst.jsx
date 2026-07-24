@@ -166,11 +166,11 @@ export default function Analyst() {
     <div className="max-w-4xl mx-auto flex flex-col h-[calc(100vh-180px)]">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-900 font-black text-lg shadow">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-900 font-bold text-lg shadow">
           AI
         </div>
         <div>
-          <h2 className="text-lg font-black text-white leading-tight">AI Analyst</h2>
+          <h2 className="text-lg font-bold text-white leading-tight">AI Analyst</h2>
           <p className="text-xs text-slate-500">Underwriting · deal analysis · your financial model, built in</p>
         </div>
       </div>

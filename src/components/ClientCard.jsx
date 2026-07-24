@@ -55,7 +55,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
               }
               return temp ? (
                 <button onClick={cycleTemp} title="Click to change lead temperature"
-                  className={`text-xs font-black px-2 py-0.5 rounded-full border transition-all ${temp.bg} ${temp.border} ${temp.text}`}>
+                  className={`text-xs font-bold px-2 py-0.5 rounded-full border transition-all ${temp.bg} ${temp.border} ${temp.text}`}>
                   {temp.icon} {temp.label}
                 </button>
               ) : (
@@ -222,7 +222,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {nextTaskDue && (
-                  <span className={`text-xs font-black ${
+                  <span className={`text-xs font-bold ${
                     nextTaskDue.tone === 'red' ? 'text-red-400' : nextTaskDue.tone === 'amber' ? 'text-amber-400' : 'text-slate-500'
                   }`}>{nextTaskDue.label}</span>
                 )}
@@ -253,7 +253,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
                 </span>
               </div>
               {fallbackDue && (
-                <span className={`text-xs font-black flex-shrink-0 ${
+                <span className={`text-xs font-bold flex-shrink-0 ${
                   fallbackDue.tone === 'red' ? 'text-red-400' : fallbackDue.tone === 'amber' ? 'text-amber-400' : 'text-slate-500'
                 }`}>{fallbackDue.label}</span>
               )}

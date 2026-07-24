@@ -224,7 +224,7 @@ export default function Calendar({ meetings, calendarEvents = [], clients, onAdd
             <h3 className="text-base font-bold text-white">{selectedLabel}</h3>
             <button onClick={() => { setEditingMeeting(null); setShowModal(true); }}
               className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold px-3 py-1.5 rounded-lg text-sm transition-all flex items-center gap-1.5">
-              <span className="text-lg font-black leading-none">+</span> Schedule Meeting
+              <span className="text-lg font-bold leading-none">+</span> Schedule Meeting
             </button>
           </div>
 

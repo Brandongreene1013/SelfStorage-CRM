@@ -46,8 +46,8 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
       style={style}
       {...listeners}
       {...attributes}
-      className={`group relative bg-slate-800 border rounded-xl p-3 cursor-grab active:cursor-grabbing transition-all select-none ${
-        isDragging ? 'opacity-30 border-slate-600' : 'border-slate-700 hover:border-slate-500 hover:bg-slate-750'
+      className={`group relative bg-slate-800/80 border rounded-xl p-3 shadow-sm ring-1 ring-inset ring-white/[0.03] cursor-grab active:cursor-grabbing transition-[border-color,background-color,box-shadow] duration-150 select-none ${
+        isDragging ? 'opacity-30 border-slate-600' : 'border-slate-700 hover:border-slate-500 hover:bg-slate-800 hover:shadow-md'
       }`}
     >
       <div className="flex items-start justify-between gap-1">
@@ -59,7 +59,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
             {(() => {
               const temp = LEAD_TEMPS.find(t => t.value === client.leadTemp);
               return temp ? (
-                <span className={`text-xs font-black px-1.5 py-0.5 rounded border ${temp.bg} ${temp.border} ${temp.text}`}>
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${temp.bg} ${temp.border} ${temp.text}`}>
                   {temp.icon}
                 </span>
               ) : null;
@@ -132,7 +132,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
         >
           <span>{nextTaskType?.icon ?? '>'}</span>
           <span className="font-semibold truncate">{nextTask.title}</span>
-          {nextTaskDue && <span className="font-black ml-auto flex-shrink-0">{nextTaskDue.label}</span>}
+          {nextTaskDue && <span className="font-bold ml-auto flex-shrink-0">{nextTaskDue.label}</span>}
         </div>
       ) : actionType ? (
         <div
@@ -148,7 +148,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
         >
           <span>{actionType.icon}</span>
           <span className="font-semibold truncate">{actionType.label}</span>
-          {fallbackDue && <span className="font-black ml-auto flex-shrink-0">{fallbackDue.label}</span>}
+          {fallbackDue && <span className="font-bold ml-auto flex-shrink-0">{fallbackDue.label}</span>}
         </div>
       ) : (
         <button
@@ -202,15 +202,18 @@ function StageColumn({ stage, clients, onEdit, onLogAction, onDeleteAction, onMo
   return (
     <div className="flex flex-col min-w-[200px] max-w-[220px] flex-shrink-0">
       {/* Column header */}
-      <div className={`rounded-t-xl px-3 py-2.5 border-b-2 ${stage.color} bg-opacity-20`} style={{ background: `${stage.hex}22` }}>
+      <div
+        className="rounded-t-xl px-3 py-2.5 border-b-2 ring-1 ring-inset ring-white/[0.04]"
+        style={{ background: `${stage.hex}14`, borderBottomColor: stage.hex }}
+      >
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-black w-5 h-5 rounded-full flex items-center justify-center text-white`} style={{ background: stage.hex }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[11px] font-bold w-5 h-5 rounded-full flex items-center justify-center text-white tabular-nums shadow-sm flex-shrink-0" style={{ background: stage.hex }}>
               {stage.id}
             </span>
-            <span className="text-xs font-bold text-slate-200 leading-tight">{stage.label}</span>
+            <span className="text-xs font-semibold text-slate-100 leading-tight tracking-tight truncate">{stage.label}</span>
           </div>
-          <span className="text-xs font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
+          <span className="text-[11px] font-semibold text-slate-300 tabular-nums bg-slate-950/60 ring-1 ring-inset ring-white/10 px-2 py-0.5 rounded-full flex-shrink-0">
             {clients.length}
           </span>
         </div>

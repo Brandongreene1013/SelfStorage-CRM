@@ -36,7 +36,7 @@ export function MailerListPicker({ member, mailerApi, onClose }) {
     <ModalLayout onClose={onClose} size="sm" className="flex flex-col max-h-[80vh]">
       <div className="flex items-start justify-between p-5 border-b border-slate-800">
         <div className="min-w-0 pr-3">
-          <h2 className="text-base font-black text-white">✉️ Add to Mailer List</h2>
+          <h2 className="text-base font-bold text-white">✉️ Add to Mailer List</h2>
           <p className="text-xs text-slate-500 mt-0.5 truncate">{member.name}</p>
           {member.mailingAddress && (
             <p className="text-xs text-slate-400 mt-0.5 truncate">{selectedLabel ? `${selectedLabel}: ` : ''}{selectedAddress}</p>

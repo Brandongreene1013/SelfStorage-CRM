@@ -80,7 +80,7 @@ export default function TaskRow({ task, onComplete, onDelete, onEdit, onOpenRela
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {pendingAction && <span className="text-[10px] text-slate-500">Saving...</span>}
-          {due && <span className={`text-xs font-black whitespace-nowrap ${due.tone}`}>{due.label}</span>}
+          {due && <span className={`text-xs font-bold whitespace-nowrap ${due.tone}`}>{due.label}</span>}
           {onDelete && (
             <button
               onClick={() => run('delete', onDelete)}

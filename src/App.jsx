@@ -78,10 +78,10 @@ function PipelineValueHeader({ clients }) {
     <div className="hidden lg:grid min-w-[520px] grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] overflow-hidden rounded-xl border border-slate-800 bg-slate-950/70">
       <div className="border-r border-slate-800 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-black uppercase tracking-wide text-emerald-300/80">Pipeline Value</p>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-300/80">Pipeline Value</p>
           <span className="text-[10px] font-bold text-slate-500">{summary.pricedPipelineDeals} priced</span>
         </div>
-        <p className="mt-1 text-lg font-black leading-none text-emerald-300">{formatMoney(summary.grossPipelineCommission) || '$0'}</p>
+        <p className="mt-1 text-lg font-bold leading-none text-emerald-300">{formatMoney(summary.grossPipelineCommission) || '$0'}</p>
         <p className="mt-1 text-[11px] text-slate-500">
           {formatMoney(summary.pipelineSaleValue, { compact: true }) || '$0'} sale value
           {blendedFee > 0 ? ` · ${blendedFee.toFixed(2)}% fee` : ''}
@@ -89,10 +89,10 @@ function PipelineValueHeader({ clients }) {
       </div>
       <div className="px-3 py-2">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-black uppercase tracking-wide text-sky-300/80">On-Market Potential</p>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-sky-300/80">On-Market Potential</p>
           <span className="text-[10px] font-bold text-slate-500">{summary.pricedOnMarketDeals} priced</span>
         </div>
-        <p className="mt-1 text-lg font-black leading-none text-sky-300">{formatMoney(summary.grossOnMarketCommission) || '$0'}</p>
+        <p className="mt-1 text-lg font-bold leading-none text-sky-300">{formatMoney(summary.grossOnMarketCommission) || '$0'}</p>
         <p className="mt-1 text-[11px] text-slate-500">
           {formatMoney(summary.onMarketSaleValue, { compact: true }) || '$0'} sale value
           {onMarketFee > 0 ? ` · ${onMarketFee.toFixed(2)}% fee` : ''}
@@ -373,7 +373,7 @@ export default function App() {
           </Button>
           {!['Calendar', 'Database', 'Mailers', 'Analyst'].includes(view) && (
             <Button onClick={() => setShowAddModal(true)}>
-              <span className="text-lg leading-none font-black">+</span> Add Client
+              <span className="text-lg leading-none font-bold">+</span> Add Client
             </Button>
           )}
         </div>

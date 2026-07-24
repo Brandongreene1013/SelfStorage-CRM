@@ -69,16 +69,16 @@ function RecordCard({ contact, listName, isKeeper, isRecommended, isMerged, open
         </label>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {isRecommended && (
-            <span className="text-[10px] font-black bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 rounded px-1.5 py-0.5">★ RECOMMENDED</span>
+            <span className="text-[10px] font-bold bg-emerald-600/20 text-emerald-400 border border-emerald-600/40 rounded px-1.5 py-0.5">★ RECOMMENDED</span>
           )}
           {isMerged && (
-            <span className="text-[10px] font-black bg-blue-600/20 text-blue-400 border border-blue-600/40 rounded px-1.5 py-0.5">MERGED</span>
+            <span className="text-[10px] font-bold bg-blue-600/20 text-blue-400 border border-blue-600/40 rounded px-1.5 py-0.5">MERGED</span>
           )}
         </div>
       </div>
 
       <button onClick={onOpen} className="block w-full text-left mb-1 group">
-        <p className="text-sm font-black text-white truncate group-hover:text-amber-400 transition-colors">
+        <p className="text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors">
           {contact.ownerName || <span className="text-slate-500 italic">No owner name</span>}
         </p>
         {contact.facilityName && <p className="text-xs text-amber-400/80 truncate">{contact.facilityName}</p>}
@@ -176,7 +176,7 @@ function DuplicateGroupCard({ group, contactById, listNameById, getOpenTaskCount
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className={`text-xs font-black border rounded-md px-2 py-0.5 ${CONFIDENCE_STYLES[group.confidence] ?? CONFIDENCE_STYLES.Low}`}>
+        <span className={`text-xs font-bold border rounded-md px-2 py-0.5 ${CONFIDENCE_STYLES[group.confidence] ?? CONFIDENCE_STYLES.Low}`}>
           {group.confidence} confidence
         </span>
         {group.reasons.map(r => (
@@ -316,7 +316,7 @@ export default function DuplicateReview({
       <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-black text-white">Duplicate Review</h2>
+            <h2 className="text-lg font-bold text-white">Duplicate Review</h2>
             <p className="text-xs text-slate-500 mt-1.5 max-w-2xl">
               Likely duplicate owner records across all lists. Pick which record to keep, merge the useful
               info (extra phones, email, address) into it, then delete the weaker copy.
@@ -389,7 +389,7 @@ export default function DuplicateReview({
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-white truncate">{names.join('  ·  ')}</p>
                   <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                    <span className={`text-[10px] font-black border rounded px-1.5 py-0.5 ${CONFIDENCE_STYLES[g.confidence] ?? CONFIDENCE_STYLES.Low}`}>
+                    <span className={`text-[10px] font-bold border rounded px-1.5 py-0.5 ${CONFIDENCE_STYLES[g.confidence] ?? CONFIDENCE_STYLES.Low}`}>
                       {g.confidence}
                     </span>
                     {g.reasons.map(r => (
