@@ -1,16 +1,18 @@
 // Shared pill-badge palette. `variant` picks a preset; `className` can extend/override.
+// Refined pill palette: soft tinted fill + crisp inset ring (reads cleaner and
+// less saturated than solid borders). `variant` picks a preset.
 const VARIANTS = {
-  slate:   'bg-slate-700 text-slate-300',
-  blue:    'bg-blue-600/20 text-blue-400 border border-blue-600/40',
-  amber:   'bg-amber-600/20 text-amber-400 border border-amber-600/40',
-  green:   'bg-green-600/20 text-green-400 border border-green-600/40',
-  red:     'bg-red-600/20 text-red-400 border border-red-600/40',
-  yellow:  'bg-yellow-600/20 text-yellow-400 border border-yellow-600/40',
-  purple:  'bg-purple-600/20 text-purple-400 border border-purple-600/40',
-  emerald: 'bg-emerald-900/40 text-emerald-300 border border-emerald-700',
-  // Pipeline entity type pills (slightly bolder fill, used on client/pipeline cards)
-  buyer:   'bg-blue-900/50 border border-blue-700 text-blue-300',
-  seller:  'bg-amber-900/50 border border-amber-700 text-amber-300',
+  slate:   'bg-slate-500/10 text-slate-300 ring-1 ring-inset ring-slate-400/20',
+  blue:    'bg-blue-500/10 text-blue-300 ring-1 ring-inset ring-blue-400/25',
+  amber:   'bg-amber-500/10 text-amber-300 ring-1 ring-inset ring-amber-400/25',
+  green:   'bg-green-500/10 text-green-300 ring-1 ring-inset ring-green-400/25',
+  red:     'bg-red-500/10 text-red-300 ring-1 ring-inset ring-red-400/25',
+  yellow:  'bg-yellow-500/10 text-yellow-300 ring-1 ring-inset ring-yellow-400/25',
+  purple:  'bg-purple-500/10 text-purple-300 ring-1 ring-inset ring-purple-400/25',
+  emerald: 'bg-emerald-500/10 text-emerald-300 ring-1 ring-inset ring-emerald-400/25',
+  // Pipeline entity type pills (slightly stronger presence on client/pipeline cards)
+  buyer:   'bg-blue-500/15 text-blue-200 ring-1 ring-inset ring-blue-400/30',
+  seller:  'bg-amber-500/15 text-amber-200 ring-1 ring-inset ring-amber-400/30',
 };
 
 export default function StatusBadge({ variant = 'slate', icon, children, className = '', pill = true, dashed = false }) {

@@ -139,7 +139,7 @@ function CommandHeader({ today, overdueCount, dueTodayCount, todayMeetings, toda
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="min-w-0">
           <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dashboard</p>
-          <h2 className="text-lg font-black text-white leading-tight">Today · {dateLabel}</h2>
+          <h2 className="text-lg font-bold text-white leading-tight">Today · {dateLabel}</h2>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -162,7 +162,7 @@ function CommandHeader({ today, overdueCount, dueTodayCount, todayMeetings, toda
           </button>
           <button
             onClick={onStartCallMode}
-            className="h-9 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-4 rounded-lg text-xs transition-all"
+            className="h-9 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 rounded-lg text-xs transition-all"
           >
             Start Call Session
           </button>
@@ -171,7 +171,7 @@ function CommandHeader({ today, overdueCount, dueTodayCount, todayMeetings, toda
       <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
         {stats.map(s => (
           <div key={s.label} className="bg-slate-950/70 px-3 py-2">
-            <p className={`text-xl font-black leading-none tabular-nums ${s.accent}`}>{s.value}</p>
+            <p className={`text-xl font-bold leading-none tabular-nums ${s.accent}`}>{s.value}</p>
             <p className="text-[11px] font-semibold text-slate-500 mt-1 leading-tight">{s.label}</p>
           </div>
         ))}
@@ -260,7 +260,7 @@ function CallbackCommandCenter({ todayCallbacks, overdueCallbacks, upcomingCallb
           onClick={card.onClick}
           className={`text-left bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 transition-all ${card.bg}`}
         >
-          <p className={`text-3xl font-black leading-none ${card.value > 0 ? card.tone : 'text-slate-700'}`}>{card.value}</p>
+          <p className={`text-3xl font-bold leading-none ${card.value > 0 ? card.tone : 'text-slate-700'}`}>{card.value}</p>
           <p className="text-xs font-bold text-slate-300 mt-2">{card.label}</p>
         </button>
       ))}
@@ -476,7 +476,7 @@ function BrokerCommandCenter({
             <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Today's Brief</p>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Today's Brief</p>
                   <p className="text-sm font-bold text-white mt-1">Production pulse</p>
                 </div>
                 <span className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-bold text-slate-400">Live</span>
@@ -484,7 +484,7 @@ function BrokerCommandCenter({
               <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
                 {briefItems.map(item => (
                   <div key={item.label} className="bg-slate-950/70 px-3 py-2 min-w-0">
-                    <p className={`text-2xl font-black leading-none tabular-nums ${item.value > 0 ? item.tone : 'text-slate-700'}`}>{item.value}</p>
+                    <p className={`text-2xl font-bold leading-none tabular-nums ${item.value > 0 ? item.tone : 'text-slate-700'}`}>{item.value}</p>
                     <p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">{item.label}</p>
                   </div>
                 ))}
@@ -492,7 +492,7 @@ function BrokerCommandCenter({
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {weekItems.map(item => (
                   <div key={item.label} className="rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 min-w-0">
-                    <p className={`text-lg font-black leading-none tabular-nums ${item.value > 0 ? item.tone : 'text-slate-700'}`}>{item.value}</p>
+                    <p className={`text-lg font-bold leading-none tabular-nums ${item.value > 0 ? item.tone : 'text-slate-700'}`}>{item.value}</p>
                     <p className="text-[11px] text-slate-600 mt-1 truncate">{item.label}</p>
                   </div>
                 ))}
@@ -502,7 +502,7 @@ function BrokerCommandCenter({
             <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Pipeline Attention</p>
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Pipeline Attention</p>
                   <p className="text-sm font-bold text-white mt-1">Deal movement without the dollar figures</p>
                 </div>
                 <span className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-bold text-slate-400">Discreet</span>
@@ -510,7 +510,7 @@ function BrokerCommandCenter({
               <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
                 {pipelineItems.map(item => (
                   <div key={item.label} className="bg-slate-950/70 px-3 py-2 min-w-0">
-                    <p className={`text-2xl font-black leading-none tabular-nums ${item.tone}`}>{item.value}</p>
+                    <p className={`text-2xl font-bold leading-none tabular-nums ${item.tone}`}>{item.value}</p>
                     <p className="text-[11px] font-semibold text-slate-500 mt-1 truncate">{item.label}</p>
                   </div>
                 ))}
@@ -527,7 +527,7 @@ function BrokerCommandCenter({
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Top Moves</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Top Moves</p>
                 <p className="text-sm font-bold text-white">The next three things worth doing</p>
               </div>
               <span className="text-[11px] font-bold text-slate-600">{rankedMoves.length} signals</span>
@@ -539,11 +539,11 @@ function BrokerCommandCenter({
                 {topMoves.map((r, idx) => (
                   <div key={r.key} className="rounded-lg border border-slate-800 bg-slate-900/70 p-3 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-3">
-                      <span className="text-[11px] font-black text-slate-600">0{idx + 1}</span>
-                      <span className={`rounded-md border px-2 py-1 text-[10px] font-black ${toneClass[r.tone]}`}>{r.label}</span>
+                      <span className="text-[11px] font-bold text-slate-600">0{idx + 1}</span>
+                      <span className={`rounded-md border px-2 py-1 text-[10px] font-bold ${toneClass[r.tone]}`}>{r.label}</span>
                     </div>
                     <button onClick={r.onOpen} className="w-full text-left min-w-0">
-                      <p className="text-sm font-black text-white truncate">{r.title}</p>
+                      <p className="text-sm font-bold text-white truncate">{r.title}</p>
                       {r.subtitle && <p className="text-xs text-slate-500 truncate mt-0.5">{r.subtitle}</p>}
                       <p className="text-xs text-slate-400 line-clamp-2 mt-2 min-h-[2rem]">{r.detail || 'Open and decide the next action.'}</p>
                     </button>
@@ -571,11 +571,11 @@ function BrokerCommandCenter({
 
         <div className="space-y-3 min-w-0">
           <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-            <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Relationship Signals</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Relationship Signals</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {alertItems.map(item => (
                 <div key={item.label} className="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2">
-                  <p className={`text-2xl font-black leading-none tabular-nums ${item.tone}`}>{item.value}</p>
+                  <p className={`text-2xl font-bold leading-none tabular-nums ${item.tone}`}>{item.value}</p>
                   <p className="text-[11px] text-slate-500 mt-1">{item.label}</p>
                 </div>
               ))}
@@ -592,7 +592,7 @@ function BrokerCommandCenter({
 
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Watchlist</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Watchlist</p>
               <p className="text-[11px] font-bold text-slate-600">Next 5</p>
             </div>
             {signalRows.length === 0 ? (
@@ -601,7 +601,7 @@ function BrokerCommandCenter({
               <div className="mt-3 divide-y divide-slate-800 border border-slate-800 rounded-lg overflow-hidden">
                 {signalRows.map(r => (
                   <div key={r.key} className="flex items-center gap-3 bg-slate-950/40 hover:bg-slate-900 px-3 py-2.5">
-                    <span className={`w-20 flex-shrink-0 rounded-md border px-2 py-1 text-[10px] font-black text-center ${toneClass[r.tone]}`}>
+                    <span className={`w-20 flex-shrink-0 rounded-md border px-2 py-1 text-[10px] font-bold text-center ${toneClass[r.tone]}`}>
                       {r.label}
                     </span>
                     <button onClick={r.onOpen} className="flex-1 min-w-0 text-left">
@@ -670,7 +670,7 @@ function PipelineContinuum({ stageCounts, totalUnits, totalSqft }) {
         {stageCounts.map((s) => (
           <div key={s.id} className="flex-1 flex flex-col items-center gap-1.5 group">
             {/* Count */}
-            <span className={`text-sm font-black leading-none ${s.count > 0 ? s.text : 'text-slate-700'}`}>
+            <span className={`text-sm font-bold leading-none ${s.count > 0 ? s.text : 'text-slate-700'}`}>
               {s.count > 0 ? s.count : '-'}
             </span>
             {/* Bar */}
@@ -731,7 +731,7 @@ function WeeklyProductionScorecard({ data }) {
     >
       {fields.map(([key, label]) => (
         <div key={key} className="bg-slate-950/60 px-3 py-2 min-w-0">
-          <p className="text-lg font-black leading-none tabular-nums text-slate-100">{data[key] ?? 0}</p>
+          <p className="text-lg font-bold leading-none tabular-nums text-slate-100">{data[key] ?? 0}</p>
           <p className="text-[10px] font-semibold text-slate-500 mt-1 truncate">{label}</p>
         </div>
       ))}
@@ -832,7 +832,7 @@ function ProductionTrends({ trend, funnel }) {
             <div key={stage.key}>
               <div className="flex items-baseline justify-between gap-2 text-xs">
                 <span className="font-semibold text-slate-300">{stage.label}</span>
-                <span className="tabular-nums font-black text-slate-100">
+                <span className="tabular-nums font-bold text-slate-100">
                   {stage.count}
                   {stage.rateFromPrevious !== null && stage.rateFromPrevious <= 1 && (
                     <span className="ml-1.5 font-semibold text-slate-500">{Math.round(stage.rateFromPrevious * 100)}%</span>
@@ -887,15 +887,15 @@ function CommissionCounter({ summary, migrationNeeded, active, inContract, close
       )}
       <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3">
         <p className="text-[11px] font-bold text-emerald-200/80 uppercase tracking-wide">Gross Pipeline Commission</p>
-        <p className="text-4xl font-black text-emerald-300 mt-1 leading-none">{formatMoney(gross) || '$0'}</p>
+        <p className="text-4xl font-bold text-emerald-300 mt-1 leading-none">{formatMoney(gross) || '$0'}</p>
         <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
           <div>
             <p className="text-slate-500 font-semibold">Pipeline Sale Value</p>
-            <p className="text-white font-black">{formatMoney(saleValue, { compact: true }) || '$0'}</p>
+            <p className="text-white font-bold">{formatMoney(saleValue, { compact: true }) || '$0'}</p>
           </div>
           <div>
             <p className="text-slate-500 font-semibold">Blended Fee</p>
-            <p className="text-white font-black">{avgRate > 0 ? `${avgRate.toFixed(2)}%` : '--'}</p>
+            <p className="text-white font-bold">{avgRate > 0 ? `${avgRate.toFixed(2)}%` : '--'}</p>
           </div>
         </div>
       </div>
@@ -903,7 +903,7 @@ function CommissionCounter({ summary, migrationNeeded, active, inContract, close
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[11px] font-bold text-sky-200/80 uppercase tracking-wide">On-Market Potential Gross Commission</p>
-            <p className="text-2xl font-black text-sky-300 mt-1 leading-none">{formatMoney(onMarketGross) || '$0'}</p>
+            <p className="text-2xl font-bold text-sky-300 mt-1 leading-none">{formatMoney(onMarketGross) || '$0'}</p>
           </div>
           <span className="text-[11px] font-bold text-sky-200/70 whitespace-nowrap">
             {summary.pricedOnMarketDeals} priced
@@ -912,11 +912,11 @@ function CommissionCounter({ summary, migrationNeeded, active, inContract, close
         <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
           <div>
             <p className="text-slate-500 font-semibold">On-Market Sale Value</p>
-            <p className="text-white font-black">{formatMoney(onMarketSaleValue, { compact: true }) || '$0'}</p>
+            <p className="text-white font-bold">{formatMoney(onMarketSaleValue, { compact: true }) || '$0'}</p>
           </div>
           <div>
             <p className="text-slate-500 font-semibold">Blended Fee</p>
-            <p className="text-white font-black">{onMarketAvgRate > 0 ? `${onMarketAvgRate.toFixed(2)}%` : '--'}</p>
+            <p className="text-white font-bold">{onMarketAvgRate > 0 ? `${onMarketAvgRate.toFixed(2)}%` : '--'}</p>
           </div>
         </div>
         <p className="text-[11px] text-slate-500 mt-2">Exclusive Listing and later</p>
@@ -924,7 +924,7 @@ function CommissionCounter({ summary, migrationNeeded, active, inContract, close
       <div className="mt-2 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
         {metrics.map(m => (
           <div key={m.label} className="bg-slate-950/60 px-3 py-2">
-            <p className={`text-xl font-black leading-none ${m.tone}`}>{m.value}</p>
+            <p className={`text-xl font-bold leading-none ${m.tone}`}>{m.value}</p>
             <p className="text-[11px] text-slate-500 font-semibold mt-1">{m.label}</p>
           </div>
         ))}
@@ -956,7 +956,7 @@ function QuickCallLogger({ onLog }) {
     ['totalOwnerActions', 'Actions'],
   ];
   const hasValue = Object.values(draft).some(v => Number(v) > 0);
-  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm font-black text-slate-100 tabular-nums focus:outline-none focus:border-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
+  const inputClass = 'w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-sm font-bold text-slate-100 tabular-nums focus:outline-none focus:border-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
 
   function setField(field, value) {
     setDraft(prev => ({ ...prev, [field]: value }));
@@ -983,14 +983,14 @@ function QuickCallLogger({ onLog }) {
     <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div>
-          <p className="text-xs font-black text-white uppercase tracking-wide">Manual Activity Logger</p>
+          <p className="text-xs font-bold text-white uppercase tracking-wide">Manual Activity Logger</p>
           <p className="text-[11px] text-slate-600">Batch-add today's work to the daily and weekly log</p>
         </div>
         <button
           type="button"
           onClick={logNow}
           disabled={!hasValue}
-          className="h-8 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-black rounded-lg px-3 text-xs transition-all"
+          className="h-8 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 font-bold rounded-lg px-3 text-xs transition-all"
         >
           Add Batch
         </button>
@@ -1020,7 +1020,7 @@ function ManualActivityModal({ onLog, onClose }) {
     <ModalLayout onClose={onClose} size="lg">
       <div className="flex items-center justify-between p-5 border-b border-slate-800">
         <div>
-          <h2 className="text-base font-black text-white">Manual Activity Logger</h2>
+          <h2 className="text-base font-bold text-white">Manual Activity Logger</h2>
           <p className="text-xs text-slate-500 mt-0.5">Record work that happened outside Call Mode.</p>
         </div>
         <button onClick={onClose} className="text-slate-500 hover:text-white text-xl leading-none p-1">x</button>
@@ -1060,7 +1060,7 @@ function DailyProduction({ today, todayLabel }) {
         {fields.map(([key, label]) => (
             <div key={key} className="bg-slate-950/60 px-4 py-3">
               <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 leading-tight">{label}</span>
-              <p className="mt-2 text-3xl font-black leading-none tabular-nums text-slate-100">{today[key] ?? 0}</p>
+              <p className="mt-2 text-3xl font-bold leading-none tabular-nums text-slate-100">{today[key] ?? 0}</p>
             </div>
         ))}
       </div>
@@ -1174,7 +1174,7 @@ function DailyActivityIntelligenceReview() {
                   min="0"
                   value={counts[field.key] ?? 0}
                   onChange={e => setCounts(prev => ({ ...prev, [field.key]: Math.max(0, Math.floor(Number(e.target.value) || 0)) }))}
-                  className={`w-full bg-slate-900/70 border border-slate-700 rounded-md px-2 py-1 text-lg font-black tabular-nums ${field.accent} focus:outline-none focus:border-current`}
+                  className={`w-full bg-slate-900/70 border border-slate-700 rounded-md px-2 py-1 text-lg font-bold tabular-nums ${field.accent} focus:outline-none focus:border-current`}
                 />
               </label>
             ))}
@@ -1184,7 +1184,7 @@ function DailyActivityIntelligenceReview() {
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
               {important.length > 0 && (
                 <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3">
-                  <p className="text-xs font-black text-amber-400 uppercase mb-2">Important</p>
+                  <p className="text-xs font-bold text-amber-400 uppercase mb-2">Important</p>
                   <div className="space-y-1">
                     {important.slice(0, 5).map((item, idx) => (
                       <p key={idx} className="text-xs text-slate-300 truncate">{item.label}: <span className="text-slate-500">{item.reason}</span></p>
@@ -1194,7 +1194,7 @@ function DailyActivityIntelligenceReview() {
               )}
               {slipped.length > 0 && (
                 <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-3">
-                  <p className="text-xs font-black text-red-400 uppercase mb-2">May Have Slipped</p>
+                  <p className="text-xs font-bold text-red-400 uppercase mb-2">May Have Slipped</p>
                   <div className="space-y-1">
                     {slipped.slice(0, 5).map((item, idx) => (
                       <p key={idx} className="text-xs text-slate-300 truncate">{item.email}: <span className="text-slate-500">{item.reason}</span></p>
@@ -1281,7 +1281,7 @@ function ProductivityAnalytics({ analyticsRange, setAnalyticsRange, analyticsDat
         {PROGRESS_FIELDS.map(f => (
           <div key={f.key} className={`${f.bg} border ${f.border} rounded-xl p-3 text-center`}>
             <p className={`text-xs font-semibold ${f.accent} mb-1 leading-tight`}>{f.label}</p>
-            <p className={`text-2xl font-black ${f.accent}`}>{analyticsData[f.key]}</p>
+            <p className={`text-2xl font-bold ${f.accent}`}>{analyticsData[f.key]}</p>
           </div>
         ))}
       </div>
@@ -1338,7 +1338,7 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate, onEditClient })
       subtitle={new Date().toLocaleDateString('default', { month: 'long', day: 'numeric' })}
       actions={
         <div className="text-right">
-          <p className={`text-2xl font-black leading-none ${todayCount > 0 ? 'text-amber-400' : 'text-slate-700'}`}>
+          <p className={`text-2xl font-bold leading-none ${todayCount > 0 ? 'text-amber-400' : 'text-slate-700'}`}>
             {todayCount}
           </p>
           <p className="text-xs text-slate-600">today</p>
@@ -1368,7 +1368,7 @@ function UpcomingMeetingsWidget({ meetings, clients, onNavigate, onEditClient })
                 <div className={`flex-shrink-0 rounded-lg px-2 py-1 min-w-[54px] text-center ${
                   isToday ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-slate-700/70 border border-slate-600/80'
                 }`}>
-                  <p className={`text-xs font-black leading-none ${isToday ? 'text-amber-300' : 'text-slate-300'}`}>{dateLabel}</p>
+                  <p className={`text-xs font-bold leading-none ${isToday ? 'text-amber-300' : 'text-slate-300'}`}>{dateLabel}</p>
                   {timeLabel && <p className={`text-xs mt-0.5 ${isToday ? 'text-amber-300/70' : 'text-slate-500'}`}>{timeLabel}</p>}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1504,7 +1504,7 @@ function DashboardTasks({ taskApi, contacts, clients, onOpenContact, onEditClien
       subtitle={`${totalOpen} open`}
       actions={
         <button onClick={() => setShowFullModal(true)}
-          className="h-8 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-black text-amber-300 hover:bg-amber-500/15 transition-all">
+          className="h-8 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-bold text-amber-300 hover:bg-amber-500/15 transition-all">
           Add Task
         </button>
       }
@@ -1800,7 +1800,7 @@ export default function Dashboard({
       <div className="border-t border-slate-800 pt-4">
         <div className="flex items-center justify-between gap-3 mb-3">
           <div>
-            <h2 className="text-sm font-black text-white">Performance</h2>
+            <h2 className="text-sm font-bold text-white">Performance</h2>
             <p className="text-xs text-slate-500">Pipeline and production reporting</p>
           </div>
           <button
@@ -1823,19 +1823,19 @@ export default function Dashboard({
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <div className="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2">
-              <p className="text-xl font-black text-white">{clients.length}</p>
+              <p className="text-xl font-bold text-white">{clients.length}</p>
               <p className="text-xs text-slate-500">clients</p>
             </div>
             <div className="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2">
-              <p className="text-xl font-black text-green-400">{active}</p>
+              <p className="text-xl font-bold text-green-400">{active}</p>
               <p className="text-xs text-slate-500">active deals</p>
             </div>
             <div className="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2">
-              <p className="text-xl font-black text-emerald-400">{completedTodayCount}</p>
+              <p className="text-xl font-bold text-emerald-400">{completedTodayCount}</p>
               <p className="text-xs text-slate-500">tasks done today</p>
             </div>
             <div className="bg-slate-900/70 border border-slate-800 rounded-lg px-3 py-2">
-              <p className="text-xl font-black text-purple-400">{callbacksCreatedToday}</p>
+              <p className="text-xl font-bold text-purple-400">{callbacksCreatedToday}</p>
               <p className="text-xs text-slate-500">callbacks created</p>
             </div>
           </div>
