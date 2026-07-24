@@ -739,6 +739,131 @@ function WeeklyProductionScorecard({ data }) {
   );
 }
 
+// ── Daily Activity Log ────────────────────────────────────────────────────────
+// An itemized, timestamped record of every action for a chosen day, built from
+// the same classified analytics events that feed the metric counts — so what
+// you see here is exactly what the totals are made of.
+const EVENT_META = {
+  no_answer:          { icon: '📵', label: 'No answer',           tone: 'text-slate-400' },
+  voicemail:          { icon: '📩', label: 'Left voicemail',      tone: 'text-blue-300' },
+  conversation:       { icon: '💬', label: 'Conversation',        tone: 'text-green-300' },
+  appointment:        { icon: '📅', label: 'Appointment set',     tone: 'text-amber-300' },
+  not_interested:     { icon: '🚫', label: 'Not interested',      tone: 'text-red-300' },
+  callback:           { icon: '🔄', label: 'Callback scheduled',  tone: 'text-purple-300' },
+  call:               { icon: '📞', label: 'Call',                tone: 'text-slate-400' },
+  email:              { icon: '📧', label: 'Email',               tone: 'text-blue-300' },
+  tractiq_report_sent:{ icon: '📈', label: 'TractIQ report sent', tone: 'text-emerald-300' },
+  meeting:            { icon: '📅', label: 'Meeting set',         tone: 'text-amber-300' },
+  bov:                { icon: '📊', label: 'BOV',                 tone: 'text-emerald-300' },
+  research:           { icon: '🔍', label: 'Research',            tone: 'text-slate-400' },
+  request_financials: { icon: '📄', label: 'Requested financials',tone: 'text-slate-300' },
+  follow_up:          { icon: '🔁', label: 'Follow-up',           tone: 'text-slate-300' },
+  contract:           { icon: '📝', label: 'Contract',            tone: 'text-emerald-300' },
+  owner_identified:   { icon: '⭐', label: 'Owner identified',    tone: 'text-amber-300' },
+};
+
+function shiftDay(dateString, days) {
+  const d = new Date(`${dateString}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function eventTimeLabel(occurredAt) {
+  if (!occurredAt) return '';
+  const d = new Date(occurredAt);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit',
+  }).format(d);
+}
+
+function DailyActivityLog({ events, onOpenEvent }) {
+  const [day, setDay] = useState(easternToday());
+  const dayEvents = useMemo(
+    () => events
+      .filter(e => e.reportingDate === day)
+      .slice()
+      .sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt))),
+    [events, day],
+  );
+  const isToday = day === easternToday();
+  const dayLabel = new Date(`${day}T12:00:00`).toLocaleDateString('default', {
+    weekday: 'long', month: 'short', day: 'numeric',
+  });
+  // Per-type tally for the header summary.
+  const tally = useMemo(() => {
+    const counts = {};
+    dayEvents.forEach(e => { counts[e.type] = (counts[e.type] ?? 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [dayEvents]);
+
+  return (
+    <SectionCard
+      title="Activity Log"
+      subtitle={`${dayEvents.length} action${dayEvents.length === 1 ? '' : 's'} · ${isToday ? 'Today' : dayLabel}`}
+      className="p-4"
+      actions={(
+        <div className="flex items-center gap-1">
+          <button onClick={() => setDay(d => shiftDay(d, -1))} title="Previous day"
+            className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-white text-sm leading-none transition-all">‹</button>
+          <input type="date" value={day} max={easternToday()} onChange={e => e.target.value && setDay(e.target.value)}
+            className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-amber-500" />
+          <button onClick={() => setDay(d => shiftDay(d, 1))} disabled={isToday} title="Next day"
+            className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-white text-sm leading-none transition-all disabled:opacity-40">›</button>
+          {!isToday && (
+            <button onClick={() => setDay(easternToday())} className="ml-1 text-[11px] font-semibold text-amber-400 hover:text-amber-300 px-1.5 transition-colors">Today</button>
+          )}
+        </div>
+      )}
+    >
+      {tally.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b border-slate-800/80">
+          {tally.map(([type, count]) => {
+            const meta = EVENT_META[type] ?? { icon: '•', label: type };
+            return (
+              <span key={type} className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 bg-slate-800/70 ring-1 ring-inset ring-white/10 rounded-full px-2 py-0.5">
+                <span>{meta.icon}</span>{meta.label}
+                <span className="tabular-nums text-slate-400">{count}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {dayEvents.length === 0 ? (
+        <p className="text-sm text-slate-600 italic py-6 text-center">No activity recorded for this day.</p>
+      ) : (
+        <div className="max-h-[26rem] overflow-y-auto scrollbar-thin -mx-1 px-1">
+          <ul className="space-y-0.5">
+            {dayEvents.map(event => {
+              const meta = EVENT_META[event.type] ?? { icon: '•', label: event.type, tone: 'text-slate-400' };
+              const clickable = event.relatedType === 'contact' || event.relatedType === 'client';
+              return (
+                <li key={event.key}>
+                  <button
+                    type="button"
+                    onClick={() => clickable && onOpenEvent?.(event)}
+                    className={`w-full text-left flex items-start gap-3 rounded-lg px-2 py-2 transition-colors ${clickable ? 'hover:bg-slate-800/60 cursor-pointer' : 'cursor-default'}`}
+                  >
+                    <span className="text-base leading-none mt-0.5 w-5 text-center flex-shrink-0">{meta.icon}</span>
+                    <span className="w-14 flex-shrink-0 text-[11px] font-semibold text-slate-500 tabular-nums mt-0.5">{eventTimeLabel(event.occurredAt)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline gap-2 flex-wrap">
+                        <span className={`text-xs font-bold ${meta.tone}`}>{meta.label}</span>
+                        <span className="text-sm font-semibold text-slate-200 truncate">{event.label}</span>
+                      </span>
+                      {event.detail && <span className="block text-xs text-slate-500 truncate mt-0.5">{event.detail}</span>}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
 // Palette validated for CVD + contrast on the slate-950 surface
 // (dataviz six-checks: #d97706 calls, #0284c7 conversations).
 const TREND_SERIES = [
@@ -1755,6 +1880,8 @@ export default function Dashboard({
       </div>
 
       <WeeklyProductionScorecard data={weeklyProduction} />
+
+      <DailyActivityLog events={analytics.events} onOpenEvent={openActivity} />
 
       <ProductionTrends trend={productionTrend} funnel={conversionFunnel} />
 
