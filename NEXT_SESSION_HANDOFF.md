@@ -218,6 +218,24 @@ No pending migrations.
   current code across every view with real data — it was stale console-buffer
   noise from an old session. No fix needed; removed from the backlog.
 
+## Enterprise UI foundation (shipped 2026-07-23)
+- Typeface: **Inter** (variable, preconnected in index.html) wired as the
+  Tailwind v4 `--font-sans` token in `src/index.css`, so all `font-sans` usage
+  picks it up. Tuned tracking (-0.011em), contextual alternates, and tabular
+  figures on numeric fields/tables/`.tabular-nums`.
+- Global tokens in `src/index.css`: amber `:focus-visible` rings, branded
+  `::selection`, refined thin dark scrollbars app-wide, `.surface-raised` helper.
+- App shell (`src/App.jsx` header): sticky + backdrop-blur, hairline border,
+  soft depth shadow; nav is a segmented control (elevated active surface +
+  amber underline) rather than flat amber-filled tabs.
+- Shared `Button` primitive (`src/components/ui/Button.jsx`): semibold Inter,
+  lit-edge inset ring, colored glow, active press micro-interaction — lifts
+  every button app-wide.
+- NEXT UI PASSES (queued): apply the same craft to card primitives
+  (`SectionCard`, `MetricCard`, `StatusBadge`), modals (`ModalLayout`), and
+  reduce the heavy `font-black` usage across dashboards to Inter 600–700 for a
+  calmer enterprise hierarchy.
+
 ## Silent write-failure audit (in progress)
 - FIXED 2026-07-23: Call Mode `saveNotes()` reported failed saves as "Saved" and
   advanced past them, losing call notes. Now returns its result, shows a red
