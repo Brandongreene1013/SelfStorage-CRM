@@ -236,11 +236,18 @@ No pending migrations.
   soft-fill + inset-ring pills; `ModalLayout` got deeper blur, a long-throw
   shadow, and a scale/fade entrance (`animate-modal-in`, reduced-motion aware);
   Dashboard `font-black`→`font-bold` (44 spots) + tabular metric numbers.
-- NEXT UI PASSES (queued): the `font-black`→`font-bold` sweep still has ~97
-  instances in other components (RecentActivity, Database/Call Mode cards,
-  MailerLists, etc.) — finish it for a uniformly calm hierarchy. Then refine
-  form controls (inputs/selects) to a shared focus/hover treatment, and the
-  Pipeline kanban column headers + cards to match the new card surfaces.
+- Pass 3 shipped 2026-07-23: finished the `font-black`→`font-bold` sweep across
+  all 19 components (102 spots; only the SVG logo glyph stays 900). Added a
+  shared smooth transition on all inputs/selects/textareas. Reworked the
+  Pipeline kanban — fixed an invalid `bg-slate-750` hover class, put chips on
+  the new card surface (soft shadow + lit inset ring), and cleaned the column
+  headers (tinted surface + crisp stage-colored bottom accent, tabular number,
+  refined count pill).
+- UI foundation is now consistent end to end (type system → shell → cards →
+  badges → modals → kanban). NEXT (optional polish): unify the many bespoke
+  inline card/panel styles in Database/Call Mode onto `SectionCard` or a shared
+  surface token; add subtle list-row hover states; consider a light-weight
+  empty-state illustration set.
 
 ## Silent write-failure audit (in progress)
 - FIXED 2026-07-23: Call Mode `saveNotes()` reported failed saves as "Saved" and
