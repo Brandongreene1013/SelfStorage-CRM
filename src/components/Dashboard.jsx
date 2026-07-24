@@ -8,6 +8,7 @@ import { PROGRESS_FIELDS } from '../hooks/useDailyProgress';
 import { buildCommissionSummary, formatMoney } from '../lib/dealValue';
 import { normalizeDisplayText, normalizeMeetingText } from '../lib/textNormalize';
 import { buildActivityAnalytics, buildConversionFunnel, easternToday, weeklyActivityTrend } from '../lib/activityAnalytics';
+import { EVENT_META, eventTimeLabel, shiftDay } from '../lib/activityLog';
 import { mergeDashboardMeetings } from '../lib/calendarEvents';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState, ModalLayout } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
@@ -742,41 +743,9 @@ function WeeklyProductionScorecard({ data }) {
 // ── Daily Activity Log ────────────────────────────────────────────────────────
 // An itemized, timestamped record of every action for a chosen day, built from
 // the same classified analytics events that feed the metric counts — so what
-// you see here is exactly what the totals are made of.
-const EVENT_META = {
-  no_answer:          { icon: '📵', label: 'No answer',           tone: 'text-slate-400' },
-  voicemail:          { icon: '📩', label: 'Left voicemail',      tone: 'text-blue-300' },
-  conversation:       { icon: '💬', label: 'Conversation',        tone: 'text-green-300' },
-  appointment:        { icon: '📅', label: 'Appointment set',     tone: 'text-amber-300' },
-  not_interested:     { icon: '🚫', label: 'Not interested',      tone: 'text-red-300' },
-  callback:           { icon: '🔄', label: 'Callback scheduled',  tone: 'text-purple-300' },
-  call:               { icon: '📞', label: 'Call',                tone: 'text-slate-400' },
-  email:              { icon: '📧', label: 'Email',               tone: 'text-blue-300' },
-  tractiq_report_sent:{ icon: '📈', label: 'TractIQ report sent', tone: 'text-emerald-300' },
-  meeting:            { icon: '📅', label: 'Meeting set',         tone: 'text-amber-300' },
-  bov:                { icon: '📊', label: 'BOV',                 tone: 'text-emerald-300' },
-  research:           { icon: '🔍', label: 'Research',            tone: 'text-slate-400' },
-  request_financials: { icon: '📄', label: 'Requested financials',tone: 'text-slate-300' },
-  follow_up:          { icon: '🔁', label: 'Follow-up',           tone: 'text-slate-300' },
-  contract:           { icon: '📝', label: 'Contract',            tone: 'text-emerald-300' },
-  owner_identified:   { icon: '⭐', label: 'Owner identified',    tone: 'text-amber-300' },
-};
-
-function shiftDay(dateString, days) {
-  const d = new Date(`${dateString}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function eventTimeLabel(occurredAt) {
-  if (!occurredAt) return '';
-  const d = new Date(occurredAt);
-  if (Number.isNaN(d.getTime())) return '';
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit',
-  }).format(d);
-}
-
+// you see here is exactly what the totals are made of. Presentation helpers
+// (EVENT_META / eventTimeLabel / shiftDay) are shared with the Call Mode
+// "Today" panel via src/lib/activityLog.js.
 function DailyActivityLog({ events, onOpenEvent }) {
   const [day, setDay] = useState(easternToday());
   const dayEvents = useMemo(

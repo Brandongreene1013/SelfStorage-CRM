@@ -17,7 +17,8 @@ import { ACTION_TYPES, CALL_ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCE
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, buildCallbackTaskQueue, mergeQueueContact, TASK_TYPE_MAP } from './tasks';
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
-import { createActivityEventId } from '../lib/activityAnalytics';
+import { createActivityEventId, buildActivityAnalytics, easternToday } from '../lib/activityAnalytics';
+import { EVENT_META, eventTimeLabel } from '../lib/activityLog';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -3522,6 +3523,76 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
   );
 }
 
+// Live "Today" panel for the Call Mode rail — a running record of what the
+// broker has logged today, straight from the shared analytics events (the same
+// data behind the Dashboard totals), so it ticks up the moment an outcome is
+// logged. Collapsible to stay out of the way on a phone.
+function CallModeTodayPanel({ events, onOpenContact }) {
+  const [open, setOpen] = useState(true);
+  const tally = [];
+  const counts = {};
+  events.forEach(e => { counts[e.type] = (counts[e.type] ?? 0) + 1; });
+  Object.entries(counts).sort((a, b) => b[1] - a[1]).forEach(([type, count]) => tally.push([type, count]));
+
+  return (
+    <div className="bg-slate-900 border border-slate-800/90 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/[0.03] overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-slate-800/40 transition-colors"
+      >
+        <span className="flex items-baseline gap-2 min-w-0">
+          <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">Today</span>
+          <span className="text-[11px] font-semibold text-slate-500 tabular-nums">{events.length} action{events.length === 1 ? '' : 's'}</span>
+        </span>
+        <span className="text-slate-500 text-xs flex-shrink-0">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-3">
+          {events.length === 0 ? (
+            <p className="text-xs text-slate-600 italic py-2">Nothing logged yet — your call outcomes will appear here as you work the queue.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {tally.map(([type, count]) => {
+                  const meta = EVENT_META[type] ?? { icon: '•', label: type };
+                  return (
+                    <span key={type} className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-300 bg-slate-800/70 ring-1 ring-inset ring-white/10 rounded-full px-2 py-0.5">
+                      <span>{meta.icon}</span>{meta.label}<span className="tabular-nums text-slate-400">{count}</span>
+                    </span>
+                  );
+                })}
+              </div>
+              <ul className="space-y-0.5 max-h-64 overflow-y-auto scrollbar-thin -mx-1 px-1">
+                {events.slice(0, 20).map(event => {
+                  const meta = EVENT_META[event.type] ?? { icon: '•', label: event.type, tone: 'text-slate-400' };
+                  const clickable = event.relatedType === 'contact';
+                  return (
+                    <li key={event.key}>
+                      <button
+                        type="button"
+                        onClick={() => clickable && onOpenContact?.(event.relatedId)}
+                        className={`w-full text-left flex items-start gap-2 rounded-lg px-1.5 py-1.5 transition-colors ${clickable ? 'hover:bg-slate-800/60 cursor-pointer' : 'cursor-default'}`}
+                      >
+                        <span className="text-sm leading-none mt-0.5 w-4 text-center flex-shrink-0">{meta.icon}</span>
+                        <span className="w-12 flex-shrink-0 text-[10px] font-semibold text-slate-500 tabular-nums mt-0.5">{eventTimeLabel(event.occurredAt)}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className={`text-[11px] font-bold ${meta.tone}`}>{meta.label}</span>
+                          <span className="block text-xs font-semibold text-slate-300 truncate">{event.label}</span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, sharedContactInfo, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
   const queueCurrent = queue[Math.min(index, Math.max(queue.length - 1, 0))];
   const latestContact = allContacts.find(c => c.id === queueCurrent?.id);
@@ -3552,6 +3623,14 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const activePostOutcome = postOutcome;
   const masterStatus = current?.listId === masterListId ? 'in' : movedMasterId === current?.id ? 'moved' : 'available';
   const relatedOwnerCandidates = buildRelatedOwnerCandidates(current, contacts, masterListId, { dismissedKeys: dismissedDuplicateKeys, sharedContactInfo });
+
+  // Today's logged activity for the live "Today" rail panel — recomputed only
+  // when contacts change (i.e. right after an outcome is logged), so it ticks up.
+  const todayActivity = useMemo(() => buildActivityAnalytics({ contacts }, easternToday()).todayEvents, [contacts]);
+  function openTodayContact(contactId) {
+    const idx = queue.findIndex(c => c?.id === contactId);
+    if (idx >= 0) setIndex(idx);
+  }
 
   // "Not the same owner" — reuse the shared duplicate_dismissals store so the
   // wrong suggestion stays gone (and a matching Duplicate Review dismissal is
@@ -4243,6 +4322,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
         </div>
 
         <aside className="space-y-4">
+          <CallModeTodayPanel events={todayActivity} onOpenContact={openTodayContact} />
+
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-2">
             <div className="flex gap-1 bg-slate-950/70 rounded-lg p-1">
               {[
