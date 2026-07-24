@@ -231,10 +231,16 @@ No pending migrations.
 - Shared `Button` primitive (`src/components/ui/Button.jsx`): semibold Inter,
   lit-edge inset ring, colored glow, active press micro-interaction — lifts
   every button app-wide.
-- NEXT UI PASSES (queued): apply the same craft to card primitives
-  (`SectionCard`, `MetricCard`, `StatusBadge`), modals (`ModalLayout`), and
-  reduce the heavy `font-black` usage across dashboards to Inter 600–700 for a
-  calmer enterprise hierarchy.
+- Pass 2 shipped 2026-07-23: card primitives (`SectionCard`, `MetricCard`)
+  got hairline borders + depth shadow + lit inset ring; `StatusBadge` moved to
+  soft-fill + inset-ring pills; `ModalLayout` got deeper blur, a long-throw
+  shadow, and a scale/fade entrance (`animate-modal-in`, reduced-motion aware);
+  Dashboard `font-black`→`font-bold` (44 spots) + tabular metric numbers.
+- NEXT UI PASSES (queued): the `font-black`→`font-bold` sweep still has ~97
+  instances in other components (RecentActivity, Database/Call Mode cards,
+  MailerLists, etc.) — finish it for a uniformly calm hierarchy. Then refine
+  form controls (inputs/selects) to a shared focus/hover treatment, and the
+  Pipeline kanban column headers + cards to match the new card surfaces.
 
 ## Silent write-failure audit (in progress)
 - FIXED 2026-07-23: Call Mode `saveNotes()` reported failed saves as "Saved" and
