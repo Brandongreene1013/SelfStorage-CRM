@@ -316,11 +316,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col">
-      {/* Header */}
-      <header className="bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
+      {/* Header — sticky app shell */}
+      <header className="sticky top-0 z-30 bg-slate-900/80 supports-[backdrop-filter]:bg-slate-900/65 backdrop-blur-xl border-b border-white/[0.06] shadow-[0_1px_0_0_rgba(255,255,255,0.03),0_8px_24px_-12px_rgba(0,0,0,0.6)] px-4 sm:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-2.5">
           {/* Storage Hunters logo — Superman-inspired shield */}
-          <div className="w-10 h-10 flex-shrink-0" style={{ filter: 'drop-shadow(0 2px 6px rgba(245,158,11,0.5))' }}>
+          <div className="w-9 h-9 flex-shrink-0" style={{ filter: 'drop-shadow(0 2px 8px rgba(245,158,11,0.35))' }}>
             <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
               {/* Shield shape */}
               <path d="M20 2 L36 8 L36 22 C36 31 20 38 20 38 C20 38 4 31 4 22 L4 8 Z"
@@ -334,25 +334,29 @@ export default function App() {
                 fontFamily="Arial Black, sans-serif" fill="#f59e0b" letterSpacing="-1">S</text>
             </svg>
           </div>
-          <div>
-            <h1 className="text-base font-black text-white leading-tight tracking-tight">Storage Hunters</h1>
-            <p className="text-xs text-slate-500 leading-tight">Investment Brokerage Pipeline</p>
+          <div className="leading-none">
+            <h1 className="text-[15px] font-bold text-white tracking-[-0.02em]">Storage Hunters</h1>
+            <p className="text-[11px] font-medium text-slate-500 mt-0.5 tracking-wide">Investment Brokerage Platform</p>
           </div>
         </div>
 
-        {/* Nav tabs */}
-        <nav className="flex gap-1 bg-slate-800 rounded-xl p-1 overflow-x-auto max-w-full scrollbar-thin">
+        {/* Nav — segmented control */}
+        <nav className="flex items-center gap-0.5 bg-slate-950/60 ring-1 ring-white/[0.06] rounded-xl p-1 overflow-x-auto max-w-full scrollbar-thin shadow-inner">
           {VIEWS.map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all flex-shrink-0 ${
+              aria-current={view === v ? 'page' : undefined}
+              className={`relative px-3.5 py-1.5 rounded-lg text-[13px] font-medium tracking-tight transition-colors duration-150 flex-shrink-0 ${
                 view === v
-                  ? 'bg-amber-500 text-slate-900 shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'text-white bg-slate-800 shadow-sm ring-1 ring-white/10'
+                  : 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.04]'
               }`}
             >
               {v}
+              {view === v && (
+                <span className="absolute -bottom-px left-1/2 -translate-x-1/2 h-0.5 w-5 rounded-full bg-amber-500" />
+              )}
             </button>
           ))}
         </nav>
