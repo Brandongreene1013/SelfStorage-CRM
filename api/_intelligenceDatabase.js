@@ -19,9 +19,11 @@ const TREASURY_PREFIX = 'ust_';
 let _client = null;
 export function intelligenceSupabase() {
   if (_client) return _client;
-  const url = process.env.SUPABASE_URL;
+  // Match the repo convention (_dailyActivity.js): the project URL is not a
+  // secret and is defaulted; only the service-role KEY must come from env.
+  const url = process.env.SUPABASE_URL || 'https://rpoiphoqwgvbiyygfjrm.supabase.co';
   const key = process.env.SUPABASE_SERVICE_KEY;
-  if (!url || !key) return null; // caller treats null as missing_config
+  if (!key) return null; // caller treats null as missing_config (configured:false)
   _client = createClient(url, key, { auth: { persistSession: false } });
   return _client;
 }
