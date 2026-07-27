@@ -72,6 +72,26 @@ const contact = {
 }
 
 {
+  const analytics = buildActivityAnalytics({
+    contacts: [contact],
+    manualAdjustments: [{
+      activityDate: reportingDate,
+      calls: 4,
+      ownersIdentified: 2,
+      voicemails: 3,
+      conversations: 1,
+      emails: 5,
+    }],
+  }, reportingDate);
+  assert.equal(analytics.today.calls, 5);
+  assert.equal(analytics.today.ownersIdentified, 3);
+  assert.equal(analytics.today.voicemails, 4);
+  assert.equal(analytics.today.conversations, 2);
+  assert.equal(analytics.today.emails, 6);
+  assert.equal(analytics.todayEvents.filter(event => event.type === 'manual_adjustment').length, 1);
+}
+
+{
   const captureEntries = buildCaptureLogEntries(null, {
     name: 'New Client Owner',
     email: 'Owner@Example.com',

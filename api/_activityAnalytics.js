@@ -346,12 +346,40 @@ function emailActivityEvent(email, relatedRecords) {
   };
 }
 
+function manualAdjustmentEvent(adjustment) {
+  const reportingDate = String(adjustment?.activityDate || adjustment?.activity_date || '').slice(0, 10);
+  if (!reportingDate) return null;
+  const metrics = {};
+  ['calls', 'ownersIdentified', 'voicemails', 'conversations', 'emails'].forEach(key => {
+    const amount = Math.max(0, Math.floor(Number(adjustment?.[key]) || 0));
+    if (amount > 0) metrics[key] = amount;
+  });
+  if (Object.keys(metrics).length === 0) return null;
+  const detail = Object.entries(metrics)
+    .map(([key, amount]) => `${key}: ${amount}`)
+    .join(' · ');
+  return {
+    key: `manual-adjustment:${reportingDate}`,
+    type: 'manual_adjustment',
+    reportingDate,
+    occurredAt: `${reportingDate}T12:00:00`,
+    relatedType: 'manual',
+    relatedId: reportingDate,
+    ownerKey: null,
+    label: 'Outside CRM activity',
+    detail,
+    source: 'manual_adjustment',
+    metrics,
+  };
+}
+
 export function deriveActivityEvents({
   contacts = [],
   clients = [],
   tasks = [],
   meetings = [],
   emailEvents = [],
+  manualAdjustments = [],
 } = {}) {
   const relatedRecords = {
     contacts: new Map(contacts.map(record => [record.id, record])),
@@ -388,6 +416,11 @@ export function deriveActivityEvents({
 
   emailEvents.forEach(email => {
     const event = emailActivityEvent(email, relatedRecords);
+    if (event) events.push(event);
+  });
+
+  manualAdjustments.forEach(adjustment => {
+    const event = manualAdjustmentEvent(adjustment);
     if (event) events.push(event);
   });
 
@@ -432,6 +465,7 @@ export function aggregateActivityMetrics(events, reportingDates) {
   const worked = new Set();
   const databasedOwners = new Set();
   const gatheredEmails = new Set();
+  let manualOwnersDatabased = 0;
 
   selected.forEach(event => {
     if (
@@ -445,8 +479,12 @@ export function aggregateActivityMetrics(events, reportingDates) {
       }
     });
     if (event.metrics?.ownersIdentified) {
-      const identity = normalizedText(event.label) || event.ownerKey || event.key;
-      databasedOwners.add(`${event.reportingDate}:${identity}`);
+      if (event.type === 'manual_adjustment') {
+        manualOwnersDatabased += event.metrics.ownersIdentified;
+      } else {
+        const identity = normalizedText(event.label) || event.ownerKey || event.key;
+        databasedOwners.add(`${event.reportingDate}:${identity}`);
+      }
     }
     if (event.type === 'email_gathered') {
       const identity = normalizedText(event.detail) || event.ownerKey || event.key;
@@ -458,7 +496,7 @@ export function aggregateActivityMetrics(events, reportingDates) {
   });
 
   metrics.ownersWorked = worked.size;
-  metrics.ownersIdentified = databasedOwners.size;
+  metrics.ownersIdentified = databasedOwners.size + manualOwnersDatabased;
   metrics.emails += gatheredEmails.size;
   return metrics;
 }

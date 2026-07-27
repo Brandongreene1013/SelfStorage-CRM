@@ -19,6 +19,7 @@ export const EVENT_META = {
   follow_up:          { icon: '🔁', label: 'Follow-up',           tone: 'text-slate-300' },
   contract:           { icon: '📝', label: 'Contract',            tone: 'text-emerald-300' },
   owner_identified:   { icon: '⭐', label: 'Owner identified',    tone: 'text-amber-300' },
+  manual_adjustment:  { icon: '+', label: 'Outside CRM activity', tone: 'text-amber-300' },
 };
 
 export function eventMeta(type) {

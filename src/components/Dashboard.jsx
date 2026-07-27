@@ -5,6 +5,7 @@ import RecentActivity from './RecentActivity';
 import NeedsReview from './NeedsReview';
 import ActionCenterModal from './ActionCenterModal';
 import { PROGRESS_FIELDS } from '../hooks/useDailyProgress';
+import { MANUAL_ACTIVITY_KEYS, useManualActivityAdjustments } from '../hooks/useManualActivityAdjustments';
 import { buildCommissionSummary, formatMoney } from '../lib/dealValue';
 import { normalizeDisplayText, normalizeMeetingText } from '../lib/textNormalize';
 import { buildActivityAnalytics, buildConversionFunnel, easternToday, weeklyActivityTrend } from '../lib/activityAnalytics';
@@ -1130,7 +1131,16 @@ function ManualActivityModal({ onLog, onClose }) {
   );
 }
 
-function DailyProduction({ today, todayLabel }) {
+function DailyProduction({
+  today,
+  derivedToday,
+  manualToday,
+  todayLabel,
+  onSaveManual,
+  manualLoaded,
+  manualSaving,
+  manualError,
+}) {
   const fields = [
     ['calls', 'Outbound Dials'],
     ['ownersIdentified', 'Owners Databased'],
@@ -1138,21 +1148,115 @@ function DailyProduction({ today, todayLabel }) {
     ['conversations', 'Owners Reached / Engaged Conversations'],
     ['emails', 'Emails Gathered / Sent'],
   ];
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => Object.fromEntries(
+    MANUAL_ACTIVITY_KEYS.map(key => [key, manualToday?.[key] ?? 0]),
+  ));
+  const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    if (!editing) {
+      setDraft(Object.fromEntries(
+        MANUAL_ACTIVITY_KEYS.map(key => [key, manualToday?.[key] ?? 0]),
+      ));
+    }
+  }, [editing, manualToday]);
+
+  function beginEditing() {
+    setDraft(Object.fromEntries(
+      MANUAL_ACTIVITY_KEYS.map(key => [key, manualToday?.[key] ?? 0]),
+    ));
+    setSaveError('');
+    setEditing(true);
+  }
+
+  async function saveAdjustments(event) {
+    event.preventDefault();
+    const result = await onSaveManual?.(draft);
+    if (result?.error) {
+      setSaveError(result.error);
+      return;
+    }
+    setSaveError('');
+    setEditing(false);
+  }
 
   return (
     <SectionCard
       title="Daily Activity"
-      subtitle={`${todayLabel} · derived from saved CRM activity`}
+      subtitle={`${todayLabel} · CRM activity plus outside work`}
       className="p-4"
+      actions={!editing ? (
+        <button
+          type="button"
+          onClick={beginEditing}
+          disabled={!manualLoaded}
+          className="h-8 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-bold text-amber-300 hover:bg-amber-500/15 disabled:cursor-wait disabled:opacity-50"
+        >
+          Adjust stats
+        </button>
+      ) : null}
     >
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
-        {fields.map(([key, label]) => (
-            <div key={key} className="bg-slate-950/60 px-4 py-3">
+      <form onSubmit={saveAdjustments}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
+          {fields.map(([key, label]) => {
+            const outside = Math.max(0, Math.floor(Number(editing ? draft[key] : manualToday?.[key]) || 0));
+            const crmValue = derivedToday?.[key] ?? 0;
+            const combined = crmValue + outside;
+            return (
+            <div key={key} className={`bg-slate-950/60 px-4 py-3 ${key === 'emails' ? 'col-span-2' : ''}`}>
               <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-500 leading-tight">{label}</span>
-              <p className="mt-2 text-3xl font-bold leading-none tabular-nums text-slate-100">{today[key] ?? 0}</p>
+              {editing ? (
+                <>
+                  <label className="mt-2 block">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wide text-amber-400/80">Outside CRM</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={draft[key]}
+                      onChange={event => setDraft(previous => ({ ...previous, [key]: event.target.value }))}
+                      className="mt-1 w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xl font-bold tabular-nums text-white outline-none focus:border-amber-500"
+                    />
+                  </label>
+                  <p className="mt-1 text-[10px] text-slate-500">CRM {crmValue} · total {combined}</p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-2 text-3xl font-bold leading-none tabular-nums text-slate-100">{today[key] ?? 0}</p>
+                  {outside > 0 && <p className="mt-1 text-[10px] text-amber-400/80">Includes {outside} outside CRM</p>}
+                </>
+              )}
             </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+        {editing && (
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="text-[11px] text-slate-500">Enter only activity completed outside the CRM. CRM-recorded totals stay intact.</p>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                disabled={manualSaving}
+                className="h-8 rounded-lg border border-slate-700 px-3 text-xs font-bold text-slate-400 hover:text-white disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={manualSaving}
+                className="h-8 rounded-lg bg-amber-500 px-3 text-xs font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50"
+              >
+                {manualSaving ? 'Saving…' : 'Save adjustments'}
+              </button>
+            </div>
+          </div>
+        )}
+        {(saveError || manualError) && (
+          <p role="alert" className="mt-2 text-xs text-red-300">{saveError || manualError}</p>
+        )}
+      </form>
     </SectionCard>
   );
 }
@@ -1705,6 +1809,7 @@ export default function Dashboard({
   clients, contacts = [], meetings = [], calendarEvents = [], onNavigateCalendar,
   onStartCallMode, onOpenContact, onEditClient, onLogClientAction, onDeleteClientAction, onMoveToMasterDB, masterListId, review, taskApi, dealValueMigrationNeeded, analyticsMigrationNeeded,
 }) {
+  const manualActivity = useManualActivityAdjustments();
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
   const sellers     = clients.filter(c => c.type === 'Seller').length;
   const inContract  = clients.filter(c => c.stageId === 8).length;
@@ -1719,12 +1824,19 @@ export default function Dashboard({
   }));
 
   const [showReporting, setShowReporting] = useState(false);
-  const analytics = useMemo(() => buildActivityAnalytics({
+  const derivedAnalytics = useMemo(() => buildActivityAnalytics({
     clients,
     contacts,
     tasks: taskApi?.tasks ?? [],
     meetings,
   }), [clients, contacts, taskApi?.tasks, meetings]);
+  const analytics = useMemo(() => buildActivityAnalytics({
+    clients,
+    contacts,
+    tasks: taskApi?.tasks ?? [],
+    meetings,
+    manualAdjustments: manualActivity.adjustments,
+  }), [clients, contacts, taskApi?.tasks, meetings, manualActivity.adjustments]);
   const today = analytics.today;
   const weeklyProduction = analytics.week;
   const productionTrend = useMemo(
@@ -1822,7 +1934,13 @@ export default function Dashboard({
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(340px,0.95fr)_minmax(420px,1.15fr)_minmax(320px,0.9fr)] gap-4 items-start">
         <DailyProduction
           today={today}
+          derivedToday={derivedAnalytics.today}
+          manualToday={manualActivity.today}
           todayLabel={todayLabel}
+          onSaveManual={manualActivity.saveToday}
+          manualLoaded={manualActivity.loaded}
+          manualSaving={manualActivity.saving}
+          manualError={manualActivity.error}
         />
 
         <DashboardTasks

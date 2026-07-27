@@ -39,6 +39,69 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function manualAdjustmentsFromReviews(reviews) {
+  return asArray(reviews).flatMap(review => {
+    const adjustment = review?.approved_counts?.manualAdjustments;
+    return adjustment ? [{
+      activityDate: review.activity_date,
+      ...adjustment,
+    }] : [];
+  });
+}
+
+const MANUAL_ACTIVITY_KEYS = [
+  'calls',
+  'ownersIdentified',
+  'voicemails',
+  'conversations',
+  'emails',
+];
+
+function sanitizeManualAdjustments(value = {}) {
+  return Object.fromEntries(MANUAL_ACTIVITY_KEYS.map(key => [
+    key,
+    Math.max(0, Math.floor(Number(value[key]) || 0)),
+  ]));
+}
+
+export async function listManualActivityAdjustments() {
+  const { data, error } = await supabase
+    .from('daily_activity_reviews')
+    .select('activity_date,approved_counts')
+    .order('activity_date', { ascending: true });
+  if (error) throw new Error(error.message);
+  return manualAdjustmentsFromReviews(data).map(adjustment => ({
+    ...sanitizeManualAdjustments(adjustment),
+    activityDate: adjustment.activityDate,
+  }));
+}
+
+export async function saveManualActivityAdjustments(activityDate, value) {
+  const adjustments = sanitizeManualAdjustments(value);
+  const { data: existing, error: readError } = await supabase
+    .from('daily_activity_reviews')
+    .select('approved_counts')
+    .eq('activity_date', activityDate)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+
+  const approvedCounts = {
+    ...(existing?.approved_counts ?? {}),
+    manualAdjustments: adjustments,
+  };
+  const query = existing
+    ? supabase
+      .from('daily_activity_reviews')
+      .update({ approved_counts: approvedCounts })
+      .eq('activity_date', activityDate)
+    : supabase
+      .from('daily_activity_reviews')
+      .insert([{ activity_date: activityDate, approved_counts: approvedCounts }]);
+  const { error } = await query;
+  if (error) throw new Error(error.message);
+  return { activityDate, adjustments };
+}
+
 function activityEmailRecipients() {
   return String(process.env.ACTIVITY_REVIEW_EMAIL || BRANDON_EMAIL)
     .split(',')
@@ -101,15 +164,17 @@ export async function analyzeDailyActivity(activityDate = easternDateString()) {
     { data: tasks, error: tasksError },
     { data: meetings, error: meetingsError },
     { data: emailEvents, error: emailError },
+    { data: reviews, error: reviewsError },
   ] = await Promise.all([
     supabase.from('contacts').select('*'),
     supabase.from('clients').select('*'),
     supabase.from('tasks').select('*'),
     supabase.from('meetings').select('*'),
     supabase.from('daily_email_events').select('*').eq('activity_date', activityDate),
+    supabase.from('daily_activity_reviews').select('activity_date,approved_counts').eq('activity_date', activityDate),
   ]);
 
-  const firstError = contactsError || clientsError || tasksError || meetingsError || emailError;
+  const firstError = contactsError || clientsError || tasksError || meetingsError || emailError || reviewsError;
   if (firstError) throw new Error(firstError.message);
 
   const normalizedTasks = (tasks ?? []).map(task => ({
@@ -126,6 +191,7 @@ export async function analyzeDailyActivity(activityDate = easternDateString()) {
     tasks: normalizedTasks,
     meetings: meetings ?? [],
     emailEvents: emailEvents ?? [],
+    manualAdjustments: manualAdjustmentsFromReviews(reviews),
   }, activityDate);
   const evidence = analytics.todayEvents.map(event => ({
     type: event.type,
@@ -153,15 +219,17 @@ export async function analyzeWeeklyDigest(reportingDate = easternDateString()) {
     { data: tasks, error: tasksError },
     { data: meetings, error: meetingsError },
     { data: emailEvents, error: emailError },
+    { data: reviews, error: reviewsError },
   ] = await Promise.all([
     supabase.from('contacts').select('*'),
     supabase.from('clients').select('*'),
     supabase.from('tasks').select('*'),
     supabase.from('meetings').select('*'),
     supabase.from('daily_email_events').select('*'),
+    supabase.from('daily_activity_reviews').select('activity_date,approved_counts'),
   ]);
 
-  const firstError = contactsError || clientsError || tasksError || meetingsError || emailError;
+  const firstError = contactsError || clientsError || tasksError || meetingsError || emailError || reviewsError;
   if (firstError) throw new Error(firstError.message);
 
   const normalizedTasks = (tasks ?? []).map(task => ({
@@ -178,6 +246,7 @@ export async function analyzeWeeklyDigest(reportingDate = easternDateString()) {
     tasks: normalizedTasks,
     meetings: meetings ?? [],
     emailEvents: emailEvents ?? [],
+    manualAdjustments: manualAdjustmentsFromReviews(reviews),
   }, reportingDate);
 }
 
@@ -269,17 +338,27 @@ export async function upsertReview(analysis, status = 'draft', emailStatus = nul
 }
 
 export async function finalizeDailyActivity(activityDate, counts, status = 'auto_logged') {
+  const { data: existingReview, error: readError } = await supabase
+    .from('daily_activity_reviews')
+    .select('approved_counts')
+    .eq('activity_date', activityDate)
+    .maybeSingle();
+  if (readError) throw new Error(readError.message);
+  const manualAdjustments = existingReview?.approved_counts?.manualAdjustments;
+  const approvedCounts = manualAdjustments
+    ? { ...counts, manualAdjustments }
+    : counts;
   const { error: reviewError } = await supabase
     .from('daily_activity_reviews')
     .update({
       status,
       finalized_at: new Date().toISOString(),
-      approved_counts: counts,
+      approved_counts: approvedCounts,
     })
     .eq('activity_date', activityDate);
   if (reviewError) throw new Error(reviewError.message);
 
-  return { activityDate, counts, persistedTo: 'daily_activity_reviews' };
+  return { activityDate, counts: approvedCounts, persistedTo: 'daily_activity_reviews' };
 }
 
 export function renderActivityEmail(analysis, mode = 'review') {

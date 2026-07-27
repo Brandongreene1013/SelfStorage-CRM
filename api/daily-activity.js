@@ -6,10 +6,12 @@ import {
   finalizeDailyActivity,
   isFridayEastern,
   isWeekdayEastern,
+  listManualActivityAdjustments,
   renderActivityEmail,
   renderWeeklyDigestEmail,
   sendActivityEmail,
   sendWeeklyDigestEmail,
+  saveManualActivityAdjustments,
   supabase,
   upsertReview,
 } from './_dailyActivity.js';
@@ -38,6 +40,16 @@ export default async function handler(req, res) {
   }
 
   try {
+    if (mode === 'manual-adjustments') {
+      const adjustments = await listManualActivityAdjustments();
+      return res.status(200).json({ ok: true, adjustments });
+    }
+
+    if (mode === 'save-manual-adjustments') {
+      const saved = await saveManualActivityAdjustments(activityDate, body.adjustments);
+      return res.status(200).json({ ok: true, ...saved });
+    }
+
     // Friday-evening weekly digest. `weekly-digest-due` is the cron guard: it
     // fires only in the 5 PM ET hour on Fridays so the hourly cron sweep sends
     // exactly one digest per week. `weekly-digest` sends unconditionally
