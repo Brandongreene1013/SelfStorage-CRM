@@ -14,6 +14,8 @@ This document covers the clipboard-first Salesforce screenshot importer in Analy
 8. The RPC locks the session and atomically creates/reuses/updates canonical records and relationships. Screenshots are deleted after success.
 9. `reject` deletes staged screenshots without changing canonical CRM records.
 
+Clipboard images pasted anywhere on the Analyst screen automatically switch into Import Salesforce and begin the staged upload. Normal text clipboard content is not intercepted, so Ctrl+C/Ctrl+V continues to work normally in Analyst text fields. Once import mode is open, its full-page paste listener accepts additional screenshots without requiring focus inside a small drop zone.
+
 All POST requests use `/api/salesforce-import` with an `action` field. Session actions also require `importId` and `capabilityToken`.
 
 | Action | Purpose |
@@ -109,4 +111,3 @@ Do not mark the feature production-ready until this checklist passes against the
 ## Rollback
 
 Turn `SALESFORCE_SCREENSHOT_IMPORT_ENABLED` off first; the Analyst tab disappears without affecting underwriting. The additive columns and tables can remain safely unused. If database removal is later required, export/inspect imported rows by `source = 'Salesforce Screenshot'`, preserve canonical records, then drop only the staging tables, RPC, private bucket, relationship table if unused elsewhere, and optional extension columns in a separately reviewed migration.
-

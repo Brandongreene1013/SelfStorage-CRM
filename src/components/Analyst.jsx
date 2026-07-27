@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { downloadFilledModel } from '../lib/excelModel';
 import { downloadCrmSpreadsheet } from '../lib/crmSpreadsheet';
-import { getSalesforceImportConfig } from '../lib/salesforceImportClient';
+import { clipboardImageFiles, getSalesforceImportConfig } from '../lib/salesforceImportClient';
 import SalesforceScreenshotImport from './analyst/SalesforceScreenshotImport';
 
 // Lightweight markdown-ish renderer: **bold**, line breaks, bullet dashes.
@@ -118,6 +118,7 @@ export default function Analyst({ onOpenImportedFacility }) {
   const [error, setError] = useState(null);
   const [mode, setMode] = useState('analyst');
   const [salesforceEnabled, setSalesforceEnabled] = useState(false);
+  const [pendingSalesforceImages, setPendingSalesforceImages] = useState([]);
   const scrollRef = useRef(null);
   const fileRef = useRef(null);
 
@@ -132,6 +133,19 @@ export default function Analyst({ onOpenImportedFacility }) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!salesforceEnabled || mode !== 'analyst') return undefined;
+    const handleImagePaste = event => {
+      const images = clipboardImageFiles(event.clipboardData);
+      if (!images.length) return;
+      event.preventDefault();
+      setPendingSalesforceImages(images);
+      setMode('salesforce');
+    };
+    document.addEventListener('paste', handleImagePaste);
+    return () => document.removeEventListener('paste', handleImagePaste);
+  }, [mode, salesforceEnabled]);
 
   async function handleFile(e) {
     const files = Array.from(e.target.files || []);
@@ -239,7 +253,11 @@ export default function Analyst({ onOpenImportedFacility }) {
       </div>
 
       {mode === 'salesforce' && salesforceEnabled ? (
-        <SalesforceScreenshotImport onOpenFacility={onOpenImportedFacility} />
+        <SalesforceScreenshotImport
+          initialFiles={pendingSalesforceImages}
+          onInitialFilesConsumed={() => setPendingSalesforceImages([])}
+          onOpenFacility={onOpenImportedFacility}
+        />
       ) : (
       <>
       {/* Chat thread */}

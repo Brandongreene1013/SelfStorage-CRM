@@ -126,7 +126,7 @@ function EntitySection({ title, entity, fields, onChange, selected, onSelected, 
   );
 }
 
-export default function SalesforceScreenshotImport({ onOpenFacility }) {
+export default function SalesforceScreenshotImport({ initialFiles = [], onInitialFilesConsumed, onOpenFacility }) {
   const [credentials, setCredentials] = useState(null);
   const [session, setSession] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -136,6 +136,7 @@ export default function SalesforceScreenshotImport({ onOpenFacility }) {
   const [error, setError] = useState('');
   const [pasteHint, setPasteHint] = useState('Paste Salesforce screenshots with Ctrl+V');
   const fileRef = useRef(null);
+  const pasteAreaRef = useRef(null);
   const idempotencyRef = useRef(crypto.randomUUID());
 
   const syncSession = useCallback(next => {
@@ -184,6 +185,16 @@ export default function SalesforceScreenshotImport({ onOpenFacility }) {
       setBusy('');
     }
   }, [ensureSession, syncSession]);
+
+  useEffect(() => {
+    pasteAreaRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!initialFiles.length) return;
+    onInitialFilesConsumed?.();
+    addFiles(initialFiles, 'clipboard_screenshot');
+  }, [addFiles, initialFiles, onInitialFilesConsumed]);
 
   useEffect(() => {
     const paste = event => {
@@ -447,14 +458,22 @@ export default function SalesforceScreenshotImport({ onOpenFacility }) {
   return (
     <div className="space-y-4">
       <div
+        ref={pasteAreaRef}
+        tabIndex={0}
         onDragOver={event => event.preventDefault()}
         onDrop={event => { event.preventDefault(); addFiles(event.dataTransfer.files); }}
+        onKeyDown={event => {
+          if (event.key === 'Enter' && session?.images?.length && !busy) {
+            event.preventDefault();
+            analyze().catch(() => {});
+          }
+        }}
         className="rounded-2xl border-2 border-dashed border-slate-700 bg-slate-900/35 p-8 text-center transition hover:border-amber-500/50"
       >
         <div className="text-3xl">▣</div>
         <h3 className="mt-2 font-bold text-white">Salesforce screenshot import</h3>
         <p className="mx-auto mt-2 max-w-xl text-sm text-slate-400">
-          Copy one or several screenshots from Salesforce and press Ctrl+V. Nothing is written to the CRM until you review and approve it.
+          Copy one or several screenshots from Salesforce and press Ctrl+V or Cmd+V anywhere in Analyst. Nothing is written to the CRM until you review and approve it.
         </p>
         <p className="mt-3 text-xs font-semibold text-amber-300">{pasteHint}</p>
         <button onClick={() => fileRef.current?.click()} className="mt-4 rounded-lg border border-slate-700 px-4 py-2 text-xs font-bold text-slate-300 hover:border-amber-500/50">Choose screenshots</button>
