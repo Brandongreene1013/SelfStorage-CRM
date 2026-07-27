@@ -19,6 +19,7 @@ import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, buildCallbackTaskQue
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
 import { createActivityEventId, buildActivityAnalytics, easternToday } from '../lib/activityAnalytics';
 import { EVENT_META, eventTimeLabel } from '../lib/activityLog';
+import { sortDatabaseContacts } from '../lib/databaseSort';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -53,6 +54,16 @@ const STATUS_VARIANT = {
 };
 
 const CALL_OUTCOMES = CALL_ACTION_TYPES;
+
+const DATABASE_SORT_OPTIONS = [
+  { value: 'default', label: 'Default order' },
+  { value: 'newest', label: 'Newest added' },
+  { value: 'oldest', label: 'Oldest added' },
+  { value: 'least_recently_contacted', label: 'Least recently contacted' },
+  { value: 'recently_contacted', label: 'Most recently contacted' },
+  { value: 'owner_az', label: 'Owner name A–Z' },
+  { value: 'facility_az', label: 'Facility name A–Z' },
+];
 
 const SOURCE_COLORS = {
   'Internal DB': 'bg-blue-600/20 text-blue-400 border-blue-600/30',
@@ -121,6 +132,11 @@ function appendDateToLogNote(note, label, value) {
 
 function contactDisplayName(contact) {
   return contact?.facilityName || contact?.ownerName || contact?.address || 'Unknown Property';
+}
+
+function hasUsableContactValue(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return Boolean(normalized && !['n/a', 'na', 'none', 'unknown', 'no phone', 'no email'].includes(normalized));
 }
 
 function EditableField({ label, value, placeholder, onChange, mono, href, type = 'text' }) {
@@ -2012,6 +2028,101 @@ function clearStoredCallSession() {
   try { localStorage.removeItem(CALL_SESSION_KEY); } catch { /* storage blocked */ }
 }
 
+function DatabaseFilterMenu({
+  values,
+  onChange,
+  onReset,
+  activeCount,
+  stateOptions,
+}) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(event) {
+      if (boxRef.current && !boxRef.current.contains(event.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [open]);
+
+  const selectClass = 'w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500';
+  const field = (label, key, options) => (
+    <label className="space-y-1">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
+      <select value={values[key]} onChange={event => onChange(key, event.target.value)} className={selectClass}>
+        {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </label>
+  );
+
+  return (
+    <div ref={boxRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-all ${
+          activeCount
+            ? 'border-amber-500/50 bg-amber-500/10 text-amber-300'
+            : 'border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-700'
+        }`}
+      >
+        Filter{activeCount ? ` (${activeCount})` : ''} ▾
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-40 mt-1.5 w-[min(620px,calc(100vw-32px))] rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl shadow-black/60">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-white">Filter contacts</p>
+              <p className="text-[11px] text-slate-500">Filters work together to narrow the list.</p>
+            </div>
+            {activeCount > 0 && (
+              <button type="button" onClick={onReset} className="text-xs font-semibold text-slate-400 hover:text-red-400">
+                Reset
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {field('Call status', 'status', [
+              { value: 'all', label: 'All statuses' },
+              ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })),
+            ])}
+            {field('Relationship', 'relationship', [
+              { value: 'all', label: 'All relationships' },
+              ...RELATIONSHIP_TYPES.map(type => ({ value: type.value, label: type.label })),
+            ])}
+            {field('Lead temperature', 'leadTemp', [
+              { value: 'all', label: 'All temperatures' },
+              ...LEAD_TEMPS.map(temp => ({ value: temp.value, label: temp.label })),
+              { value: 'none', label: 'Not rated' },
+            ])}
+            {field('Callback timing', 'callback', [
+              { value: 'all', label: 'Any callback timing' },
+              { value: 'today', label: 'Due today' },
+              { value: 'overdue', label: 'Overdue' },
+              { value: 'upcoming', label: 'Upcoming' },
+              { value: 'none', label: 'No callback scheduled' },
+            ])}
+            {field('State', 'state', [
+              { value: 'all', label: 'All states' },
+              ...stateOptions.map(state => ({ value: state, label: state })),
+            ])}
+            {field('Contact information', 'data', [
+              { value: 'all', label: 'Any completeness' },
+              { value: 'missing_name', label: 'Missing owner name' },
+              { value: 'missing_phone', label: 'Missing phone' },
+              { value: 'missing_email', label: 'Missing email' },
+              { value: 'missing_address', label: 'Missing facility address' },
+              { value: 'complete', label: 'Complete contact record' },
+            ])}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Location sort control (Sprint 22) ───────────────────────────────────────
 // Filter-bar chip that sorts the active list by distance to an anchor point:
 // preset metro chips plus a free-typed city or ZIP. The chosen anchor is
@@ -2141,7 +2252,27 @@ function buildFollowUpQueue(contacts, taskApi) {
 }
 
 // ─── Call Mode queue picker (Sprint 6) ────────────────────────────────────────
-function CallModeQueuePicker({ queues, onSelect, onExit, resumeInfo, onResume, onClearSession }) {
+function CallModeQueuePicker({
+  queues,
+  onSelect,
+  onExit,
+  resumeInfo,
+  onResume,
+  onClearSession,
+  sortMode,
+  onSortChange,
+  sortOptions,
+}) {
+  const firstAvailable = queues.find(queue => !queue.disabled);
+  const [selectedKey, setSelectedKey] = useState(firstAvailable?.key || '');
+  const selectedQueue = queues.find(queue => queue.key === selectedKey && !queue.disabled) || firstAvailable;
+
+  useEffect(() => {
+    if (!queues.some(queue => queue.key === selectedKey && !queue.disabled)) {
+      setSelectedKey(queues.find(queue => !queue.disabled)?.key || '');
+    }
+  }, [queues, selectedKey]);
+
   return (
     <div className="space-y-4">
       <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 flex items-start justify-between gap-4">
@@ -2178,24 +2309,46 @@ function CallModeQueuePicker({ queues, onSelect, onExit, resumeInfo, onResume, o
           </div>
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {queues.map(q => (
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+          <label className="space-y-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Call queue</span>
+            <select
+              value={selectedQueue?.key || ''}
+              onChange={event => setSelectedKey(event.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm font-semibold text-white focus:outline-none focus:border-amber-500"
+            >
+              {queues.map(queue => (
+                <option key={queue.key} value={queue.key} disabled={queue.disabled}>
+                  {queue.label} ({queue.queue.length}){queue.disabled ? ' — select a list first' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Sort order</span>
+            <select
+              value={sortMode}
+              onChange={event => onSortChange(event.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-amber-500"
+            >
+              {sortOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
           <button
-            key={q.key}
-            onClick={() => !q.disabled && onSelect(q.key)}
-            disabled={q.disabled}
-            className={`text-left bg-slate-900 border rounded-2xl p-4 transition-all ${
-              q.disabled ? 'border-slate-800 opacity-50 cursor-not-allowed' : 'border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/60'
-            }`}
+            onClick={() => selectedQueue && onSelect(selectedQueue.key)}
+            disabled={!selectedQueue || selectedQueue.queue.length === 0}
+            className="h-[42px] rounded-lg bg-amber-500 px-5 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-600"
           >
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <h3 className="text-sm font-bold text-white">{q.label}</h3>
-              <span className={`text-lg font-bold ${q.queue.length > 0 ? 'text-amber-400' : 'text-slate-700'}`}>{q.queue.length}</span>
-            </div>
-            <p className="text-xs text-slate-500 leading-snug">{q.reason}</p>
-            {q.disabled && <p className="text-xs text-slate-600 italic mt-2">Select a list on the left first.</p>}
+            Start calling
           </button>
-        ))}
+        </div>
+        {selectedQueue && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-3">
+            <p className="text-xs text-slate-500">{selectedQueue.reason}</p>
+            <p className="text-xs font-bold text-amber-400">{selectedQueue.queue.length} contacts</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2237,9 +2390,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // Default to no list selected — clean empty state on open
   const [activeListId, setActiveListId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [lifeStatusFilter, setLifeStatusFilter] = useState('all');
   const [relationshipFilter, setRelationshipFilter] = useState('all');
-  const [leadSourceFilter, setLeadSourceFilter] = useState('all');
+  const [leadTempFilter, setLeadTempFilter] = useState('all');
+  const [callbackFilter, setCallbackFilter] = useState('all');
+  const [stateFilter, setStateFilter] = useState('all');
+  const [dataFilter, setDataFilter] = useState('all');
+  const [sortMode, setSortMode] = useState('default');
   const [search, setSearch]         = useState('');
 
   async function handleDeleteList(listId) {
@@ -2383,16 +2539,109 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     return () => clearTimeout(timer);
   }, [subView, returnFocusContactId]);
 
-  // Filtered contacts
+  // Callback timing is a first-class filter. These queues merge the universal
+  // task engine with legacy callback dates, so the Filter menu and Call Mode
+  // always agree about who is due.
+  const todayCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }), [contacts, taskApi]);
+  const overdueCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }), [contacts, taskApi]);
+  const upcomingCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true, windowDays: 30 }), [contacts, taskApi]);
+  const allFutureCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true }), [contacts, taskApi]);
+  const callbackIds = useMemo(() => ({
+    today: new Set(todayCallbackQueue.map(contact => contact.id)),
+    overdue: new Set(overdueCallbackQueue.map(contact => contact.id)),
+    upcoming: new Set(allFutureCallbackQueue.map(contact => contact.id)),
+    any: new Set([
+      ...todayCallbackQueue,
+      ...overdueCallbackQueue,
+      ...allFutureCallbackQueue,
+    ].map(contact => contact.id)),
+  }), [todayCallbackQueue, overdueCallbackQueue, allFutureCallbackQueue]);
+  const stateOptions = useMemo(() => [...new Set(contacts.map(contact => String(contact.state || '').trim().toUpperCase()).filter(Boolean))]
+    .sort(), [contacts]);
+  const filterValues = {
+    status: statusFilter,
+    relationship: relationshipFilter,
+    leadTemp: leadTempFilter,
+    callback: callbackFilter,
+    state: stateFilter,
+    data: dataFilter,
+  };
+  const activeFilterCount = Object.values(filterValues).filter(value => value !== 'all').length;
+  const activeFilterChips = [
+    statusFilter !== 'all' && { key: 'status', label: STATUS_LABELS[statusFilter] || statusFilter },
+    relationshipFilter !== 'all' && {
+      key: 'relationship',
+      label: RELATIONSHIP_TYPES.find(type => type.value === relationshipFilter)?.short || relationshipFilter,
+    },
+    leadTempFilter !== 'all' && {
+      key: 'leadTemp',
+      label: leadTempFilter === 'none' ? 'Not rated' : `${leadTempFilter[0].toUpperCase()}${leadTempFilter.slice(1)} leads`,
+    },
+    callbackFilter !== 'all' && {
+      key: 'callback',
+      label: {
+        today: 'Callbacks today',
+        overdue: 'Overdue callbacks',
+        upcoming: 'Upcoming callbacks',
+        none: 'No callback',
+      }[callbackFilter],
+    },
+    stateFilter !== 'all' && { key: 'state', label: stateFilter },
+    dataFilter !== 'all' && {
+      key: 'data',
+      label: {
+        missing_name: 'Missing owner',
+        missing_phone: 'Missing phone',
+        missing_email: 'Missing email',
+        missing_address: 'Missing address',
+        complete: 'Complete records',
+      }[dataFilter],
+    },
+  ].filter(Boolean);
+  const sortOptions = locationAnchor
+    ? [...DATABASE_SORT_OPTIONS, { value: 'nearest', label: `Nearest to ${locationAnchor.label}` }]
+    : DATABASE_SORT_OPTIONS;
+
+  function updateFilter(key, value) {
+    if (key === 'status') setStatusFilter(value);
+    if (key === 'relationship') setRelationshipFilter(value);
+    if (key === 'leadTemp') setLeadTempFilter(value);
+    if (key === 'callback') setCallbackFilter(value);
+    if (key === 'state') setStateFilter(value);
+    if (key === 'data') setDataFilter(value);
+  }
+
+  function resetFilters() {
+    setStatusFilter('all');
+    setRelationshipFilter('all');
+    setLeadTempFilter('all');
+    setCallbackFilter('all');
+    setStateFilter('all');
+    setDataFilter('all');
+  }
+
+  // Filtered and sorted contacts
   const filtered = useMemo(() => {
     if (activeListId === null) return [];
     const result = contacts.filter(c => {
       if (activeListId !== 'all' && c.listId !== activeListId) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
-      if (lifeStatusFilter === 'deceased' && !c.isDeceased) return false;
-      if (lifeStatusFilter === 'living' && c.isDeceased) return false;
       if (relationshipFilter !== 'all' && (c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE) !== relationshipFilter) return false;
-      if (leadSourceFilter !== 'all' && (c.leadSource ?? '') !== leadSourceFilter) return false;
+      if (leadTempFilter === 'none' && c.leadTemp) return false;
+      if (leadTempFilter !== 'all' && leadTempFilter !== 'none' && c.leadTemp !== leadTempFilter) return false;
+      if (callbackFilter !== 'all' && callbackFilter !== 'none' && !callbackIds[callbackFilter]?.has(c.id)) return false;
+      if (callbackFilter === 'none' && callbackIds.any.has(c.id)) return false;
+      if (stateFilter !== 'all' && String(c.state || '').trim().toUpperCase() !== stateFilter) return false;
+      if (dataFilter === 'missing_name' && hasUsableContactValue(c.ownerName)) return false;
+      if (dataFilter === 'missing_phone' && hasUsableContactValue(c.phone)) return false;
+      if (dataFilter === 'missing_email' && hasUsableContactValue(c.email)) return false;
+      if (dataFilter === 'missing_address' && hasUsableContactValue(c.address)) return false;
+      if (dataFilter === 'complete' && !(
+        hasUsableContactValue(c.ownerName)
+        && hasUsableContactValue(c.phone)
+        && hasUsableContactValue(c.email)
+        && hasUsableContactValue(c.address)
+      )) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -2412,13 +2661,28 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     // Location sort: nearest first, contacts without a usable ZIP sink to the
     // bottom in their original order. Each row carries _distanceMiles for the
     // card badge and Call Mode.
-    if (locationAnchor && geoData) {
-      return result
-        .map(c => ({ ...c, _distanceMiles: contactDistanceMiles(c, locationAnchor.coords, geoData.zips) }))
-        .sort((a, b) => (a._distanceMiles ?? Infinity) - (b._distanceMiles ?? Infinity));
+    const withDistance = locationAnchor && geoData
+      ? result.map(c => ({ ...c, _distanceMiles: contactDistanceMiles(c, locationAnchor.coords, geoData.zips) }))
+      : result;
+    if (sortMode === 'nearest' && locationAnchor && geoData) {
+      return [...withDistance].sort((a, b) => (a._distanceMiles ?? Infinity) - (b._distanceMiles ?? Infinity));
     }
-    return result;
-  }, [contacts, activeListId, statusFilter, lifeStatusFilter, relationshipFilter, leadSourceFilter, search, locationAnchor, geoData]);
+    return sortDatabaseContacts(withDistance, sortMode);
+  }, [
+    contacts,
+    activeListId,
+    statusFilter,
+    relationshipFilter,
+    leadTempFilter,
+    callbackFilter,
+    callbackIds,
+    stateFilter,
+    dataFilter,
+    search,
+    locationAnchor,
+    geoData,
+    sortMode,
+  ]);
 
   const callQueue = useMemo(() =>
     filtered.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
@@ -2428,15 +2692,23 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // Sprint 6 — task-based Call Mode queues, computed over ALL contacts (not
   // scoped to whichever list happens to be selected in the sidebar), since
   // "who owes a callback today" is a cross-list question.
-  const todayCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: false }), [contacts, taskApi]);
-  const overdueCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { overdue: true }), [contacts, taskApi]);
-  const upcomingCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true, windowDays: 30 }), [contacts, taskApi]);
-  const allFutureCallbackQueue = useMemo(() => buildCallbackTaskQueue(contacts, taskApi?.tasks, { upcoming: true }), [contacts, taskApi]);
   const followUpQueue = useMemo(() => buildFollowUpQueue(contacts, taskApi), [contacts, taskApi]);
   const allContactsQueue = useMemo(() =>
     contacts.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
     [contacts]
   );
+  const sortQueueContacts = useCallback((queue) => {
+    const withDistance = locationAnchor && geoData
+      ? queue.map(contact => ({
+          ...contact,
+          _distanceMiles: contactDistanceMiles(contact, locationAnchor.coords, geoData.zips),
+        }))
+      : queue;
+    if (sortMode === 'nearest' && locationAnchor && geoData) {
+      return [...withDistance].sort((a, b) => (a._distanceMiles ?? Infinity) - (b._distanceMiles ?? Infinity));
+    }
+    return sortDatabaseContacts(withDistance, sortMode);
+  }, [geoData, locationAnchor, sortMode]);
   // Emails/phones shared across many distinct owners (placeholders, catch-alls)
   // computed once and threaded into both matchers so junk contact info can't
   // manufacture confident matches or false duplicate clusters.
@@ -2465,46 +2737,46 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       key: 'activeList',
       label: activeListLabel,
       reason: 'Work the list currently selected on the left — its fresh, callback, no-answer, and voicemail owners.',
-      queue: callQueue,
+      queue: sortQueueContacts(callQueue),
       disabled: activeListId === null,
     },
     {
       key: 'today',
       label: "Today's Callbacks",
       reason: 'Owners due for a callback today.',
-      queue: todayCallbackQueue,
+      queue: sortQueueContacts(todayCallbackQueue),
     },
     {
       key: 'overdue',
       label: 'Overdue Callbacks',
       reason: 'Owners you owe a call to — their callback date has passed.',
-      queue: overdueCallbackQueue,
+      queue: sortQueueContacts(overdueCallbackQueue),
     },
     {
       key: 'upcoming',
       label: 'Upcoming Callbacks',
       reason: 'Future callback tasks scheduled in the next 30 days.',
-      queue: upcomingCallbackQueue,
+      queue: sortQueueContacts(upcomingCallbackQueue),
     },
     {
       key: 'future',
       label: 'All Future Callbacks',
       reason: 'Every future callback task after today, including callbacks more than 30 days out.',
-      queue: allFutureCallbackQueue,
+      queue: sortQueueContacts(allFutureCallbackQueue),
     },
     {
       key: 'followup',
       label: 'Follow-Up Needed',
       reason: 'Conversations or appointments logged with no follow-up task — set the next step.',
-      queue: followUpQueue,
+      queue: sortQueueContacts(followUpQueue),
     },
     {
       key: 'all',
       label: 'All Contacts',
       reason: 'Broad calling mode — every callable owner across all of your lists.',
-      queue: allContactsQueue,
+      queue: sortQueueContacts(allContactsQueue),
     },
-  ], [activeListLabel, activeListId, callQueue, todayCallbackQueue, overdueCallbackQueue, upcomingCallbackQueue, allFutureCallbackQueue, followUpQueue, allContactsQueue]);
+  ], [activeListLabel, activeListId, callQueue, todayCallbackQueue, overdueCallbackQueue, upcomingCallbackQueue, allFutureCallbackQueue, followUpQueue, allContactsQueue, sortQueueContacts]);
 
   const activeQueueDef = QUEUE_DEFS.find(q => q.key === callQueueSource) ?? null;
 
@@ -2623,8 +2895,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
   // In the Master Database view, clients are merged in (unified view, no duplicates)
   const masterView = activeListId === masterListId;
-  const clientsInView = (masterView && statusFilter === 'all' && relationshipFilter === 'all' && leadSourceFilter === 'all')
-    ? clients.filter(cl => {
+  const clientsInView = activeFilterCount === 0 && masterView
+    ? sortDatabaseContacts(clients.filter(cl => {
         if (cl.contactId && contacts.some(contact => contact.id === cl.contactId)) return false;
         if (!search) return true;
         const q = search.toLowerCase();
@@ -2634,7 +2906,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           || (cl.mailingAddress ?? '').toLowerCase().includes(q)
           || (cl.phone ?? '').includes(q)
           || (cl.email ?? '').toLowerCase().includes(q);
-      })
+      }), sortMode)
     : [];
 
   async function handleCallOutcome(contact, status, noteOverride, activityDate) {
@@ -2950,6 +3222,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               resumeInfo={resumeInfo}
               onResume={resumeSavedSession}
               onClearSession={clearSavedSession}
+              sortMode={sortMode}
+              onSortChange={setSortMode}
+              sortOptions={sortOptions}
             />
           ) : (
             <CallQueue
@@ -3027,70 +3302,29 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 placeholder="Search facility, owner, phone, email..."
                 className="flex-1 min-w-[200px] bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
               />
+              <DatabaseFilterMenu
+                values={filterValues}
+                onChange={updateFilter}
+                onReset={resetFilters}
+                activeCount={activeFilterCount}
+                stateOptions={stateOptions}
+              />
               <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
+                value={sortMode}
+                onChange={event => setSortMode(event.target.value)}
+                aria-label="Sort contacts"
                 className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
               >
-                <option value="all">All Statuses</option>
-                {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-              <select
-                value={lifeStatusFilter}
-                onChange={e => setLifeStatusFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
-              >
-                <option value="all">All People</option>
-                <option value="living">Living / Unknown</option>
-                <option value="deceased">Deceased</option>
-              </select>
-              <select
-                value={relationshipFilter}
-                onChange={e => setRelationshipFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
-              >
-                <option value="all">All Relationships</option>
-                {RELATIONSHIP_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
-              </select>
-              <select
-                value={leadSourceFilter}
-                onChange={e => setLeadSourceFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
-              >
-                <option value="all">All Lead Sources</option>
-                {LEAD_SOURCES.map(sourceOption => <option key={sourceOption} value={sourceOption}>{sourceOption}</option>)}
+                {sortOptions.map(option => <option key={option.value} value={option.value}>Sort: {option.label}</option>)}
               </select>
               <LocationSortControl
                 anchor={locationAnchor}
-                onSet={setLocationAnchor}
-                onClear={() => setLocationAnchor(null)}
+                onSet={anchor => { setLocationAnchor(anchor); setSortMode('nearest'); }}
+                onClear={() => { setLocationAnchor(null); if (sortMode === 'nearest') setSortMode('default'); }}
                 geoData={geoData}
                 geoError={geoError}
                 onOpen={() => setGeoWanted(true)}
               />
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { label: 'Due Today', queue: 'today' },
-                  { label: 'Overdue', queue: 'overdue' },
-                  { label: 'Upcoming', queue: 'upcoming' },
-                  { label: 'All Future Callbacks', queue: 'future' },
-                  { label: 'Call Back', status: 'callback' },
-                  { label: 'Conversation', status: 'conversation' },
-                  { label: 'Appt Set', status: 'appointment' },
-                  { label: 'Untouched', status: 'fresh' },
-                ].map(f => (
-                  <button
-                    key={f.label}
-                    onClick={() => {
-                      if (f.queue) { setSubView('callQueue'); selectQueue(f.queue); }
-                      else { setStatusFilter(f.status); setActiveListId(activeListId ?? 'all'); }
-                    }}
-                    className="text-xs font-semibold bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-slate-400 hover:text-amber-400 rounded-lg px-2.5 py-2 transition-all"
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
               <span className="text-xs text-slate-600">{filtered.length + clientsInView.length} contacts</span>
               {activeListId !== null && (
                 <button
@@ -3135,6 +3369,24 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 </button>
               )}
             </div>
+            {activeFilterChips.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {activeFilterChips.map(chip => (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    onClick={() => updateFilter(chip.key, 'all')}
+                    className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/20"
+                    title={`Remove ${chip.label} filter`}
+                  >
+                    {chip.label} ×
+                  </button>
+                ))}
+                <button type="button" onClick={resetFilters} className="px-2 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-300">
+                  Clear all
+                </button>
+              </div>
+            )}
 
             {/* Card grid */}
             {filtered.length === 0 && clientsInView.length === 0 ? (
@@ -4533,9 +4785,3 @@ function MarketsView({ contacts }) {
     </div>
   );
 }
-
-
-
-
-
-
