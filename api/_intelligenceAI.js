@@ -214,7 +214,9 @@ export async function generateSnapshot(topItems, marketMetrics, { callModel } = 
   const input = buildSnapshotInput(topItems, marketMetrics);
   let text;
   try {
-    text = await invoke({ system: SYNTHESIS_SYSTEM_PROMPT, user: buildSynthesisUserMessage(input) });
+    // The synthesis JSON (5 developments + 3 themes + summaries + a 5-cell deal
+    // matrix) needs more room than the small per-item enrichment default.
+    text = await invoke({ system: SYNTHESIS_SYSTEM_PROMPT, user: buildSynthesisUserMessage(input), maxTokens: 1800 });
   } catch (e) {
     return { ok: false, error: boundedString(e?.message, 120) };
   }
