@@ -7,7 +7,7 @@ This document covers the clipboard-first Salesforce screenshot importer in Analy
 1. `create` creates a 24-hour private staging session and returns a one-time capability token. Only its SHA-256 hash is stored.
 2. `upload-url` returns a short-lived signed upload URL for the private `salesforce-imports` bucket.
 3. The browser uploads directly to private Storage, then `confirm-image` verifies magic MIME bytes, size, dimensions, session path, SHA-256 hash, and duplicate images.
-4. `analyze` downloads the session images server-side and sends them as one request to the isolated Anthropic vision prompt.
+4. `analyze` downloads the session images server-side and sends them as one request to the isolated Anthropic Sonnet vision prompt.
 5. Zod validates and normalizes the forced tool response. Duplicate scoring reads the live canonical tables.
 6. `save-draft` persists user edits only in private staging.
 7. `commit` revalidates the edited draft, re-runs duplicates, verifies all explicit decisions, and calls one idempotent Postgres RPC.
@@ -33,24 +33,18 @@ All POST requests use `/api/salesforce-import` with an `action` field. Session a
 
 `GET /api/salesforce-import?action=config` enables the UI only when the flag is on and the migration is detectable. `GET ...?action=cleanup` requires `Authorization: Bearer <CRON_SECRET>` and expires abandoned sessions.
 
-## Canonical field mapping
+## Core canonical field mapping
 
 | Salesforce/import field | CRM destination |
 |---|---|
 | Property Name | `properties.facility_name`, `contacts.facility_name` |
-| Record Type | `properties.record_type` |
-| Property Type / Class | `properties.property_type`, `properties.property_class` |
-| Address / City / State / ZIP / County | `properties.address`, `city`, `state`, `zip_code`, `county` |
-| Website / Property Group | `properties.website`, `property_group` |
-| Year / phone / units / SF / acreage / occupancy | corresponding `properties` extension columns |
-| Expansion / notes | `properties.expansion_potential`, `notes` |
-| Owner company / management company | `ownership_groups` |
-| Owner or other person | Master Database `contacts` row |
-| Person/company/facility role | `property_relationships` |
-| Sale date / price / price per SF / cap rate | corresponding `properties.last_*` columns |
+| Address / City / State / ZIP | `properties.address`, `city`, `state`, `zip_code` |
+| Visibly labeled property owner | Master Database `contacts.owner_name` |
+| Owner company, when shown | `contacts.owner_entity` and `contacts.company_name` |
+| Owner phone/email, when shown | `contacts.phone` and `contacts.email` |
 | Salesforce IDs and method | `source_record_id`, `source`, `source_metadata` |
 
-Blank visible fields remain null or empty according to the canonical column contract. Numeric blanks are never converted to zero.
+The streamlined importer intentionally ignores year built, sale history, cap rate, property class, dimensions, and other underwriting fields. Its job is to create a call-ready Master Database prospect with only the facility identity, location, and owner identity. Blank visible fields remain null or empty.
 
 ## Duplicate decisions
 

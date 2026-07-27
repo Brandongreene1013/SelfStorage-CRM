@@ -249,10 +249,12 @@ export default function App() {
 
   const handleOpenImportedFacility = useCallback(async (result) => {
     await db.reload?.();
+    const contactIds = Object.values(result?.contactIds || {});
     setDbEntryRequest({
       subView: 'contacts',
       listId: db.masterListId || 'all',
       search: result?.facilityName || '',
+      openContactId: contactIds[0] || null,
     });
     setView('Database');
   }, [db]);

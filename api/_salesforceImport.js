@@ -17,21 +17,13 @@ export const extractedValueSchema = z.object({
 }).strict();
 
 const facilityFields = [
-  'name', 'recordType', 'propertyType', 'propertyClass', 'streetAddress',
-  'city', 'state', 'zipCode', 'county', 'website', 'propertyGroup',
-  'yearBuilt', 'facilityPhone', 'units', 'rentableSqft', 'acreage',
-  'occupancy', 'expansionPotential', 'notes',
+  'name', 'streetAddress', 'city', 'state', 'zipCode',
 ];
 const contactFields = [
-  'sourceRecordId', 'firstName', 'middleName', 'lastName', 'displayName',
-  'jobTitle', 'role', 'company', 'email', 'primaryPhone', 'secondaryPhone',
-  'mailingAddress', 'notes',
+  'displayName', 'company', 'email', 'primaryPhone',
 ];
-const companyFields = [
-  'sourceRecordId', 'name', 'companyType', 'website', 'mainPhone',
-  'mailingAddress', 'notes',
-];
-const historyFields = ['lastSaleDate', 'lastSalePrice', 'lastSalePricePsf', 'lastCapRate', 'previousSaleNotes'];
+const companyFields = [];
+const historyFields = [];
 
 function extractedObject(fields) {
   return z.object(Object.fromEntries(fields.map(field => [field, extractedValueSchema]))).strict();
@@ -90,8 +82,8 @@ export const salesforceImportDraftSchema = z.object({
   }).strict(),
   facility: extractedObject(facilityFields).nullable(),
   contacts: z.array(contactSchema).max(20),
-  companies: z.array(companySchema).max(20),
-  relationships: z.array(relationshipSchema).max(50),
+  companies: z.array(companySchema).max(0),
+  relationships: z.array(relationshipSchema).max(0),
   propertyHistory: extractedObject(historyFields),
   duplicateCandidates: z.union([z.array(z.any()), z.record(z.string(), z.any())]).default([]),
   warnings: z.array(warningSchema).max(50),
@@ -161,7 +153,7 @@ export const SALESFORCE_DRAFT_TOOL_SCHEMA = {
     },
     companies: {
       type: 'array',
-      maxItems: 20,
+      maxItems: 0,
       items: objectFieldsJsonSchema(companyFields, {
         tempId: { type: 'string' },
         selected: { type: 'boolean' },
@@ -169,7 +161,7 @@ export const SALESFORCE_DRAFT_TOOL_SCHEMA = {
     },
     relationships: {
       type: 'array',
-      maxItems: 50,
+      maxItems: 0,
       items: {
         type: 'object',
         additionalProperties: false,
@@ -416,8 +408,8 @@ export function scoreDuplicateCandidates(draft, snapshot) {
     const cityState = baseNormalize(`${facility.city.value || ''} ${facility.state.value || ''}`);
     const zip = cleanString(facility.zipCode.value);
     const sourceId = cleanString(draft.source.sourceRecordId.value);
-    const domain = websiteDomain(facility.website.value);
-    const phone = phoneKey(facility.facilityPhone.value);
+    const domain = websiteDomain(facility.website?.value);
+    const phone = phoneKey(facility.facilityPhone?.value);
     results.facility = snapshot.properties.map(record => {
       let score = 0;
       const reasons = [];
@@ -436,7 +428,7 @@ export function scoreDuplicateCandidates(draft, snapshot) {
     const company = baseNormalize(contact.company.value);
     const email = normalizeEmail(contact.email.value);
     const phone = phoneKey(contact.primaryPhone.value);
-    const sourceId = cleanString(contact.sourceRecordId.value);
+    const sourceId = cleanString(contact.sourceRecordId?.value);
     results.contacts[contact.tempId] = snapshot.contacts.map(record => {
       let score = 0;
       const reasons = [];

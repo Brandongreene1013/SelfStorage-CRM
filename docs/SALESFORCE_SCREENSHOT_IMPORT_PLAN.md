@@ -84,7 +84,7 @@ The migration will:
 ## UI plan
 
 - Add an `Import Salesforce Record` mode inside Analyst without changing chat or underwriting.
-- Listen for clipboard images only while import mode is active and never while a text input/textarea/contenteditable has focus.
+- Detect image clipboard content anywhere in Analyst and switch directly into import mode; ordinary text paste remains untouched.
 - Support clipboard, drag/drop, and file selection.
 - Show thumbnail, sequence, dimensions, upload/analysis status, remove, enlarge, and reorder controls.
 - Persist session ID/token locally and reload staged metadata after refresh.
@@ -92,7 +92,7 @@ The migration will:
   - Create Facility Card
   - Add Another Screenshot
   - Clear Screenshots
-- Render an editable `Proposed Facility Record` card with Facility, Contacts, Companies, Relationships, and Property History sections.
+- Render a compact editable prospect card containing only facility name/address and the visibly labeled owner name, company, phone, and email.
 - Show confidence/evidence labels and screenshot source.
 - Run duplicates before approval and require an explicit decision for every possible/strong/exact match.
 - Approval stays disabled until validation and duplicate decisions are complete.
@@ -101,8 +101,8 @@ The migration will:
 ## Duplicate behavior
 
 - Facility: normalized address; facility + ZIP; facility + city/state; source record ID; website domain; phone; owner relationship.
-- Contact: email; phone; normalized full name; name + company; source record ID.
-- Company: normalized company name; mailing address; website domain; phone; source record ID.
+- Contact: email; phone; normalized owner name; and owner name + company.
+- Company names are retained on the owner contact rather than creating a separate company-review workflow.
 - Scores map to `none`, `possible`, `strong`, or `exact`.
 - No automatic merge. Supported decisions are create new, use existing, update blank fields, and cancel.
 

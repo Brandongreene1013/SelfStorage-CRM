@@ -10,37 +10,16 @@ import {
 } from '../../lib/salesforceImportClient';
 
 const FACILITY_FIELDS = [
-  ['name', 'Facility name'], ['recordType', 'Record type'], ['propertyType', 'Property type'],
-  ['propertyClass', 'Class'], ['streetAddress', 'Street address'], ['city', 'City'],
-  ['state', 'State'], ['zipCode', 'ZIP'], ['county', 'County'], ['website', 'Website'],
-  ['propertyGroup', 'Property group'], ['yearBuilt', 'Year built'], ['facilityPhone', 'Facility phone'],
-  ['units', 'Units'], ['rentableSqft', 'Rentable SF'], ['acreage', 'Acreage'],
-  ['occupancy', 'Occupancy %'], ['expansionPotential', 'Expansion potential'], ['notes', 'Notes'],
+  ['name', 'Facility name'], ['streetAddress', 'Street address'],
+  ['city', 'City'], ['state', 'State'], ['zipCode', 'ZIP'],
 ];
 const CONTACT_FIELDS = [
-  ['displayName', 'Name'], ['firstName', 'First'], ['middleName', 'Middle'], ['lastName', 'Last'],
-  ['jobTitle', 'Title'], ['role', 'Role'], ['company', 'Company'], ['email', 'Email'],
-  ['primaryPhone', 'Primary phone'], ['secondaryPhone', 'Secondary phone'],
-  ['mailingAddress', 'Mailing address'], ['sourceRecordId', 'Salesforce ID'], ['notes', 'Notes'],
-];
-const COMPANY_FIELDS = [
-  ['name', 'Company name'], ['companyType', 'Company type'], ['website', 'Website'],
-  ['mainPhone', 'Main phone'], ['mailingAddress', 'Mailing address'],
-  ['sourceRecordId', 'Salesforce ID'], ['notes', 'Notes'],
-];
-const HISTORY_FIELDS = [
-  ['lastSaleDate', 'Last sale date'], ['lastSalePrice', 'Last sale price'],
-  ['lastSalePricePsf', 'Last sale $/SF'], ['lastCapRate', 'Last cap rate'],
-  ['previousSaleNotes', 'Sale notes'],
-];
-const RELATIONSHIP_TYPES = [
-  'facility_primary_owner_contact', 'facility_secondary_owner_contact', 'facility_owner_company',
-  'facility_management_company', 'contact_company', 'company_parent_company', 'other',
+  ['displayName', 'Owner name'], ['company', 'Owner company'],
+  ['primaryPhone', 'Phone'], ['email', 'Email'],
 ];
 
 const blankDecision = () => ({ facility: {}, contacts: {}, companies: {} });
 const fieldValue = field => field?.value ?? '';
-const titleCase = text => String(text || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 function Confidence({ field }) {
   if (!field) return null;
@@ -277,6 +256,7 @@ export default function SalesforceScreenshotImport({ initialFiles = [], onInitia
       multiplePropertiesConfirmed: multipleConfirmed,
       idempotencyKey: idempotencyRef.current,
     }, 'Importing approved records…');
+    onOpenFacility?.(result.result || result.session?.importResult || {});
     return result;
   };
 
@@ -292,9 +272,9 @@ export default function SalesforceScreenshotImport({ initialFiles = [], onInitia
       <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 text-center">
         <div className="text-3xl">✓</div>
         <h3 className="mt-2 text-lg font-bold text-white">Salesforce record imported</h3>
-        <p className="mt-1 text-sm text-slate-400">The approved facility, contacts, companies, and relationships are now in the CRM.</p>
+        <p className="mt-1 text-sm text-slate-400">The facility and owner are now in the Master Database.</p>
         <div className="mt-5 flex justify-center gap-3">
-          <button onClick={() => onOpenFacility?.(result)} className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-slate-950">Open facility</button>
+          <button onClick={() => onOpenFacility?.(result)} className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-slate-950">Open in Master Database</button>
           <button onClick={() => reset(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300">Import another</button>
         </div>
       </div>
@@ -364,80 +344,13 @@ export default function SalesforceScreenshotImport({ initialFiles = [], onInitia
             onRemove={() => setDraft(current => {
               const next = structuredClone(current);
               next.contacts.splice(index, 1);
-              next.relationships = next.relationships.filter(item => item.contactTempId !== contact.tempId);
               return next;
             })}
             onChange={(key, value) => updateField('contacts', key, value, index)}
             duplicate={<DuplicatePicker title={fieldValue(contact.displayName)} matches={duplicates.contacts?.[contact.tempId]} value={decisions.contacts[contact.tempId]} onChange={value => setDecisions(current => ({ ...current, contacts: { ...current.contacts, [contact.tempId]: value } }))} />}
           />
         ))}
-        <button onClick={() => addEntity('contacts', CONTACT_FIELDS)} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300">+ Add contact</button>
-        {draft.companies.map((company, index) => (
-          <EntitySection
-            key={company.tempId}
-            title={`Company ${index + 1}: ${fieldValue(company.name) || 'Unnamed'}`}
-            entity={company}
-            fields={COMPANY_FIELDS}
-            selected={company.selected}
-            onSelected={selected => setDraft(current => {
-              const next = structuredClone(current); next.companies[index].selected = selected; return next;
-            })}
-            onRemove={() => setDraft(current => {
-              const next = structuredClone(current);
-              next.companies.splice(index, 1);
-              next.relationships = next.relationships.filter(item => item.companyTempId !== company.tempId);
-              return next;
-            })}
-            onChange={(key, value) => updateField('companies', key, value, index)}
-            duplicate={<DuplicatePicker title={fieldValue(company.name)} matches={duplicates.companies?.[company.tempId]} value={decisions.companies[company.tempId]} onChange={value => setDecisions(current => ({ ...current, companies: { ...current.companies, [company.tempId]: value } }))} />}
-          />
-        ))}
-        <button onClick={() => addEntity('companies', COMPANY_FIELDS)} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300">+ Add company</button>
-        <EntitySection title="Property history" entity={draft.propertyHistory} fields={HISTORY_FIELDS} onChange={(key, value) => updateField('propertyHistory', key, value)} />
-        {(
-          <section className="rounded-xl border border-slate-700 bg-slate-900/40 p-4">
-            <h4 className="mb-3 font-bold text-white">Relationships found</h4>
-            <div className="space-y-2">
-              {draft.relationships.map((relationship, index) => (
-                <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
-                  <select value={relationship.relationshipType} onChange={event => setDraft(current => {
-                    const next = structuredClone(current); next.relationships[index].relationshipType = event.target.value; return next;
-                  })} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-white">
-                    {RELATIONSHIP_TYPES.map(type => <option key={type} value={type}>{titleCase(type)}</option>)}
-                  </select>
-                  <select value={relationship.contactTempId || ''} onChange={event => setDraft(current => {
-                    const next = structuredClone(current); next.relationships[index].contactTempId = event.target.value || null; return next;
-                  })} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-white">
-                    <option value="">No contact</option>
-                    {draft.contacts.map(item => <option key={item.tempId} value={item.tempId}>{fieldValue(item.displayName) || 'Unnamed contact'}</option>)}
-                  </select>
-                  <select value={relationship.companyTempId || ''} onChange={event => setDraft(current => {
-                    const next = structuredClone(current); next.relationships[index].companyTempId = event.target.value || null; return next;
-                  })} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-white">
-                    <option value="">No company</option>
-                    {draft.companies.map(item => <option key={item.tempId} value={item.tempId}>{fieldValue(item.name) || 'Unnamed company'}</option>)}
-                  </select>
-                  <input value={relationship.role || ''} onChange={event => setDraft(current => {
-                    const next = structuredClone(current); next.relationships[index].role = event.target.value; return next;
-                  })} placeholder="Role" className="ml-auto rounded border border-slate-700 bg-slate-900 px-2 py-1 text-white" />
-                  <button onClick={() => setDraft(current => {
-                    const next = structuredClone(current); next.relationships.splice(index, 1); return next;
-                  })} className="text-rose-400">Remove</button>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => setDraft(current => {
-              const next = structuredClone(current);
-              next.relationships.push({
-                relationshipType: 'other', facilityTempId: 'facility-1',
-                contactTempId: next.contacts[0]?.tempId || null,
-                companyTempId: next.companies[0]?.tempId || null,
-                role: '', confidence: 1, evidenceText: 'Added during user review', screenshotId: null,
-              });
-              return next;
-            })} className="mt-3 rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300">+ Add relationship</button>
-          </section>
-        )}
+        <button onClick={() => addEntity('contacts', CONTACT_FIELDS)} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300">+ Add owner</button>
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">{error}</p>}
         <p className="text-right text-sm font-semibold text-white">Are you sure you want to add this facility to the master database?</p>
         <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-slate-800 bg-slate-950/95 py-4">

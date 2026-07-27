@@ -21,7 +21,7 @@ export const maxDuration = 60;
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://rpoiphoqwgvbiyygfjrm.supabase.co';
 const BUCKET = 'salesforce-imports';
-const MODEL = process.env.SALESFORCE_VISION_MODEL || 'claude-opus-4-8';
+const MODEL = process.env.SALESFORCE_VISION_MODEL || 'claude-sonnet-4-6';
 const ENABLED = process.env.SALESFORCE_SCREENSHOT_IMPORT_ENABLED === 'true';
 
 let serviceClient;
@@ -179,7 +179,7 @@ async function analyzeScreenshots(sb, session, images) {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 10000,
+      max_tokens: 3500,
       system: SALESFORCE_EXTRACTION_PROMPT,
       messages: [{ role: 'user', content }],
       tools: [{

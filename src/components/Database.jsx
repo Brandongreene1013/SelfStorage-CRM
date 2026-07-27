@@ -2865,8 +2865,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   useEffect(() => {
     if (!entryRequest) return;
     if (entryRequest.openContactId) {
+      if (entryRequest.listId !== undefined) setActiveListId(entryRequest.listId);
+      if (entryRequest.search !== undefined) setSearch(entryRequest.search);
+      if (entryRequest.subView) setSubView(entryRequest.subView);
       const c = contacts.find(x => x.id === entryRequest.openContactId);
-      if (c) setOpenContact(c);
+      if (!c) return;
+      setOpenContact(c);
     } else {
       if (entryRequest.listId !== undefined) setActiveListId(entryRequest.listId);
       if (entryRequest.statusFilter) setStatusFilter(entryRequest.statusFilter);
