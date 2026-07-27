@@ -86,6 +86,12 @@ function contactSource(contact, lists = []) {
   return contact.source || lists.find(l => l.id === contact.listId)?.source || '';
 }
 
+function contactOrigins(contact, lists = []) {
+  return [contact.leadSource, contactSource(contact, lists)]
+    .map(value => String(value || '').trim())
+    .filter(Boolean);
+}
+
 function SourceBadge({ source }) {
   if (!source) return null;
   return (
@@ -2034,6 +2040,7 @@ function DatabaseFilterMenu({
   onReset,
   activeCount,
   stateOptions,
+  sourceOptions,
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
@@ -2107,6 +2114,11 @@ function DatabaseFilterMenu({
             {field('State', 'state', [
               { value: 'all', label: 'All states' },
               ...stateOptions.map(state => ({ value: state, label: state })),
+            ])}
+            {field('Lead source', 'source', [
+              { value: 'all', label: 'All lead sources' },
+              ...sourceOptions.map(source => ({ value: source, label: source })),
+              { value: 'none', label: 'No source recorded' },
             ])}
             {field('Contact information', 'data', [
               { value: 'all', label: 'Any completeness' },
@@ -2394,6 +2406,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [leadTempFilter, setLeadTempFilter] = useState('all');
   const [callbackFilter, setCallbackFilter] = useState('all');
   const [stateFilter, setStateFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
   const [dataFilter, setDataFilter] = useState('all');
   const [sortMode, setSortMode] = useState('default');
   const [search, setSearch]         = useState('');
@@ -2558,12 +2571,24 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   }), [todayCallbackQueue, overdueCallbackQueue, allFutureCallbackQueue]);
   const stateOptions = useMemo(() => [...new Set(contacts.map(contact => String(contact.state || '').trim().toUpperCase()).filter(Boolean))]
     .sort(), [contacts]);
+  const sourceOptions = useMemo(() => {
+    const scopedContacts = activeListId && activeListId !== 'all'
+      ? contacts.filter(contact => contact.listId === activeListId)
+      : contacts;
+    const sourcesByKey = new Map();
+    scopedContacts.flatMap(contact => contactOrigins(contact, lists)).forEach(source => {
+      const key = source.toLowerCase();
+      if (!sourcesByKey.has(key)) sourcesByKey.set(key, source);
+    });
+    return [...sourcesByKey.values()].sort((a, b) => a.localeCompare(b));
+  }, [activeListId, contacts, lists]);
   const filterValues = {
     status: statusFilter,
     relationship: relationshipFilter,
     leadTemp: leadTempFilter,
     callback: callbackFilter,
     state: stateFilter,
+    source: sourceFilter,
     data: dataFilter,
   };
   const activeFilterCount = Object.values(filterValues).filter(value => value !== 'all').length;
@@ -2587,6 +2612,10 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       }[callbackFilter],
     },
     stateFilter !== 'all' && { key: 'state', label: stateFilter },
+    sourceFilter !== 'all' && {
+      key: 'source',
+      label: sourceFilter === 'none' ? 'No source recorded' : `Source: ${sourceFilter}`,
+    },
     dataFilter !== 'all' && {
       key: 'data',
       label: {
@@ -2608,6 +2637,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     if (key === 'leadTemp') setLeadTempFilter(value);
     if (key === 'callback') setCallbackFilter(value);
     if (key === 'state') setStateFilter(value);
+    if (key === 'source') setSourceFilter(value);
     if (key === 'data') setDataFilter(value);
   }
 
@@ -2617,6 +2647,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     setLeadTempFilter('all');
     setCallbackFilter('all');
     setStateFilter('all');
+    setSourceFilter('all');
     setDataFilter('all');
   }
 
@@ -2632,6 +2663,10 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       if (callbackFilter !== 'all' && callbackFilter !== 'none' && !callbackIds[callbackFilter]?.has(c.id)) return false;
       if (callbackFilter === 'none' && callbackIds.any.has(c.id)) return false;
       if (stateFilter !== 'all' && String(c.state || '').trim().toUpperCase() !== stateFilter) return false;
+      const origins = contactOrigins(c, lists);
+      if (sourceFilter === 'none' && origins.length > 0) return false;
+      if (sourceFilter !== 'all' && sourceFilter !== 'none'
+        && !origins.some(origin => origin.toLowerCase() === sourceFilter.toLowerCase())) return false;
       if (dataFilter === 'missing_name' && hasUsableContactValue(c.ownerName)) return false;
       if (dataFilter === 'missing_phone' && hasUsableContactValue(c.phone)) return false;
       if (dataFilter === 'missing_email' && hasUsableContactValue(c.email)) return false;
@@ -2677,7 +2712,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     callbackFilter,
     callbackIds,
     stateFilter,
+    sourceFilter,
     dataFilter,
+    lists,
     search,
     locationAnchor,
     geoData,
@@ -3312,6 +3349,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 onReset={resetFilters}
                 activeCount={activeFilterCount}
                 stateOptions={stateOptions}
+                sourceOptions={sourceOptions}
               />
               <select
                 value={sortMode}
