@@ -76,6 +76,17 @@ const SOURCE_COLORS = {
   'Other':       'bg-slate-600/40 text-slate-400 border-slate-600/30',
 };
 
+const LEAD_SOURCE_FILTERS = [
+  { value: 'tractiq', label: 'TractIQ', match: ['tractiq'] },
+  { value: 'salesforce', label: 'Salesforce', match: ['salesforce'] },
+  { value: 'facebook', label: 'Facebook', match: ['facebook'] },
+  { value: 'costar', label: 'CoStar', match: ['costar'] },
+  { value: 'reonomy', label: 'Reonomy', match: ['reonomy'] },
+  { value: 'crexi', label: 'Crexi', match: ['crexi'] },
+  { value: 'loopnet', label: 'LoopNet', match: ['loopnet'] },
+  { value: 'businessesforsale', label: 'BusinessesForSale', match: ['businessesforsale'] },
+];
+
 const RELATIONSHIP_TYPE_MAP = Object.fromEntries(RELATIONSHIP_TYPES.map(t => [t.value, t]));
 
 function relationshipMeta(value) {
@@ -90,6 +101,14 @@ function contactOrigins(contact, lists = []) {
   return [contact.leadSource, contactSource(contact, lists)]
     .map(value => String(value || '').trim())
     .filter(Boolean);
+}
+
+function matchesLeadSourceFilter(contact, lists, filter) {
+  const definition = LEAD_SOURCE_FILTERS.find(option => option.value === filter);
+  if (!definition) return true;
+  const origins = contactOrigins(contact, lists)
+    .map(origin => origin.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  return origins.some(origin => definition.match.some(term => origin.includes(term)));
 }
 
 function SourceBadge({ source }) {
@@ -2040,7 +2059,6 @@ function DatabaseFilterMenu({
   onReset,
   activeCount,
   stateOptions,
-  sourceOptions,
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
@@ -2117,8 +2135,7 @@ function DatabaseFilterMenu({
             ])}
             {field('Lead source', 'source', [
               { value: 'all', label: 'All lead sources' },
-              ...sourceOptions.map(source => ({ value: source, label: source })),
-              { value: 'none', label: 'No source recorded' },
+              ...LEAD_SOURCE_FILTERS,
             ])}
             {field('Contact information', 'data', [
               { value: 'all', label: 'Any completeness' },
@@ -2571,17 +2588,6 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   }), [todayCallbackQueue, overdueCallbackQueue, allFutureCallbackQueue]);
   const stateOptions = useMemo(() => [...new Set(contacts.map(contact => String(contact.state || '').trim().toUpperCase()).filter(Boolean))]
     .sort(), [contacts]);
-  const sourceOptions = useMemo(() => {
-    const scopedContacts = activeListId && activeListId !== 'all'
-      ? contacts.filter(contact => contact.listId === activeListId)
-      : contacts;
-    const sourcesByKey = new Map();
-    scopedContacts.flatMap(contact => contactOrigins(contact, lists)).forEach(source => {
-      const key = source.toLowerCase();
-      if (!sourcesByKey.has(key)) sourcesByKey.set(key, source);
-    });
-    return [...sourcesByKey.values()].sort((a, b) => a.localeCompare(b));
-  }, [activeListId, contacts, lists]);
   const filterValues = {
     status: statusFilter,
     relationship: relationshipFilter,
@@ -2614,7 +2620,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     stateFilter !== 'all' && { key: 'state', label: stateFilter },
     sourceFilter !== 'all' && {
       key: 'source',
-      label: sourceFilter === 'none' ? 'No source recorded' : `Source: ${sourceFilter}`,
+      label: `Source: ${LEAD_SOURCE_FILTERS.find(option => option.value === sourceFilter)?.label || sourceFilter}`,
     },
     dataFilter !== 'all' && {
       key: 'data',
@@ -2663,10 +2669,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       if (callbackFilter !== 'all' && callbackFilter !== 'none' && !callbackIds[callbackFilter]?.has(c.id)) return false;
       if (callbackFilter === 'none' && callbackIds.any.has(c.id)) return false;
       if (stateFilter !== 'all' && String(c.state || '').trim().toUpperCase() !== stateFilter) return false;
-      const origins = contactOrigins(c, lists);
-      if (sourceFilter === 'none' && origins.length > 0) return false;
-      if (sourceFilter !== 'all' && sourceFilter !== 'none'
-        && !origins.some(origin => origin.toLowerCase() === sourceFilter.toLowerCase())) return false;
+      if (!matchesLeadSourceFilter(c, lists, sourceFilter)) return false;
       if (dataFilter === 'missing_name' && hasUsableContactValue(c.ownerName)) return false;
       if (dataFilter === 'missing_phone' && hasUsableContactValue(c.phone)) return false;
       if (dataFilter === 'missing_email' && hasUsableContactValue(c.email)) return false;
@@ -3349,7 +3352,6 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 onReset={resetFilters}
                 activeCount={activeFilterCount}
                 stateOptions={stateOptions}
-                sourceOptions={sourceOptions}
               />
               <select
                 value={sortMode}
