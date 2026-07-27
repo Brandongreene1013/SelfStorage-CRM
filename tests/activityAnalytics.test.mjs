@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   aggregateActivityMetrics,
+  buildCaptureLogEntries,
   buildActivityAnalytics,
   buildConversionFunnel,
   buildWeeklyDigest,
@@ -43,7 +44,7 @@ const contact = {
   assert.deepEqual(analytics.today, {
     calls: 1,
     voicemails: 1,
-    conversations: 0,
+    conversations: 1,
     emails: 1,
     tractiqReportsSent: 0,
     meetingsSet: 0,
@@ -52,6 +53,49 @@ const contact = {
     actions: 2,
   });
   assert.equal(analytics.events.filter(event => event.type === 'voicemail').length, 1);
+}
+
+{
+  const callOutcomes = ['no_answer', 'voicemail', 'conversation', 'appointment', 'not_interested', 'callback'];
+  const actionLog = callOutcomes.map((type, index) => ({
+    eventId: `outcome-${index}`,
+    type,
+    date: reportingDate,
+    note: type === 'no_answer' ? 'Owner is traveling until next week' : '',
+  }));
+  const metrics = buildActivityAnalytics({
+    contacts: [{ id: 'all-outcomes', ownerName: 'Outcome Owner', actionLog }],
+  }, reportingDate).today;
+  assert.equal(metrics.calls, 6);
+  assert.equal(metrics.voicemails, 1);
+  assert.equal(metrics.conversations, 3); // conversation + appointment + a note on no-answer
+}
+
+{
+  const captureEntries = buildCaptureLogEntries(null, {
+    name: 'New Client Owner',
+    email: 'Owner@Example.com',
+  }, {
+    ownerField: 'name',
+    occurredAt: '2026-07-23T18:00:00.000Z',
+  });
+  assert.deepEqual(captureEntries.map(entry => entry.type), ['owner_databased', 'email_gathered']);
+  assert.equal(captureEntries[1].note, 'owner@example.com');
+
+  const sharedOwner = {
+    ownerName: 'New Client Owner',
+    ownerIdentifiedAt: '2026-07-23T18:00:00.000Z',
+  };
+  const metrics = buildActivityAnalytics({
+    contacts: [{ id: 'promoted-contact', ...sharedOwner }],
+    clients: [{
+      id: 'linked-client',
+      name: 'New Client Owner',
+      actionLog: captureEntries,
+    }],
+  }, reportingDate).today;
+  assert.equal(metrics.ownersIdentified, 1);
+  assert.equal(metrics.emails, 1);
 }
 
 {

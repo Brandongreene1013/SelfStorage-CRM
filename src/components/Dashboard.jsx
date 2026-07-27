@@ -126,17 +126,14 @@ function buildPipelineAttention(taskApi, clients, meetings) {
 }
 
 // â”€â”€â”€ Today Command Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function CommandHeader({ today, overdueCount, dueTodayCount, todayMeetings, todayCallbacks, overdueCallbacks, onStartCallMode }) {
+function CommandHeader({ today, todayCallbacks, overdueCallbacks, onStartCallMode }) {
   const dateLabel = new Date().toLocaleDateString('default', { weekday: 'long', month: 'long', day: 'numeric' });
   const stats = [
-    { label: 'Due Today', value: dueTodayCount, accent: dueTodayCount > 0 ? 'text-amber-300' : 'text-slate-500' },
-    { label: 'Overdue', value: overdueCount, accent: overdueCount > 0 ? 'text-red-300' : 'text-slate-500' },
-    { label: 'Callbacks', value: todayCallbacks, accent: todayCallbacks > 0 ? 'text-cyan-300' : 'text-slate-500' },
-    { label: 'Overdue CB', value: overdueCallbacks, accent: overdueCallbacks > 0 ? 'text-red-300' : 'text-slate-500' },
-    { label: 'Meetings', value: todayMeetings, accent: todayMeetings > 0 ? 'text-purple-300' : 'text-slate-500' },
-    { label: 'Owners Worked', value: today.ownersWorked, accent: today.ownersWorked > 0 ? 'text-emerald-300' : 'text-slate-500' },
-    { label: 'Calls', value: today.calls, accent: today.calls > 0 ? 'text-blue-300' : 'text-slate-500' },
-    { label: 'Actions', value: today.actions, accent: today.actions > 0 ? 'text-amber-300' : 'text-slate-500' },
+    { label: 'Outbound Dials', value: today.calls, accent: today.calls > 0 ? 'text-blue-300' : 'text-slate-500' },
+    { label: 'Owners Databased', value: today.ownersIdentified, accent: today.ownersIdentified > 0 ? 'text-cyan-300' : 'text-slate-500' },
+    { label: 'Voicemails Left', value: today.voicemails, accent: today.voicemails > 0 ? 'text-amber-300' : 'text-slate-500' },
+    { label: 'Owners Reached', value: today.conversations, accent: today.conversations > 0 ? 'text-emerald-300' : 'text-slate-500' },
+    { label: 'Emails Gathered / Sent', value: today.emails, accent: today.emails > 0 ? 'text-purple-300' : 'text-slate-500' },
   ];
 
   return (
@@ -433,16 +430,18 @@ function BrokerCommandCenter({
   const topMoves = rankedMoves.slice(0, 3);
   const signalRows = rankedMoves.slice(3, 8);
   const briefItems = [
-    { label: 'Calls', value: today.calls, tone: 'text-blue-300' },
-    { label: 'Convos', value: today.conversations, tone: 'text-emerald-300' },
-    { label: 'Owners ID', value: today.ownersIdentified, tone: 'text-cyan-300' },
-    { label: 'Actions', value: today.actions, tone: 'text-amber-300' },
+    { label: 'Outbound Dials', value: today.calls, tone: 'text-blue-300' },
+    { label: 'Owners Databased', value: today.ownersIdentified, tone: 'text-cyan-300' },
+    { label: 'Voicemails Left', value: today.voicemails, tone: 'text-amber-300' },
+    { label: 'Owners Reached', value: today.conversations, tone: 'text-emerald-300' },
+    { label: 'Emails Gathered / Sent', value: today.emails, tone: 'text-purple-300' },
   ];
   const weekItems = [
-    { label: 'Week calls', value: weeklyProduction.calls, tone: 'text-blue-300' },
-    { label: 'Week convos', value: weeklyProduction.conversations, tone: 'text-emerald-300' },
+    { label: 'Week dials', value: weeklyProduction.calls, tone: 'text-blue-300' },
+    { label: 'Week databased', value: weeklyProduction.ownersIdentified, tone: 'text-cyan-300' },
+    { label: 'Week voicemails', value: weeklyProduction.voicemails, tone: 'text-amber-300' },
+    { label: 'Week reached', value: weeklyProduction.conversations, tone: 'text-emerald-300' },
     { label: 'Week emails', value: weeklyProduction.emails, tone: 'text-purple-300' },
-    { label: 'Owners worked', value: weeklyProduction.ownersWorked, tone: 'text-cyan-300' },
   ];
   const alertItems = [
     { label: 'Overdue tasks', value: overdueCount, tone: overdueCount > 0 ? 'text-red-300' : 'text-slate-600' },
@@ -716,15 +715,11 @@ function WeeklyProductionScorecard({ data }) {
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
   const weekLabel = `${monday.toLocaleDateString('default', { month: 'short', day: 'numeric' })} - Today`;
   const fields = [
-    ['calls', 'Calls'],
-    ['voicemails', 'Voicemails'],
-    ['conversations', 'Conversations'],
-    ['emails', 'Emails'],
-    ['tractiqReportsSent', 'TractIQ Reports'],
-    ['meetingsSet', 'Meetings Set'],
-    ['ownersIdentified', 'Owners Identified'],
-    ['ownersWorked', 'Owners Worked'],
-    ['actions', 'Actions'],
+    ['calls', 'Outbound Dials'],
+    ['ownersIdentified', 'Owners Databased'],
+    ['voicemails', 'Voicemails Left'],
+    ['conversations', 'Owners Reached / Engaged Conversations'],
+    ['emails', 'Emails Gathered / Sent'],
   ];
 
   return (
@@ -732,7 +727,7 @@ function WeeklyProductionScorecard({ data }) {
       title="Weekly Production"
       subtitle={weekLabel}
       className="p-3"
-      bodyClassName="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-9 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800"
+      bodyClassName="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800"
     >
       {fields.map(([key, label]) => (
         <div key={key} className="bg-slate-950/60 px-3 py-2 min-w-0">
@@ -840,8 +835,8 @@ function DailyActivityLog({ events, onOpenEvent }) {
 // Palette validated for CVD + contrast on the slate-950 surface
 // (dataviz six-checks: #d97706 calls, #0284c7 conversations).
 const TREND_SERIES = [
-  { key: 'calls', label: 'Calls', color: '#d97706' },
-  { key: 'conversations', label: 'Conversations', color: '#0284c7' },
+  { key: 'calls', label: 'Outbound Dials', color: '#d97706' },
+  { key: 'conversations', label: 'Owners Reached', color: '#0284c7' },
 ];
 const FUNNEL_STEPS = ['#fbbf24', '#f59e0b', '#d97706', '#b45309'];
 
@@ -1137,15 +1132,11 @@ function ManualActivityModal({ onLog, onClose }) {
 
 function DailyProduction({ today, todayLabel }) {
   const fields = [
-    ['calls', 'Calls'],
-    ['voicemails', 'Voicemails'],
-    ['conversations', 'Conversations'],
-    ['emails', 'Emails'],
-    ['tractiqReportsSent', 'TractIQ Reports Sent'],
-    ['meetingsSet', 'Meetings Set'],
-    ['ownersIdentified', 'Owners Identified'],
-    ['ownersWorked', 'Owners Worked'],
-    ['actions', 'Actions'],
+    ['calls', 'Outbound Dials'],
+    ['ownersIdentified', 'Owners Databased'],
+    ['voicemails', 'Voicemails Left'],
+    ['conversations', 'Owners Reached / Engaged Conversations'],
+    ['emails', 'Emails Gathered / Sent'],
   ];
 
   return (
@@ -1953,4 +1944,3 @@ export default function Dashboard({
     </div>
   );
 }
-

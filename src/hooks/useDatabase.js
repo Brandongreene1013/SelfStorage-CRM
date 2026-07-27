@@ -4,7 +4,11 @@ import { buildContactOutcomeFields } from '../lib/contactMutations';
 import { selectAllRows } from '../lib/selectAllRows';
 import { buildMergePlan } from '../lib/duplicateReview';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
-import { withOwnerIdentificationMilestone } from '../lib/activityAnalytics';
+import {
+  buildCaptureLogEntries,
+  hasMeaningfulOwnerName,
+  withOwnerIdentificationMilestone,
+} from '../lib/activityAnalytics';
 import { DEFAULT_RELATIONSHIP_TYPE, RELATIONSHIP_TYPES } from '../data/constants';
 
 const US_STATES = {
@@ -1300,9 +1304,12 @@ export function useDatabase() {
 
   const addContact = useCallback(async (listId, fields) => {
     const { state } = extractStateAndMarket(fields.address ?? '');
+    const occurredAt = new Date().toISOString();
+    const captureEntries = buildCaptureLogEntries(null, fields, { includeOwner: false, occurredAt });
     let payload = {
       list_id: listId,
       owner_name: fields.ownerName ?? '',
+      owner_identified_at: hasMeaningfulOwnerName(fields.ownerName) ? occurredAt : null,
       owner_entity: fields.ownerEntity ?? '',
       facility_name: fields.facilityName ?? '',
       relationship_type: fields.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
@@ -1316,6 +1323,7 @@ export function useDatabase() {
       state: fields.state ?? state,
       status: 'fresh',
       call_history: [],
+      action_log: [...(fields.actionLog ?? []), ...captureEntries],
       notes: fields.notes ?? '',
     };
     let { data: row, error } = await supabase.from('contacts').insert([payload]).select().single();
@@ -1387,10 +1395,19 @@ export function useDatabase() {
   */
   const updateContact = useCallback(async (contactId, fields) => {
     const existing = contacts.find(contact => contact.id === contactId);
-    const { trackOwnerIdentification, ...persistedFields } = fields;
-    fields = trackOwnerIdentification
+    const persistedFields = { ...fields };
+    delete persistedFields.trackOwnerIdentification;
+    const nextContact = { ...existing, ...persistedFields };
+    const captureEntries = buildCaptureLogEntries(existing, nextContact, { includeOwner: false });
+    fields = persistedFields.ownerName !== undefined
       ? withOwnerIdentificationMilestone(existing, persistedFields)
       : persistedFields;
+    if (captureEntries.length > 0) {
+      fields = {
+        ...fields,
+        actionLog: [...(persistedFields.actionLog ?? existing?.actionLog ?? []), ...captureEntries],
+      };
+    }
     const dbFields = updatePayloadFromFields(fields);
     let { error } = await supabase.from('contacts').update(dbFields).eq('id', contactId);
     if (error && fields.ownerIdentifiedAt !== undefined && isMissingColumnError(error, 'owner_identified_at')) {
@@ -1484,12 +1501,17 @@ export function useDatabase() {
 
   // Replace a contact's activity log wholesale (review actions), with optional email backfill
   const mutateContactLog = useCallback(async (contactId, { log, email }) => {
-    const db = { action_log: log, updated_at: new Date().toISOString() };
+    const existing = contacts.find(contact => contact.id === contactId);
+    const captureEntries = email !== undefined && email !== null
+      ? buildCaptureLogEntries(existing, { ...existing, email }, { includeOwner: false })
+      : [];
+    const nextLog = [...log, ...captureEntries];
+    const db = { action_log: nextLog, updated_at: new Date().toISOString() };
     if (email !== undefined && email !== null) db.email = email;
     const { error } = await supabase.from('contacts').update(db).eq('id', contactId);
     if (!error) setContacts(prev => prev.map(c => c.id === contactId
-      ? { ...c, actionLog: log, ...(email !== undefined && email !== null ? { email } : {}) } : c));
-  }, []);
+      ? { ...c, actionLog: nextLog, ...(email !== undefined && email !== null ? { email } : {}) } : c));
+  }, [contacts]);
 
   // Append a logged action to a contact's activity log
   const logContactAction = useCallback(async (contactId, entry) => {
@@ -1600,6 +1622,8 @@ export function useDatabase() {
     let payload = {
       list_id: masterListId,
       owner_name: contact.ownerName ?? '',
+      owner_identified_at: contact.ownerIdentifiedAt
+        ?? (hasMeaningfulOwnerName(contact.ownerName) ? new Date().toISOString() : null),
       owner_entity: contact.ownerEntity ?? '',
       facility_name: contact.facilityName ?? '',
       relationship_type: contact.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
@@ -1617,6 +1641,7 @@ export function useDatabase() {
       notes: contact.notes ?? '',
       status: contact.status === 'fresh' ? 'conversation' : (contact.status ?? 'conversation'),
       call_history: contact.callHistory ?? [],
+      action_log: contact.actionLog ?? [],
       next_action_type: contact.nextActionType ?? '',
       next_action_date: contact.nextActionDate ?? '',
       next_action_note: contact.nextActionNote ?? '',

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { selectAllRows } from '../lib/selectAllRows';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
 import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } from '../lib/dealValue';
-import { createActivityEventId } from '../lib/activityAnalytics';
+import { buildCaptureLogEntries, createActivityEventId } from '../lib/activityAnalytics';
 
 function isMissingColumnError(error, columnName) {
   if (!error) return false;
@@ -175,9 +175,18 @@ export function useCRM() {
   }
 
   const addClient = useCallback(async (data) => {
-    const payload = hasDealValueInput(data)
-      ? { ...data, actionLog: [...(data.actionLog ?? []), buildDealValueLogEntry(data)] }
-      : data;
+    const captureEntries = buildCaptureLogEntries(null, data, {
+      ownerField: 'name',
+      includeOwner: !data.contactId,
+    });
+    const payload = {
+      ...data,
+      actionLog: [
+        ...(data.actionLog ?? []),
+        ...captureEntries,
+        ...(hasDealValueInput(data) ? [buildDealValueLogEntry(data)] : []),
+      ],
+    };
     let dbRow = clientToDb(payload);
     let { data: row, error } = await supabase
       .from('clients')
@@ -239,9 +248,19 @@ export function useCRM() {
 
   const updateClient = useCallback(async (id, data) => {
     const existing = clients.find(c => c.id === id);
-    const payload = dealValueChanged(existing, data)
-      ? { ...data, actionLog: [...(existing?.actionLog ?? data.actionLog ?? []), buildDealValueLogEntry(data)] }
-      : data;
+    const nextClient = { ...existing, ...data };
+    const captureEntries = buildCaptureLogEntries(existing, nextClient, {
+      ownerField: 'name',
+      includeOwner: !nextClient.contactId,
+    });
+    const payload = {
+      ...data,
+      actionLog: [
+        ...(data.actionLog ?? existing?.actionLog ?? []),
+        ...captureEntries,
+        ...(dealValueChanged(existing, nextClient) ? [buildDealValueLogEntry(nextClient)] : []),
+      ],
+    };
     let dbRow = { ...clientToDb(payload), updated_at: new Date().toISOString() };
     let { data: row, error } = await supabase
       .from('clients')
@@ -345,12 +364,17 @@ export function useCRM() {
 
   // Replace a client's activity log wholesale (review actions), with optional email backfill
   const mutateClientLog = useCallback(async (id, { log, email }) => {
-    const db = { action_log: log, updated_at: new Date().toISOString() };
+    const existing = clients.find(client => client.id === id);
+    const captureEntries = email !== undefined && email !== null
+      ? buildCaptureLogEntries(existing, { ...existing, email }, { ownerField: 'name', includeOwner: false })
+      : [];
+    const nextLog = [...log, ...captureEntries];
+    const db = { action_log: nextLog, updated_at: new Date().toISOString() };
     if (email !== undefined && email !== null) db.email = email;
     const { error } = await supabase.from('clients').update(db).eq('id', id);
     if (!error) setClients(prev => prev.map(c => c.id === id
-      ? { ...c, actionLog: log, ...(email !== undefined && email !== null ? { email } : {}) } : c));
-  }, []);
+      ? { ...c, actionLog: nextLog, ...(email !== undefined && email !== null ? { email } : {}) } : c));
+  }, [clients]);
 
   // Append a logged action to a client's activity log
   const logClientAction = useCallback(async (id, entry) => {

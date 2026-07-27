@@ -29,6 +29,8 @@ const CALL_TYPES = new Set([
 const ACTION_TYPES = new Set([
   ...CALL_TYPES,
   'email',
+  'email_gathered',
+  'owner_databased',
   'tractiq_report_sent',
   'meeting',
   'bov',
@@ -85,6 +87,38 @@ export function createActivityEventId() {
   return `activity-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+export function buildCaptureLogEntries(existing, next, {
+  ownerField = 'ownerName',
+  includeOwner = true,
+  occurredAt = new Date().toISOString(),
+} = {}) {
+  const entries = [];
+  const previousOwner = existing?.[ownerField];
+  const nextOwner = next?.[ownerField];
+  if (includeOwner && !hasMeaningfulOwnerName(previousOwner) && hasMeaningfulOwnerName(nextOwner)) {
+    entries.push({
+      eventId: createActivityEventId(),
+      type: 'owner_databased',
+      date: easternDateString(occurredAt),
+      note: String(nextOwner).trim(),
+      at: occurredAt,
+    });
+  }
+
+  const previousEmail = normalizedText(existing?.email);
+  const nextEmail = normalizedText(next?.email);
+  if (nextEmail && nextEmail !== previousEmail) {
+    entries.push({
+      eventId: createActivityEventId(),
+      type: 'email_gathered',
+      date: easternDateString(occurredAt),
+      note: nextEmail,
+      at: occurredAt,
+    });
+  }
+  return entries;
+}
+
 export function withOwnerIdentificationMilestone(existing, fields, occurredAt = new Date().toISOString()) {
   if (
     fields?.ownerName === undefined
@@ -132,19 +166,23 @@ function recordLabel(record, relatedType) {
   return record?.name || value(record, 'facilityName', 'facility_name') || 'Unknown client';
 }
 
-function eventMetrics(type) {
+function eventMetrics(type, detail = '') {
   const metrics = {};
   if (CALL_TYPES.has(type)) {
     metrics.calls = 1;
     metrics.actions = 1;
   }
   if (type === 'voicemail') metrics.voicemails = 1;
-  if (type === 'conversation' || type === 'appointment') metrics.conversations = 1;
+  if (type === 'conversation' || type === 'appointment' || (CALL_TYPES.has(type) && normalizedText(detail))) {
+    metrics.conversations = 1;
+  }
   if (type === 'appointment' || type === 'meeting') metrics.meetingsSet = 1;
   if (type === 'email') {
     metrics.emails = 1;
     metrics.actions = 1;
   }
+  if (type === 'email_gathered') metrics.emails = 1;
+  if (type === 'owner_databased') metrics.ownersIdentified = 1;
   if (type === 'tractiq_report_sent') {
     metrics.tractiqReportsSent = 1;
     metrics.emails = 1;
@@ -170,7 +208,7 @@ function actionEvent({ entry, record, relatedType, index, source = 'action_log' 
     label: recordLabel(record, relatedType),
     detail: entry?.note || '',
     source,
-    metrics: eventMetrics(type),
+    metrics: eventMetrics(type, entry?.note),
   };
 }
 
@@ -198,7 +236,7 @@ function legacyCallEvents(contact) {
       label: recordLabel(contact, 'contact'),
       detail: call?.notes || '',
       source: 'legacy_call_history',
-      metrics: eventMetrics(type),
+      metrics: eventMetrics(type, call?.notes),
     }];
   });
 }
@@ -392,6 +430,8 @@ export function aggregateActivityMetrics(events, reportingDates) {
     .filter(event => event.type === 'appointment' && event.ownerKey)
     .map(event => `${event.reportingDate}:${event.ownerKey}`));
   const worked = new Set();
+  const databasedOwners = new Set();
+  const gatheredEmails = new Set();
 
   selected.forEach(event => {
     if (
@@ -400,14 +440,26 @@ export function aggregateActivityMetrics(events, reportingDates) {
       && appointmentBuckets.has(`${event.reportingDate}:${event.ownerKey}`)
     ) return;
     Object.entries(event.metrics || {}).forEach(([key, amount]) => {
-      if (key !== 'ownersWorked') metrics[key] = (metrics[key] ?? 0) + amount;
+      if (!['ownersWorked', 'ownersIdentified'].includes(key) && !(key === 'emails' && event.type === 'email_gathered')) {
+        metrics[key] = (metrics[key] ?? 0) + amount;
+      }
     });
+    if (event.metrics?.ownersIdentified) {
+      const identity = normalizedText(event.label) || event.ownerKey || event.key;
+      databasedOwners.add(`${event.reportingDate}:${identity}`);
+    }
+    if (event.type === 'email_gathered') {
+      const identity = normalizedText(event.detail) || event.ownerKey || event.key;
+      gatheredEmails.add(`${event.reportingDate}:${identity}`);
+    }
     if (event.ownerKey && event.type !== 'owner_identified') {
       worked.add(`${event.reportingDate}:${event.ownerKey}`);
     }
   });
 
   metrics.ownersWorked = worked.size;
+  metrics.ownersIdentified = databasedOwners.size;
+  metrics.emails += gatheredEmails.size;
   return metrics;
 }
 
