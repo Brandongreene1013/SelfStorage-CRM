@@ -1,6 +1,17 @@
-// Compact, horizontally scrollable rate/credit tape. Tabular numerals, bp
-// changes for rates, direction arrows, and a stale marker when observations lag.
+// Compact rate/credit summary. Shows the eight indicators most useful for
+// brokerage and deal financing in a responsive, full-width grid.
 // Shows no fabricated change when a prior observation is missing.
+const VISIBLE_KEYS = [
+  'ust_y2',
+  'ust_y10',
+  'fed_funds',
+  'sofr',
+  'hy_spread',
+  'cre_delinquency',
+  'cre_loans',
+  'unemployment',
+];
+
 function fmtValue(v, unit) {
   if (v == null || !Number.isFinite(Number(v))) return '—';
   const n = Number(v);
@@ -20,15 +31,18 @@ function ChangeBadge({ bp }) {
 }
 
 export default function MarketTape({ tape = [] }) {
-  if (!tape || tape.length === 0) {
+  const visibleTape = VISIBLE_KEYS
+    .map(key => tape.find(cell => cell.key === key))
+    .filter(Boolean);
+  if (visibleTape.length === 0) {
     return <p className="text-xs text-slate-600 italic px-1 py-2">Rate & credit data will populate after the first market refresh.</p>;
   }
   return (
-    <div className="flex gap-px overflow-x-auto scrollbar-thin rounded-lg border border-slate-800/90 bg-slate-800 ring-1 ring-inset ring-white/[0.03]">
-      {tape.map(cell => (
-        <div key={cell.key} className="flex-shrink-0 min-w-[104px] bg-slate-950/60 px-3 py-2">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(145px,1fr))] gap-px overflow-hidden rounded-lg border border-slate-800/90 bg-slate-800 ring-1 ring-inset ring-white/[0.03]">
+      {visibleTape.map(cell => (
+        <div key={cell.key} className="min-w-0 bg-slate-950/60 px-3 py-2">
           <div className="flex items-center justify-between gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 truncate">{cell.label}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider leading-tight text-slate-500">{cell.label}</span>
             {cell.stale && <span title="Stale observation" className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />}
           </div>
           <div className="mt-0.5 flex items-baseline justify-between gap-1.5">

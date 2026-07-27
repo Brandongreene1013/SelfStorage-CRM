@@ -171,9 +171,9 @@ function CommandHeader({ today, todayCallbacks, overdueCallbacks, onStartCallMod
           </button>
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
-        {stats.map(s => (
-          <div key={s.label} className="bg-slate-950/70 px-3 py-2">
+      <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-px overflow-hidden rounded-lg border border-slate-800 bg-slate-800">
+        {stats.map((s, index) => (
+          <div key={s.label} className={`bg-slate-950/70 px-3 py-2 min-w-0 ${index === stats.length - 1 ? 'col-span-2 md:col-span-1' : ''}`}>
             <p className={`text-xl font-bold leading-none tabular-nums ${s.accent}`}>{s.value}</p>
             <p className="text-[11px] font-semibold text-slate-500 mt-1 leading-tight">{s.label}</p>
           </div>
