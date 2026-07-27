@@ -39,9 +39,11 @@ This file is the map for future Codex/Claude sessions. Read `AGENTS.md`, `CODEX_
 - `SPRINT_24_BACKUP_CALL_MODE_DATA_OPS_HANDOFF.md` — Backups, restore tooling, scoped deletes, deal value, multiple mailing addresses.
 - `SPRINT_25_DASHBOARD_INTELLIGENCE_AND_OWNER_RADAR_HANDOFF.md` — Daily/weekly production intelligence, owner radar, commission counter, current command center.
 - `SPRINT_26_CALL_MODE_HEADER_RESEARCH_POLISH_HANDOFF.md` — Brief Call Mode polish: address/copy/Whitepages at top, duplicate ownership lower, multiple mailing addresses exposed in Call Mode/contact creation.
+- `SPRINT_27_MARKET_INTELLIGENCE_DAILY_BRIEF_HANDOFF.md` — Reliable category news, CRM-derived active markets, market talking points, and the weekday 6:30 AM ET batch.
 
 ## Current Major Systems
 - Dashboard command center: `src/components/Dashboard.jsx`, `src/hooks/useDailyProgress.js`, `api/daily-activity.js`, `api/_dailyActivity.js`.
+- Market intelligence: `api/market-intelligence.js`, `api/_marketIntelligenceRun.js`, `api/_intelligenceMarkets.js`, `src/components/intelligence/`, `.github/workflows/market-intelligence.yml`.
 - Database / Call Mode: `src/components/Database.jsx`, `src/hooks/useDatabase.js`.
 - Universal tasks: `src/hooks/useTasks.js`, `src/components/tasks/`.
 - Owners / Properties: `src/hooks/useOwnership.js`, `src/components/OwnershipLinksPanel.jsx`, ownership/property SQL files.

@@ -9,6 +9,7 @@ import {
   safeFetch,
   fetchFredSeries,
   fetchTreasury,
+  unwrapBingNewsUrl,
 } from '../api/_intelligenceProviders.js';
 
 // ── RSS / Atom parsing ───────────────────────────────────────────────────────
@@ -37,6 +38,22 @@ import {
   const a = parseRssFeed(atom, { provider: 'federal_reserve', sourceName: 'Fed Speeches' });
   assert.equal(a.length, 1);
   assert.equal(a[0].canonical_url, 'https://federalreserve.gov/newsevents/speech/powell20260721a.htm');
+}
+
+// ── News-discovery RSS unwraps to the publisher, not the aggregator ─────────
+{
+  const destination = 'https://publisher.example.com/storage-deal?utm_source=bing';
+  const bingUrl = `https://www.bing.com/news/apiclick.aspx?url=${encodeURIComponent(destination)}&mkt=en-us`;
+  const rss = `<rss xmlns:News="https://www.bing.com/news"><channel><item>
+    <title>Storage portfolio trades</title><link>${bingUrl.replace(/&/g, '&amp;')}</link>
+    <description>Deal summary.</description><pubDate>Mon, 27 Jul 2026 10:00:00 GMT</pubDate>
+    <News:Source>Storage Trade Daily</News:Source>
+  </item></channel></rss>`;
+  const [item] = parseRssFeed(rss, { provider: 'bing_news', sourceName: 'Bing News', category: 'self_storage' });
+  assert.equal(unwrapBingNewsUrl(bingUrl), destination);
+  assert.equal(item.canonical_url, 'https://publisher.example.com/storage-deal');
+  assert.equal(item.source_name, 'Storage Trade Daily');
+  assert.equal(item.category, 'self_storage');
 }
 
 // ── Treasury XML parsing ─────────────────────────────────────────────────────

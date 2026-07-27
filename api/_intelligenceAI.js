@@ -60,6 +60,9 @@ Return exactly:
  "ratesSummary": <=2 sentences,
  "storageSummary": <=2 sentences,
  "creSummary": <=2 sentences,
+ "marketBriefs": array with one object per active market, each
+   {"market":str,"signal":<=1 sentence,"talkingPoints":array of 1-3 sourced short strings,
+    "evidenceItemIds":array,"confidence":"high"|"medium"|"low"}; return [] when no market evidence exists,
  "whatItMeans": <=3 sentences for the broker's deals,
  "dealEnvironment": {"debtCost":{"read":str,"direction":str,"confidence":str},
    "creditAvailability":{"read":str,"direction":str,"confidence":str},
@@ -119,6 +122,7 @@ export function buildSnapshotInput(topItems, marketMetrics) {
       title: boundedString(it.title, 240),
       summary: boundedString(it.summary || it.raw_excerpt || '', 300),
       source: boundedString(it.source_name || it.source_domain || '', 120),
+      tags: boundedArray(it.tags, 12).map(tag => boundedString(tag, 80)),
       importance: clamp(it.importance_score ?? it.relevanceScore ?? 0, 0, 100),
     })),
     metrics: marketMetrics ?? {},
@@ -194,6 +198,13 @@ export function validateSnapshot(raw) {
     ratesSummary: boundedString(raw.ratesSummary, 400),
     storageSummary: boundedString(raw.storageSummary, 400),
     creSummary: boundedString(raw.creSummary, 400),
+    marketBriefs: boundedArray(raw.marketBriefs, 6).map(market => ({
+      market: boundedString(market?.market, 100),
+      signal: boundedString(market?.signal, 240),
+      talkingPoints: boundedArray(market?.talkingPoints, 3).map(point => boundedString(point, 220)).filter(Boolean),
+      evidenceItemIds: boundedArray(market?.evidenceItemIds, 12).filter(value => value != null),
+      confidence: CONF.has(String(market?.confidence).toLowerCase()) ? String(market.confidence).toLowerCase() : 'low',
+    })).filter(market => market.market && (market.signal || market.talkingPoints.length)),
     whatItMeans: boundedString(raw.whatItMeans, 500),
     dealEnvironment: {
       debtCost: signalCell(de.debtCost),

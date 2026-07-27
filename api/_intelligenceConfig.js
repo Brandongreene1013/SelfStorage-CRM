@@ -18,30 +18,41 @@ export const OFFICIAL_RSS = [
 ];
 
 // ── Industry / trade-press RSS registry (allowlist) ──────────────────────────
-// Start EMPTY on purpose. Each feed must be verified as a real, permitted,
-// canonical, timestamped feed before it is added — the pipeline runs fine with
-// none configured. Populate deliberately in a later verification pass.
+// Verified 2026-07-27 with HTTP 200 + parseable, timestamped RSS. These are
+// first-party publisher feeds, giving the daily batch a dependable trade-news
+// spine even when a broad discovery API is throttled.
 export const INDUSTRY_RSS = [
-  // Example shape (commented until verified):
-  // { key: 'globest_cre', provider: 'industry_rss', sourceName: 'GlobeSt CRE', url: 'https://www.globest.com/feed/', category: 'cre', verified: true },
+  { key: 'inside_self_storage', provider: 'industry_rss', sourceName: 'Inside Self-Storage', url: 'https://www.insideselfstorage.com/rss.xml', category: 'self_storage', verified: true },
+  { key: 'commercial_observer', provider: 'industry_rss', sourceName: 'Commercial Observer', url: 'https://commercialobserver.com/feed/', category: 'cre', verified: true },
 ];
 
-// ── GDELT discovery query groups ─────────────────────────────────────────────
-// Separate, conservative queries (not one giant OR) so we can cache each group
-// and attribute results. GDELT ranking is only a discovery signal — our own
-// scoring re-ranks everything.
-export const GDELT_QUERY_GROUPS = [
-  { key: 'self_storage',   category: 'self_storage',   query: '("self storage" OR "self-storage") (portfolio OR acquisition OR REIT OR occupancy OR development)' },
-  { key: 'cre_transactions', category: 'cre',          query: '"commercial real estate" (acquisition OR portfolio OR "cap rate" OR disposition)' },
-  { key: 'cre_debt',       category: 'cre',            query: '"commercial real estate" (refinancing OR "debt maturity" OR distress OR foreclosure)' },
-  { key: 'private_credit', category: 'private_credit', query: '"private credit" (real estate OR "direct lending" OR "loan origination")' },
-  { key: 'private_equity', category: 'private_equity', query: '"private equity" ("real estate" OR REIT OR fundraising OR recapitalization)' },
-  { key: 'fed_rates',      category: 'rates',          query: '(Federal Reserve OR FOMC) (rate OR inflation OR "monetary policy")' },
-  { key: 'cmbs',           category: 'cre',            query: 'CMBS (delinquency OR spread OR issuance OR distress)' },
-  { key: 'regional_bank_cre', category: 'cre',         query: '"regional bank" "commercial real estate" (exposure OR losses OR lending)' },
-  { key: 'storage_operators', category: 'self_storage', query: '("Public Storage" OR "Extra Space" OR CubeSmart OR "National Storage")' },
-  { key: 'distress',       category: 'cre',            query: '"commercial real estate" (recapitalization OR "rescue capital" OR default)' },
+// ── Broad news discovery query groups ────────────────────────────────────────
+// Bing News RSS is used as the no-key discovery layer. Links are unwrapped to
+// the original publisher URL before storage. GDELT remains an opt-in fallback
+// because its public endpoint repeatedly returned 429/timeouts in production.
+export const NEWS_QUERY_GROUPS = [
+  { key: 'self_storage', category: 'self_storage', query: 'self-storage acquisition portfolio development REIT' },
+  { key: 'storage_operators', category: 'self_storage', query: 'Public Storage Extra Space Storage CubeSmart SmartStop' },
+  { key: 'cre_transactions', category: 'cre', query: 'commercial real estate acquisitions sales cap rates transactions' },
+  { key: 'cre_debt', category: 'cre', query: 'CRE refinancing CMBS distress debt maturity' },
+  { key: 'private_credit', category: 'private_credit', query: 'private credit real estate lending' },
+  { key: 'private_equity', category: 'private_equity', query: 'private equity real estate fund acquisitions' },
 ];
+
+// Kept small and disabled by default. Set ENABLE_GDELT_NEWS=true to include it.
+export const GDELT_QUERY_GROUPS = NEWS_QUERY_GROUPS;
+
+export function marketNewsQueryGroups(markets = []) {
+  return markets.slice(0, 4).map((market, index) => {
+    const label = String(market?.label ?? market ?? '').trim();
+    return {
+      key: `active_market_${index + 1}`,
+      category: 'self_storage',
+      query: `"${label}" (development OR business OR economy OR "real estate" OR construction OR zoning)`,
+      market: label,
+    };
+  }).filter(group => group.market);
+}
 
 // ── Alpha Vantage optional watchlist (verified public tickers only) ──────────
 // Disabled unless ALPHA_VANTAGE_API_KEY is set. End-of-day only — never labeled
@@ -57,12 +68,14 @@ export const ALPHA_VANTAGE_SYMBOLS = [
 export const PROVIDER_DEFAULTS = {
   timeoutMs: 12000,
   maxBytes: 4_000_000,          // reject oversized responses
-  gdeltMaxRecordsPerGroup: 25,  // conservative
+  newsMaxRecordsPerGroup: 20,
+  gdeltMaxRecordsPerGroup: 15,
   fredObservationLimit: 400,
   userAgent: 'StorageHuntersCRM-Intelligence/1.0 (+contact: broker ops)',
 };
 
-// Default priority markets can be overridden by INTELLIGENCE_PRIORITY_MARKETS.
+// Fallback only. The production pipeline first derives current markets from
+// live CRM pipeline/tasks/activity and uses these when no active signal exists.
 export const DEFAULT_PRIORITY_MARKETS = [
   'dallas', 'fort worth', 'houston', 'austin', 'san antonio', 'texas',
   'atlanta', 'georgia', 'florida', 'phoenix', 'nashville',

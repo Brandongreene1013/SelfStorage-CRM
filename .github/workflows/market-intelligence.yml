@@ -1,0 +1,40 @@
+name: Market Intelligence Daily Brief
+
+on:
+  schedule:
+    # GitHub cron is UTC. Calling at both offsets keeps the actual batch at
+    # 6:30 AM America/New_York across daylight and standard time; the API's
+    # Eastern-time gate makes the other invocation a no-op.
+    - cron: '30 10 * * 1-5'
+    - cron: '30 11 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  daily-market-brief:
+    name: Build 6:30 AM ET market talking points
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Refresh markets, news, active geographies, and daily brief
+        env:
+          MARKET_INTELLIGENCE_SECRET: ${{ secrets.MARKET_INTELLIGENCE_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MARKET_INTELLIGENCE_SECRET:-}" ]; then
+            echo "::error::Add MARKET_INTELLIGENCE_SECRET as a GitHub Actions repository secret."
+            exit 1
+          fi
+
+          mode="scheduled"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            mode="daily-brief"
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-delay 10 --max-time 180 \
+            -X POST \
+            -H "content-type: application/json" \
+            -H "x-intelligence-secret: ${MARKET_INTELLIGENCE_SECRET}" \
+            -d "{\"mode\":\"${mode}\",\"trigger\":\"github_0630_et\"}" \
+            "https://self-storage-crm.vercel.app/api/market-intelligence"

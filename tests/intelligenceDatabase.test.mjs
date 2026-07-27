@@ -79,6 +79,33 @@ import {
   assert.equal(dash.snapshot.confidence, 'medium');
   assert.equal(dash.providerStatus[0].provider, 'gdelt');
 
+  const crowded = assembleDashboard({
+    snapshot: null,
+    items: [
+      ...Array.from({ length: 20 }, (_, index) => ({
+        id: index + 10,
+        canonical_url: `https://fed.example/${index}`,
+        provider: 'federal_reserve',
+        title: `Fed story ${index}`,
+        category: 'rates',
+        importance_score: 100 - index,
+        is_hidden: false,
+      })),
+      {
+        id: 99,
+        canonical_url: 'https://pe.example/deal',
+        provider: 'google_news',
+        title: 'Private equity real estate fund closes',
+        category: 'private_equity',
+        importance_score: 50,
+        is_hidden: false,
+      },
+    ],
+    dataPoints: [],
+    latestRun: null,
+  }, { now });
+  assert.ok(crowded.topStories.some(item => item.category === 'private_equity'), 'category balancing prevents rates from crowding out PE');
+
   // Stale when brief is old / missing.
   const staleDash = assembleDashboard({ snapshot: null, items: rows, dataPoints: [], latestRun: null }, { now });
   assert.equal(staleDash.stale, true);

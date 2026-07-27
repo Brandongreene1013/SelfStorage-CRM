@@ -12,7 +12,8 @@ import * as providers from './_intelligenceProviders.js';
 import * as ai from './_intelligenceAI.js';
 import * as db from './_intelligenceDatabase.js';
 import { FRED_SERIES } from './_marketIntelligence.js';
-import { DEFAULT_PRIORITY_MARKETS } from './_intelligenceConfig.js';
+import { DEFAULT_PRIORITY_MARKETS, marketNewsQueryGroups } from './_intelligenceConfig.js';
+import { loadActiveMarkets } from './_intelligenceMarkets.js';
 
 function priorityMarkets(env = process.env) {
   const raw = env.INTELLIGENCE_PRIORITY_MARKETS;
@@ -30,6 +31,7 @@ export function buildDeps(env = process.env) {
     startedAt: Date.now(),
     fredKey: env.FRED_API_KEY || '',
     alphaKey: env.ALPHA_VANTAGE_API_KEY || '',
+    loadActiveMarkets,
   };
 }
 
@@ -64,14 +66,22 @@ export async function runNews(deps, { includeFed = true } = {}) {
   const { providers: P, client, now } = deps;
   const statuses = [];
   let raw = [];
+  const activeMarkets = await (deps.loadActiveMarkets ?? loadActiveMarkets)(client, { now: now() });
+  deps.activeMarkets = activeMarkets;
 
-  // Fetch every feed + GDELT group CONCURRENTLY (was sequential — 15 serial
-  // fetches blew past the 60s function limit before any write). allSettled so a
-  // single slow/failed source can't abort the batch.
+  // Fetch every feed + broad/active-market discovery query concurrently.
+  // GDELT is opt-in because its public endpoint is frequently throttled; Bing
+  // News RSS plus verified publisher feeds form the default redundant path.
   const feeds = [...(includeFed ? P.officialFeeds() : []), ...P.industryFeeds()];
+  const searchGroups = [...P.newsSearchGroups(), ...marketNewsQueryGroups(activeMarkets)];
+  const gdeltGroups = String(deps.env?.ENABLE_GDELT_NEWS).toLowerCase() === 'true'
+    ? P.gdeltGroups()
+    : [];
   const settled = await Promise.allSettled([
     ...feeds.map(feed => P.fetchRss(feed)),
-    ...P.gdeltGroups().map(group => P.fetchGdeltGroup(group)),
+    ...searchGroups.map(group => P.fetchNewsSearchGroup(group)),
+    ...searchGroups.map(group => P.fetchGoogleNewsGroup(group)),
+    ...gdeltGroups.map(group => P.fetchGdeltGroup(group)),
   ]);
   for (const s of settled) {
     if (s.status !== 'fulfilled') continue;
@@ -80,7 +90,9 @@ export async function runNews(deps, { includeFed = true } = {}) {
   }
 
   const nowMs = now();
-  const markets = priorityMarkets(deps.env);
+  const markets = activeMarkets.length
+    ? activeMarkets.map(market => market.label.toLowerCase())
+    : priorityMarkets(deps.env);
   const deduped = dedupeItems(raw);
   const scored = deduped.map(it => {
     const s = scoreItem(it, { priorityMarkets: markets, now: nowMs });
@@ -92,12 +104,21 @@ export async function runNews(deps, { includeFed = true } = {}) {
       importance_score: s.importanceScore,
       freshness_score: freshnessScore(it.published_at, nowMs),
       content_hash: contentHash(it.canonical_url, it.title),
+      tags: Array.isArray(it.tags) ? it.tags : [],
     };
   });
 
   let written = { inserted: 0, updated: 0 };
   if (scored.length && client) written = await deps.db.upsertItems(client, scored);
-  return { statuses, itemsDiscovered: scored.length, itemsInserted: written.inserted ?? 0, itemsUpdated: written.updated ?? 0, migrationNeeded: written.migrationNeeded, scored };
+  return {
+    statuses,
+    activeMarkets,
+    itemsDiscovered: scored.length,
+    itemsInserted: written.inserted ?? 0,
+    itemsUpdated: written.updated ?? 0,
+    migrationNeeded: written.migrationNeeded,
+    scored,
+  };
 }
 
 // ── AI enrichment: top unprocessed items, bounded by cost caps ───────────────
@@ -122,7 +143,7 @@ export async function runEnrichment(deps, candidateItems, { deadline = Infinity 
         impact: res.value.impact,
         confidence: res.value.confidence,
         entities: res.value.entities,
-        tags: res.value.tags,
+        tags: [...new Set([...(Array.isArray(item.tags) ? item.tags : []), ...res.value.tags])].slice(0, 12),
         relevance_score: res.value.relevanceScore,
         importance_score: res.value.importanceScore,
         ai_model: model,
@@ -140,12 +161,14 @@ export async function runBrief(deps) {
   const dash = await deps.db.readDashboard(client, { now: now() });
   if (dash.migrationNeeded) return { migrationNeeded: true };
   const topItems = boundedArray(dash.topStories, 30);
-  const metrics = { marketTape: dash.marketTape };
+  const activeMarkets = deps.activeMarkets
+    ?? await (deps.loadActiveMarkets ?? loadActiveMarkets)(client, { now: now() });
+  const metrics = { marketTape: dash.marketTape, activeMarkets };
   const gen = await A.generateSnapshot(topItems, metrics);
   if (!gen.ok) return { error: gen.error };
 
   const snapshotDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(now()));
-  const brief = gen.value;
+  const brief = { ...gen.value, activeMarkets };
   const res = await deps.db.upsertSnapshot(client, {
     snapshot_date: snapshotDate,
     generated_at: new Date().toISOString(),
@@ -164,7 +187,7 @@ export async function runBrief(deps) {
 
 // ── Top-level: run a set of tasks, isolating failures ────────────────────────
 export async function runTasks(tasks, deps) {
-  const summary = { statuses: [], itemsDiscovered: 0, itemsInserted: 0, itemsUpdated: 0, itemsAiProcessed: 0, dataPointsWritten: 0, errors: [], migrationNeeded: false };
+  const summary = { statuses: [], activeMarkets: [], itemsDiscovered: 0, itemsInserted: 0, itemsUpdated: 0, itemsAiProcessed: 0, dataPointsWritten: 0, errors: [], migrationNeeded: false };
   const wantSet = new Set(tasks);
 
   try {
@@ -180,6 +203,7 @@ export async function runTasks(tasks, deps) {
       summary.itemsDiscovered += r.itemsDiscovered;
       summary.itemsInserted += r.itemsInserted;
       summary.itemsUpdated += r.itemsUpdated;
+      summary.activeMarkets = r.activeMarkets ?? [];
       if (r.migrationNeeded) summary.migrationNeeded = true;
       // enrich freshly-scored items (they carry no id until re-read; enrich reads
       // back). Bounded by a wall-clock deadline so the news write always lands

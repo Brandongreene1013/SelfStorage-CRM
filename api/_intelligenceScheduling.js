@@ -9,10 +9,11 @@
 export function easternParts(now = new Date()) {
   const d = now instanceof Date ? now : new Date(now);
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', hour12: false,
+    timeZone: 'America/New_York', weekday: 'short', hour: '2-digit',
+    minute: '2-digit', hour12: false,
   }).formatToParts(d);
   const get = t => parts.find(p => p.type === t)?.value ?? '';
-  return { weekday: get('weekday'), hour: Number(get('hour')) };
+  return { weekday: get('weekday'), hour: Number(get('hour')), minute: Number(get('minute')) };
 }
 
 export function isWeekendET(now = new Date()) {
@@ -24,9 +25,20 @@ export function isWeekendET(now = new Date()) {
 // list drawn from: markets, news, fed, brief. Designed so an hourly sweep does
 // each the right number of times; the run_key bucket makes each idempotent.
 export function dueTasks(now = new Date()) {
-  const { hour } = easternParts(now);
+  const { hour, minute } = easternParts(now);
   const weekend = isWeekendET(now);
   const tasks = new Set();
+
+  // The broker's daily talking-point batch: one coordinated rates + news +
+  // active-market pull and synthesis at 6:30 AM Eastern. The 20-minute lower
+  // bound tolerates normal GitHub scheduler delay without letting a 6:00 sweep
+  // generate the brief before the intended window.
+  if (!weekend && hour === 6 && minute >= 20) {
+    tasks.add('markets');
+    tasks.add('news');
+    tasks.add('fed');
+    tasks.add('brief');
+  }
 
   // Rates/markets: weekday pre-open (~8) and after close (~17).
   if (!weekend && (hour === 8 || hour === 17)) tasks.add('markets');
@@ -39,7 +51,7 @@ export function dueTasks(now = new Date()) {
   // Federal Reserve feeds: weekdays, a few times.
   if (!weekend && [8, 12, 16].includes(hour)) tasks.add('fed');
 
-  // Daily brief: weekday morning after the first ingestion (~9).
+  // A later safety synthesis remains available to an hourly scheduler.
   if (!weekend && hour === 9) tasks.add('brief');
 
   return [...tasks];
@@ -53,9 +65,10 @@ export function tasksForMode(mode, now = new Date()) {
     case 'refresh-markets': return ['markets'];
     case 'refresh-news':    return ['news', 'fed'];
     case 'generate-brief':  return ['brief'];
+    case 'daily-brief':     return ['markets', 'news', 'fed', 'brief'];
     case 'scheduled':       return dueTasks(now);
     default:                return [];
   }
 }
 
-export const REFRESH_MODES = new Set(['refresh', 'refresh-markets', 'refresh-news', 'generate-brief', 'scheduled', 'status']);
+export const REFRESH_MODES = new Set(['refresh', 'refresh-markets', 'refresh-news', 'generate-brief', 'daily-brief', 'scheduled', 'status']);

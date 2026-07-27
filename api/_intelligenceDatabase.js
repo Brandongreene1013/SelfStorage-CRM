@@ -145,11 +145,35 @@ export function assembleDashboard({ snapshot, items = [], dataPoints = [], lates
       confidence: snapshot.executive_brief?.confidence ?? null,
     } : null,
     marketTape: buildMarketTape(dataPoints, { now }),
-    topStories: byImportance.slice(0, 12),
+    topStories: balancedTopStories(byImportance, 24),
     categories,
     savedStories: visible.filter(s => s.isSaved),
     providerStatus: boundedArray(latestRun?.provider_results, 40),
   };
+}
+
+export function balancedTopStories(stories, limit = 24) {
+  const categoryOrder = ['self_storage', 'cre', 'private_equity', 'private_credit', 'rates', 'macro'];
+  const selected = [];
+  const selectedIds = new Set();
+  for (const category of categoryOrder) {
+    for (const story of stories.filter(item => item.category === category).slice(0, 3)) {
+      const key = story.id ?? story.url;
+      if (!selectedIds.has(key)) {
+        selected.push(story);
+        selectedIds.add(key);
+      }
+    }
+  }
+  for (const story of stories) {
+    if (selected.length >= limit) break;
+    const key = story.id ?? story.url;
+    if (!selectedIds.has(key)) {
+      selected.push(story);
+      selectedIds.add(key);
+    }
+  }
+  return selected.slice(0, limit);
 }
 
 // ── PURE: eastern-time-bucketed idempotency key ──────────────────────────────

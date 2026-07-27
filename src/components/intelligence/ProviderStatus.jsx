@@ -47,5 +47,5 @@ export default function ProviderStatus({ statuses = [], generatedAt, stale }) {
 }
 
 function prettyProvider(p) {
-  return ({ federal_reserve: 'Fed', treasury: 'Treasury', fred: 'FRED', gdelt: 'GDELT', industry_rss: 'Trade', alpha_vantage: 'Equities' })[p] ?? p;
+  return ({ federal_reserve: 'Fed', treasury: 'Treasury', fred: 'FRED', bing_news: 'Bing News', google_news: 'Google News', gdelt: 'GDELT', industry_rss: 'Trade', alpha_vantage: 'Equities' })[p] ?? p;
 }

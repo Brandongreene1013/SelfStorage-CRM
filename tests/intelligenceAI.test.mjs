@@ -89,11 +89,12 @@ import {
 // ── Snapshot input assembly + validation ─────────────────────────────────────
 {
   const input = buildSnapshotInput(
-    [{ id: 1, category: 'rates', title: 'Fed holds', summary: 'no change', source_name: 'Fed', importance_score: 95 }],
-    { fedFunds: 4.33 },
+    [{ id: 1, category: 'rates', title: 'Fed holds', summary: 'no change', source_name: 'Fed', tags: ['market:Dallas, TX'], importance_score: 95 }],
+    { fedFunds: 4.33, activeMarkets: [{ label: 'Dallas, TX' }] },
   );
   assert.equal(input.items.length, 1);
   assert.equal(input.items[0].id, 1);
+  assert.deepEqual(input.items[0].tags, ['market:Dallas, TX']);
   assert.equal(input.metrics.fedFunds, 4.33);
 
   const okSnap = validateSnapshot({
@@ -101,6 +102,13 @@ import {
     keyDevelopments: ['Fed held rates', 'IG spreads tightened', 'Storage REIT occupancy up'],
     themes: ['patient Fed', 'selective credit', 'resilient storage'],
     ratesSummary: 'Held steady.', storageSummary: 'Occupancy firm.', creSummary: 'Selective.',
+    marketBriefs: [{
+      market: 'Dallas, TX',
+      signal: 'A storage portfolio traded.',
+      talkingPoints: ['Institutional demand remains visible.'],
+      evidenceItemIds: [2],
+      confidence: 'medium',
+    }],
     whatItMeans: 'Financing costs stable for now.',
     dealEnvironment: { debtCost: { read: 'Restrictive', direction: 'STABLE', confidence: 'High' } },
     evidenceItemIds: [1, 2], confidence: 'medium',
@@ -109,6 +117,7 @@ import {
   assert.equal(okSnap.value.dealEnvironment.debtCost.direction, 'stable');
   assert.equal(okSnap.value.dealEnvironment.buyerLiquidity.read, 'Unknown', 'missing signal cell defaults safely');
   assert.equal(okSnap.value.themes.length, 3);
+  assert.equal(okSnap.value.marketBriefs[0].market, 'Dallas, TX');
 
   assert.equal(validateSnapshot({ headline: '' }).ok, false, 'missing headline rejected');
   assert.equal(validateSnapshot({ headline: 'x', keyDevelopments: [] }).ok, false, 'no developments rejected');

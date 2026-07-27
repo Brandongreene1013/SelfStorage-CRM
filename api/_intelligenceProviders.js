@@ -17,13 +17,14 @@
 
 import { canonicalizeUrl, domainOf, boundedString, boundedArray, clamp } from './_marketIntelligence.js';
 import {
-  OFFICIAL_RSS, INDUSTRY_RSS, GDELT_QUERY_GROUPS, ALPHA_VANTAGE_SYMBOLS,
+  OFFICIAL_RSS, INDUSTRY_RSS, NEWS_QUERY_GROUPS, GDELT_QUERY_GROUPS, ALPHA_VANTAGE_SYMBOLS,
   PROVIDER_DEFAULTS, allowlistedFeedHosts,
 } from './_intelligenceConfig.js';
 
 // API hosts the adapters may contact beyond the RSS allowlist.
 const API_HOSTS = new Set([
   'home.treasury.gov', 'api.stlouisfed.org', 'api.gdeltproject.org', 'www.alphavantage.co',
+  'www.bing.com', 'bing.com', 'news.google.com',
 ]);
 
 // ── Structured provider status ───────────────────────────────────────────────
@@ -106,15 +107,17 @@ export function parseRssFeed(xml, { provider = 'industry_rss', sourceName = '', 
     let link = isAtom
       ? (firstAttr(block, 'link', 'href') || stripTags(firstTag(block, 'id') || ''))
       : stripTags(firstTag(block, 'link') || '');
+    if (provider === 'bing_news') link = unwrapBingNewsUrl(link);
     const rawDate = firstTag(block, 'pubDate') || firstTag(block, 'published') || firstTag(block, 'updated') || firstTag(block, 'dc:date');
     const excerpt = stripTags(firstTag(block, 'description') || firstTag(block, 'summary') || firstTag(block, 'content') || '');
+    const itemSource = stripTags(firstTag(block, 'News:Source') || firstTag(block, 'source') || '');
     const canonical = canonicalizeUrl(link);
     if (!title || !canonical) continue;
     const published = rawDate ? new Date(decodeEntities(rawDate)) : null;
     items.push({
       canonical_url: canonical,
       provider,
-      source_name: sourceName,
+      source_name: itemSource || sourceName,
       source_domain: domainOf(canonical),
       title: boundedString(title, 400),
       published_at: published && Number.isFinite(published.getTime()) ? published.toISOString() : null,
@@ -123,6 +126,26 @@ export function parseRssFeed(xml, { provider = 'industry_rss', sourceName = '', 
     });
   }
   return items;
+}
+
+export function unwrapBingNewsUrl(rawUrl) {
+  try {
+    const url = new URL(String(rawUrl ?? ''));
+    if (!/(^|\.)bing\.com$/i.test(url.hostname)) return rawUrl;
+    const destination = url.searchParams.get('url');
+    return destination ? decodeURIComponent(destination) : rawUrl;
+  } catch {
+    return rawUrl;
+  }
+}
+
+function isUsefulMarketItem(item, market) {
+  if (!market) return true;
+  const city = String(market).split(',')[0].trim().toLowerCase();
+  const text = `${item.title} ${item.raw_excerpt}`.toLowerCase();
+  if (!city || !String(item.title).toLowerCase().includes(city)) return false;
+  if (/\brealtor\.com\b|\bzillow\b|\bredfin\b|\btrulia\b|\bobituar|\bfuneral home\b/i.test(`${item.source_name} ${item.title}`)) return false;
+  return /\b(storage|real estate|develop|econom|construction|zoning|project|jobs?|employ|facility|investment|industrial|retail|housing|population|permit|infrastructure|acqui|sale|loan|bank|capital)\b/i.test(text);
 }
 
 // ── Treasury daily par-yield XML parser ──────────────────────────────────────
@@ -272,6 +295,53 @@ export async function fetchGdeltGroup(group, deps = {}) {
   }
 }
 
+export async function fetchNewsSearchGroup(group, deps = {}) {
+  const url = `https://www.bing.com/news/search?q=${encodeURIComponent(group.query)}`
+    + `&format=rss&count=${PROVIDER_DEFAULTS.newsMaxRecordsPerGroup}`;
+  try {
+    const { text } = await safeFetch(url, { accept: 'application/rss+xml, application/xml', ...deps });
+    const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    const items = parseRssFeed(text, {
+      provider: 'bing_news',
+      sourceName: 'Bing News',
+      category: group.category,
+    }).filter(item => !item.published_at || new Date(item.published_at).getTime() >= cutoff)
+      .filter(item => isUsefulMarketItem(item, group.market))
+      .map(item => ({
+        ...item,
+        queryGroup: group.key,
+        tags: group.market ? [`market:${group.market}`] : [],
+      }));
+    return { status: providerStatus('bing_news', 'success', { group: group.key, items: items.length }), items };
+  } catch (e) {
+    return { status: providerStatus('bing_news', classifyError(e), { group: group.key, message: safeErr(e) }), items: [] };
+  }
+}
+
+export async function fetchGoogleNewsGroup(group, deps = {}) {
+  const query = `${group.query} when:14d`;
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+  try {
+    const { text } = await safeFetch(url, { accept: 'application/rss+xml, application/xml', ...deps });
+    const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+    const items = parseRssFeed(text, {
+      provider: 'google_news',
+      sourceName: 'Google News',
+      category: group.category,
+    }).filter(item => !item.published_at || new Date(item.published_at).getTime() >= cutoff)
+      .filter(item => isUsefulMarketItem(item, group.market))
+      .slice(0, PROVIDER_DEFAULTS.newsMaxRecordsPerGroup)
+      .map(item => ({
+        ...item,
+        queryGroup: group.key,
+        tags: group.market ? [`market:${group.market}`] : [],
+      }));
+    return { status: providerStatus('google_news', 'success', { group: group.key, items: items.length }), items };
+  } catch (e) {
+    return { status: providerStatus('google_news', classifyError(e), { group: group.key, message: safeErr(e) }), items: [] };
+  }
+}
+
 export async function fetchAlphaVantage(symbolMeta, apiKey, deps = {}) {
   if (!apiKey) return { status: providerStatus('alpha_vantage', 'missing_config'), dataPoint: null };
   const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbolMeta.symbol)}&apikey=${encodeURIComponent(apiKey)}`;
@@ -289,6 +359,7 @@ export async function fetchAlphaVantage(symbolMeta, apiKey, deps = {}) {
 // Convenience: the configured feed sets (used by the pipeline).
 export function officialFeeds() { return OFFICIAL_RSS; }
 export function industryFeeds() { return INDUSTRY_RSS.filter(f => f.verified); }
+export function newsSearchGroups() { return NEWS_QUERY_GROUPS; }
 export function gdeltGroups() { return GDELT_QUERY_GROUPS; }
 export function alphaVantageSymbols() { return ALPHA_VANTAGE_SYMBOLS.filter(s => s.verified); }
 

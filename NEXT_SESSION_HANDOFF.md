@@ -50,7 +50,7 @@ Production read-only smoke check:
   - Dashboard top counters showed zero at check time; confirm with Brandon if that conflicts with expected logged activity.
 
 ## Latest Sprint Docs
-The handoff collection is now current through Sprint 26:
+The handoff collection is now current through Sprint 27:
 - `SPRINT_HANDOFF_INDEX.md`
 - `SPRINT_20_CALL_MODE_INLINE_EDITING_PWA_HANDOFF.md`
 - `SPRINT_21_OWNERSHIP_PANEL_MULTI_PROPERTY_HANDOFF.md`
@@ -59,6 +59,7 @@ The handoff collection is now current through Sprint 26:
 - `SPRINT_24_BACKUP_CALL_MODE_DATA_OPS_HANDOFF.md`
 - `SPRINT_25_DASHBOARD_INTELLIGENCE_AND_OWNER_RADAR_HANDOFF.md`
 - `SPRINT_26_CALL_MODE_HEADER_RESEARCH_POLISH_HANDOFF.md` is the current brief in-progress handoff for Call Mode header polish and multiple mailing address exposure.
+- `SPRINT_27_MARKET_INTELLIGENCE_DAILY_BRIEF_HANDOFF.md` documents the current Dashboard market-intelligence providers, CRM-derived active markets, and 6:30 AM ET daily batch.
 
 Older sprint docs from Sprint 1-19 remain at repo root.
 
@@ -68,6 +69,12 @@ Older sprint docs from Sprint 1-19 remain at repo root.
   - `src/hooks/useDailyProgress.js`
   - `api/daily-activity.js`
   - `api/_dailyActivity.js`
+- Market intelligence:
+  - `api/market-intelligence.js`
+  - `api/_marketIntelligenceRun.js`
+  - `api/_intelligenceMarkets.js`
+  - `src/components/intelligence/`
+  - `.github/workflows/market-intelligence.yml`
 - Database / Call Mode:
   - `src/components/Database.jsx`
   - `src/hooks/useDatabase.js`

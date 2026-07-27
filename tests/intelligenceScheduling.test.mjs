@@ -12,6 +12,7 @@ import { authorizeRefresh, handleIntelligence } from '../api/market-intelligence
   // January → EST (UTC-5): 12:00Z = 07:00 ET
   const winter = easternParts(new Date('2026-01-22T12:00:00Z'));
   assert.equal(winter.hour, 7, 'EST offset applied (DST handled by TZ, not fixed UTC math)');
+  assert.equal(easternParts(new Date('2026-07-22T10:30:00Z')).minute, 30);
 
   assert.equal(isWeekendET(new Date('2026-07-25T18:00:00Z')), true, 'Saturday ET');
   assert.equal(isWeekendET(new Date('2026-07-22T18:00:00Z')), false, 'Wednesday ET');
@@ -19,6 +20,17 @@ import { authorizeRefresh, handleIntelligence } from '../api/market-intelligence
 
 // ── dueTasks windows ─────────────────────────────────────────────────────────
 {
+  // 06:30 ET daily batch works in both daylight and standard time.
+  assert.deepEqual(
+    dueTasks(new Date('2026-07-22T10:30:00Z')).sort(),
+    ['brief', 'fed', 'markets', 'news'],
+  );
+  assert.deepEqual(
+    dueTasks(new Date('2026-01-22T11:30:00Z')).sort(),
+    ['brief', 'fed', 'markets', 'news'],
+  );
+  assert.deepEqual(dueTasks(new Date('2026-07-22T10:10:00Z')), [], 'does not generate before 6:20 ET');
+
   // Wed 08:00 ET (12:00Z summer): markets + news + fed
   const morning = dueTasks(new Date('2026-07-22T12:00:00Z'));
   assert.ok(morning.includes('markets') && morning.includes('news') && morning.includes('fed'));
@@ -37,9 +49,11 @@ import { authorizeRefresh, handleIntelligence } from '../api/market-intelligence
 {
   assert.deepEqual(tasksForMode('refresh-markets'), ['markets']);
   assert.deepEqual(tasksForMode('generate-brief'), ['brief']);
+  assert.deepEqual(tasksForMode('daily-brief'), ['markets', 'news', 'fed', 'brief']);
   assert.deepEqual(tasksForMode('refresh'), ['markets', 'news', 'fed']);
   assert.deepEqual(tasksForMode('bogus'), []);
   assert.ok(REFRESH_MODES.has('scheduled'));
+  assert.ok(REFRESH_MODES.has('daily-brief'));
 }
 
 // ── Auth ─────────────────────────────────────────────────────────────────────

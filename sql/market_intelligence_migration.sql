@@ -1,5 +1,6 @@
 -- Storage Hunters CRM: Market Intelligence foundation.
--- Idempotent — safe to run more than once. NOT YET RUN against production.
+-- Idempotent — safe to run more than once. Applied to production and verified
+-- through the live dashboard endpoint on 2026-07-27.
 --
 -- Before running:
 -- 1. Download an in-app backup and confirm the encrypted GitHub backup artifact.
