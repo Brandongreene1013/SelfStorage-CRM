@@ -6,7 +6,7 @@ export default function DailyBrief({ snapshot }) {
   if (!snapshot || !snapshot.headline) {
     return (
       <div className="text-xs text-slate-600 italic py-3">
-        The daily brief generates each weekday morning once market and news data are ingested.
+        The daily brief generates every morning once market and news data are ingested.
       </div>
     );
   }

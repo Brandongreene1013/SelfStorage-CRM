@@ -39,7 +39,7 @@ This file is the map for future Codex/Claude sessions. Read `AGENTS.md`, `CODEX_
 - `SPRINT_24_BACKUP_CALL_MODE_DATA_OPS_HANDOFF.md` — Backups, restore tooling, scoped deletes, deal value, multiple mailing addresses.
 - `SPRINT_25_DASHBOARD_INTELLIGENCE_AND_OWNER_RADAR_HANDOFF.md` — Daily/weekly production intelligence, owner radar, commission counter, current command center.
 - `SPRINT_26_CALL_MODE_HEADER_RESEARCH_POLISH_HANDOFF.md` — Brief Call Mode polish: address/copy/Whitepages at top, duplicate ownership lower, multiple mailing addresses exposed in Call Mode/contact creation.
-- `SPRINT_27_MARKET_INTELLIGENCE_DAILY_BRIEF_HANDOFF.md` — Reliable category news, CRM-derived active markets, market talking points, and the weekday 6:30 AM ET batch.
+- `SPRINT_27_MARKET_INTELLIGENCE_DAILY_BRIEF_HANDOFF.md` — Reliable category news, CRM-derived active markets, market talking points, and the daily 6:30 AM ET batch.
 
 ## Current Major Systems
 - Dashboard command center: `src/components/Dashboard.jsx`, `src/hooks/useDailyProgress.js`, `api/daily-activity.js`, `api/_dailyActivity.js`.

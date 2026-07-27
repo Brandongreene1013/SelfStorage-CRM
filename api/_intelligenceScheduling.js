@@ -33,7 +33,7 @@ export function dueTasks(now = new Date()) {
   // active-market pull and synthesis at 6:30 AM Eastern. The 20-minute lower
   // bound tolerates normal GitHub scheduler delay without letting a 6:00 sweep
   // generate the brief before the intended window.
-  if (!weekend && hour === 6 && minute >= 20) {
+  if (hour === 6 && minute >= 20) {
     tasks.add('markets');
     tasks.add('news');
     tasks.add('fed');

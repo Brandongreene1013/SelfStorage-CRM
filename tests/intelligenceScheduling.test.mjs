@@ -29,6 +29,11 @@ import { authorizeRefresh, handleIntelligence } from '../api/market-intelligence
     dueTasks(new Date('2026-01-22T11:30:00Z')).sort(),
     ['brief', 'fed', 'markets', 'news'],
   );
+  assert.deepEqual(
+    dueTasks(new Date('2026-07-25T10:30:00Z')).sort(),
+    ['brief', 'fed', 'markets', 'news'],
+    'Saturday still receives a fresh daily batch',
+  );
   assert.deepEqual(dueTasks(new Date('2026-07-22T10:10:00Z')), [], 'does not generate before 6:20 ET');
 
   // Wed 08:00 ET (12:00Z summer): markets + news + fed

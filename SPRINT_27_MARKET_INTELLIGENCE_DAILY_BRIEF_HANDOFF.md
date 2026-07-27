@@ -3,7 +3,7 @@
 ## Objective
 Turn the Dashboard intelligence terminal into a dependable daily broker brief:
 fresh CRE, self-storage, private-credit/private-equity, Fed/rates, and
-market-specific talking points every weekday at 6:30 AM Eastern.
+market-specific talking points every day at 6:30 AM Eastern.
 
 ## Root Cause Found
 - The verified industry RSS registry was empty.
@@ -26,7 +26,7 @@ market-specific talking points every weekday at 6:30 AM Eastern.
 - News Radar selection is category-balanced so Fed stories cannot crowd every
   storage/CRE/PE item out of the visible list.
 - `.github/workflows/market-intelligence.yml` invokes the protected endpoint at
-  6:30 AM America/New_York on weekdays across EDT and EST. Manual dispatch
+  6:30 AM America/New_York every day across EDT and EST. Manual dispatch
   forces a complete daily batch.
 
 ## Configuration
