@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useMemo } from 'react';
+﻿import { useEffect, useState, useMemo, lazy, Suspense } from 'react';
 import { PIPELINE_STAGES } from '../data/constants';
 import FunnelChart from './FunnelChart';
 import RecentActivity from './RecentActivity';
@@ -12,6 +12,10 @@ import { EVENT_META, eventTimeLabel, shiftDay } from '../lib/activityLog';
 import { mergeDashboardMeetings } from '../lib/calendarEvents';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState, ModalLayout } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
+// Lazy-loaded so the market-intelligence terminal (its own chunk) never bloats
+// the Dashboard's initial paint.
+const IntelligenceTerminal = lazy(() => import('./intelligence/IntelligenceTerminal'));
+import ErrorBoundary from './ErrorBoundary';
 
 const todayStr = easternToday;
 
@@ -1815,6 +1819,15 @@ export default function Dashboard({
         </p>
       )}
 
+      {/* Section 1 — Market intelligence terminal (self-contained; its own error
+          boundary and cached-only data — never blocks the operations below). */}
+      <ErrorBoundary label="Intelligence">
+        <Suspense fallback={<div className="h-24 rounded-xl bg-slate-900/60 border border-slate-800/80 animate-pulse" />}>
+          <IntelligenceTerminal />
+        </Suspense>
+      </ErrorBoundary>
+
+      {/* Section 2 — Broker operations command center */}
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(340px,0.95fr)_minmax(420px,1.15fr)_minmax(320px,0.9fr)] gap-4 items-start">
         <DailyProduction
           today={today}
