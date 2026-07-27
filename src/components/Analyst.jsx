@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { downloadFilledModel } from '../lib/excelModel';
 import { downloadCrmSpreadsheet } from '../lib/crmSpreadsheet';
+import { getSalesforceImportConfig } from '../lib/salesforceImportClient';
+import SalesforceScreenshotImport from './analyst/SalesforceScreenshotImport';
 
 // Lightweight markdown-ish renderer: **bold**, line breaks, bullet dashes.
 function RichText({ text }) {
@@ -82,7 +84,7 @@ function SpreadsheetDownload({ exportData }) {
   return (
     <div className="mt-3 rounded-xl border border-sky-500/25 bg-sky-500/5 p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-bold text-sky-300">{exportData.title || 'CRM Spreadsheet'}</p>
           <p className="mt-0.5 text-[11px] text-slate-500">
             {exportData.rowCount ?? exportData.rows?.length ?? 0} rows · {exportData.columns?.length ?? 0} columns
@@ -108,14 +110,24 @@ const SUGGESTIONS = [
   'Gross revenue is $540k, expenses are 58% of EGI, and asking price is $4.5M — underwrite it.',
 ];
 
-export default function Analyst() {
+export default function Analyst({ onOpenImportedFacility }) {
   const [messages, setMessages] = useState([]); // {role, content (string for display), apiContent (blocks)}
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]); // {name, block}
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [mode, setMode] = useState('analyst');
+  const [salesforceEnabled, setSalesforceEnabled] = useState(false);
   const scrollRef = useRef(null);
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    const localPreview = import.meta.env.DEV
+      && import.meta.env.VITE_SALESFORCE_SCREENSHOT_IMPORT_PREVIEW === 'true';
+    getSalesforceImportConfig()
+      .then(config => setSalesforceEnabled(config.enabled === true || localPreview))
+      .catch(() => setSalesforceEnabled(localPreview));
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -208,7 +220,7 @@ export default function Analyst() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto flex flex-col h-[calc(100vh-180px)]">
+    <div className={`max-w-5xl mx-auto flex flex-col ${mode === 'analyst' ? 'h-[calc(100vh-180px)]' : ''}`}>
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-900 font-bold text-lg shadow">
@@ -218,8 +230,18 @@ export default function Analyst() {
           <h2 className="text-lg font-bold text-white leading-tight">AI Analyst</h2>
           <p className="text-xs text-slate-500">CRM intelligence · database search · underwriting · custom spreadsheets</p>
         </div>
+        {salesforceEnabled && (
+          <div className="ml-auto flex rounded-xl border border-slate-700 bg-slate-900 p-1">
+            <button onClick={() => setMode('analyst')} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${mode === 'analyst' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}>Ask Analyst</button>
+            <button onClick={() => setMode('salesforce')} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${mode === 'salesforce' ? 'bg-amber-500 text-slate-950' : 'text-slate-400'}`}>Import Salesforce</button>
+          </div>
+        )}
       </div>
 
+      {mode === 'salesforce' && salesforceEnabled ? (
+        <SalesforceScreenshotImport onOpenFacility={onOpenImportedFacility} />
+      ) : (
+      <>
       {/* Chat thread */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-1">
         {messages.length === 0 && (
@@ -321,6 +343,8 @@ export default function Analyst() {
           Send
         </button>
       </div>
+      </>
+      )}
     </div>
   );
 }

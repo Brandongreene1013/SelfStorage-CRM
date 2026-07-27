@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node tests/textNormalize.test.mjs && node tests/ownerRadar.test.mjs && node tests/duplicateReview.test.mjs && node tests/reliability.test.mjs && node tests/activityAnalytics.test.mjs && node tests/crmAnalyst.test.mjs && node tests/databaseSort.test.mjs && node tests/geo.test.mjs && node tests/calendarEvents.test.mjs && node tests/marketIntelligence.test.mjs && node tests/intelligenceProviders.test.mjs && node tests/intelligenceMarkets.test.mjs && node tests/intelligenceAI.test.mjs && node tests/intelligenceDatabase.test.mjs && node tests/intelligenceScheduling.test.mjs",
+    "test": "node tests/textNormalize.test.mjs && node tests/ownerRadar.test.mjs && node tests/duplicateReview.test.mjs && node tests/reliability.test.mjs && node tests/activityAnalytics.test.mjs && node tests/crmAnalyst.test.mjs && node tests/databaseSort.test.mjs && node tests/geo.test.mjs && node tests/calendarEvents.test.mjs && node tests/marketIntelligence.test.mjs && node tests/intelligenceProviders.test.mjs && node tests/intelligenceMarkets.test.mjs && node tests/intelligenceAI.test.mjs && node tests/intelligenceDatabase.test.mjs && node tests/intelligenceScheduling.test.mjs && node tests/salesforceImport.test.mjs",
     "preview": "vite preview",
     "backup:db": "node scripts/backup-database.mjs",
     "backup:json": "node scripts/export-supabase-json-backup.mjs",
@@ -21,10 +21,12 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@supabase/supabase-js": "^2.101.1",
     "fflate": "^0.8.3",
+    "image-size": "^2.0.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "uuid": "^13.0.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

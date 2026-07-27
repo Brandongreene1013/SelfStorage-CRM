@@ -1734,5 +1734,6 @@ export function useDatabase() {
     deleteContactAction,
     deleteContactCallHistory,
     mutateContactLog,
+    reload: loadAll,
   };
 }

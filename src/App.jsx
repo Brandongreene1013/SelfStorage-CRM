@@ -247,6 +247,16 @@ export default function App() {
     setView('Database');
   }, []);
 
+  const handleOpenImportedFacility = useCallback(async (result) => {
+    await db.reload?.();
+    setDbEntryRequest({
+      subView: 'contacts',
+      listId: db.masterListId || 'all',
+      search: result?.facilityName || '',
+    });
+    setView('Database');
+  }, [db]);
+
   const handleDownloadBackup = useCallback(async () => {
     setBackupStatus('exporting');
     try {
@@ -535,7 +545,7 @@ export default function App() {
             </div>
           )}
 
-          {view === 'Analyst' && <Analyst />}
+          {view === 'Analyst' && <Analyst onOpenImportedFacility={handleOpenImportedFacility} />}
 
           {view === 'Calendar' && (
             <Calendar
