@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { downloadFilledModel } from '../lib/excelModel';
+import { downloadCrmSpreadsheet } from '../lib/crmSpreadsheet';
 
 // Lightweight markdown-ish renderer: **bold**, line breaks, bullet dashes.
 function RichText({ text }) {
@@ -62,10 +63,49 @@ function ModelDownload({ model }) {
   );
 }
 
+function SpreadsheetDownload({ exportData }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  async function handleDownload() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await downloadCrmSpreadsheet(exportData);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-xl border border-sky-500/25 bg-sky-500/5 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold text-sky-300">{exportData.title || 'CRM Spreadsheet'}</p>
+          <p className="mt-0.5 text-[11px] text-slate-500">
+            {exportData.rowCount ?? exportData.rows?.length ?? 0} rows · {exportData.columns?.length ?? 0} columns
+          </p>
+        </div>
+        <button
+          onClick={handleDownload}
+          disabled={busy}
+          className="inline-flex items-center gap-2 rounded-lg border border-sky-500/40 bg-sky-500/15 px-3 py-2 text-xs font-bold text-sky-300 transition-all hover:bg-sky-500/25 disabled:opacity-50"
+        >
+          {busy ? 'Building…' : 'Download Spreadsheet'}
+        </button>
+      </div>
+      {err && <p className="mt-2 text-xs text-red-400">{err}</p>}
+    </div>
+  );
+}
+
 const SUGGESTIONS = [
-  'Gross revenue $540k/yr, expenses ~58% of EGI, 401 units, 42,000 sqft, asking $4.5M — underwrite it and give me the Excel model.',
-  'If NOI is $310k and a buyer wants a 6.5% cap, what should they pay?',
-  'Walk me through how vacancy assumptions change the value on a lease-up deal.',
+  'Find the most recent conversations I logged with owners and tell me the best follow-ups.',
+  'Show me warm owners with email addresses, grouped by market.',
+  'Build a spreadsheet of owners with name, email, phone, facility, address, and last contact date.',
+  'Gross revenue is $540k, expenses are 58% of EGI, and asking price is $4.5M — underwrite it.',
 ];
 
 export default function Analyst() {
@@ -147,7 +187,12 @@ export default function Analyst() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Request failed');
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply, model: data.model }]);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: data.reply,
+        model: data.model,
+        exports: data.exports || [],
+      }]);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -163,7 +208,7 @@ export default function Analyst() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto flex flex-col h-[calc(100vh-180px)]">
+    <div className="max-w-5xl mx-auto flex flex-col h-[calc(100vh-180px)]">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
         <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-900 font-bold text-lg shadow">
@@ -171,7 +216,7 @@ export default function Analyst() {
         </div>
         <div>
           <h2 className="text-lg font-bold text-white leading-tight">AI Analyst</h2>
-          <p className="text-xs text-slate-500">Underwriting · deal analysis · your financial model, built in</p>
+          <p className="text-xs text-slate-500">CRM intelligence · database search · underwriting · custom spreadsheets</p>
         </div>
       </div>
 
@@ -179,11 +224,10 @@ export default function Analyst() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-1">
         {messages.length === 0 && (
           <div className="text-center py-10">
-            <div className="text-5xl mb-3">AI</div>
-            <p className="text-slate-400 font-semibold mb-1">Your personal underwriting analyst</p>
-            <p className="text-sm text-slate-600 max-w-md mx-auto mb-6">
-              Give me back-of-napkin numbers, or upload a rent roll / P&L / occupancy report and I'll
-              run it through your team's model — NOI, 3-scenario valuation, cap rate, DSCR, cash-on-cash.
+            <p className="text-slate-400 font-semibold mb-1">The brain of your CRM</p>
+            <p className="text-sm text-slate-600 max-w-xl mx-auto mb-6">
+              Ask about owners, facilities, conversations, follow-ups, pipeline, or market activity.
+              I can also build custom CRM spreadsheets and run full underwriting through your team's model.
             </p>
             <div className="space-y-2 max-w-lg mx-auto">
               {SUGGESTIONS.map((s, i) => (
@@ -210,6 +254,9 @@ export default function Analyst() {
               {m.role === 'assistant' && m.model && (
                 <ModelDownload model={m.model} />
               )}
+              {m.role === 'assistant' && m.exports?.map(exportData => (
+                <SpreadsheetDownload key={exportData.id} exportData={exportData} />
+              ))}
             </div>
           </div>
         ))}
@@ -218,7 +265,7 @@ export default function Analyst() {
           <div className="flex justify-start">
             <div className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-slate-400">
               <span className="inline-flex gap-1">
-                <span className="animate-pulse">Crunching the numbers</span>
+                <span className="animate-pulse">Searching and analyzing</span>
                 <span className="animate-bounce">.</span>
               </span>
             </div>
@@ -259,7 +306,7 @@ export default function Analyst() {
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
           rows={1}
-          placeholder="Ask me to underwrite a deal, or attach a P&L / rent roll..."
+          placeholder="Ask about CRM data, conversations, exports, or underwrite a deal..."
           className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 resize-none max-h-32"
         />
         <button
