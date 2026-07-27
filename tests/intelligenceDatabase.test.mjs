@@ -99,13 +99,17 @@ import {
 function mockClient(handlers) {
   return {
     from() {
-      const ctx = {};
+      const ctx = { op: null };
+      const res = kind => Promise.resolve(handlers[kind]?.(ctx) ?? { data: null, error: null });
       const chain = {
-        select() { return chain; },
-        in() { return Promise.resolve(handlers.select?.(ctx) ?? { data: [], error: null }); },
+        select() { if (ctx.op == null) ctx.op = 'select'; return chain; },
+        insert(rows) { ctx.op = 'insert'; ctx.rows = rows; return chain; },
+        update(patch) { ctx.op = 'update'; ctx.patch = patch; return chain; },
         upsert(rows) { return Promise.resolve(handlers.upsert?.(rows) ?? { error: null }); },
-        insert(rows) { ctx.rows = rows; return chain; },
-        single() { return Promise.resolve(handlers.insert?.(ctx) ?? { data: { id: 1 }, error: null }); },
+        in() { return res('select'); },
+        eq() { return ctx.op === 'update' ? res('update') : chain; },
+        single() { return res(ctx.op); },
+        maybeSingle() { return res(ctx.op); },
       };
       return chain;
     },
@@ -129,14 +133,28 @@ function mockClient(handlers) {
   ]);
   assert.deepEqual({ inserted: r2.inserted, updated: r2.updated }, { inserted: 1, updated: 1 });
 
-  // claimRun: unique violation → claimed:false (a second invocation is blocked).
-  const dup = mockClient({ insert: () => ({ data: null, error: { code: '23505', message: 'duplicate key' } }) });
-  assert.equal((await claimRun(dup, 'refresh:2026-07-22:14', 'cron')).claimed, false);
-
+  // claimRun fresh bucket → claimed.
   const fresh = mockClient({ insert: () => ({ data: { id: 42 }, error: null }) });
   const claim = await claimRun(fresh, 'refresh:2026-07-22:15', 'cron');
   assert.equal(claim.claimed, true);
   assert.equal(claim.id, 42);
+
+  // Bucket exists + prior run STILL RUNNING → blocked (genuine concurrency).
+  const running = mockClient({
+    insert: () => ({ data: null, error: { code: '23505' } }),
+    select: () => ({ data: { id: 8, status: 'running', finished_at: null }, error: null }),
+  });
+  assert.equal((await claimRun(running, 'refresh:2026-07-22:14', 'cron')).claimed, false);
+
+  // Bucket exists + prior run FINISHED (errored) → re-claimed for retry.
+  const finished = mockClient({
+    insert: () => ({ data: null, error: { code: '23505' } }),
+    select: () => ({ data: { id: 7, status: 'error', finished_at: '2026-07-27T16:00:00Z' }, error: null }),
+    update: () => ({ error: null }),
+  });
+  const retry = await claimRun(finished, 'generate-brief:2026-07-27:12', 'api');
+  assert.equal(retry.claimed, true);
+  assert.equal(retry.id, 7);
 }
 
 console.log('intelligence database tests passed');

@@ -213,12 +213,21 @@ export async function upsertSnapshot(client, snapshot) {
 export async function claimRun(client, runKey, trigger) {
   const { data, error } = await client.from('market_intelligence_runs')
     .insert([{ run_key: runKey, trigger, status: 'running' }]).select('id').single();
-  if (error) {
-    if (isMissingTableError(error)) return { migrationNeeded: true };
-    if (error.code === '23505') return { claimed: false }; // unique_violation
-    return { error: boundedString(error.message, 160) };
-  }
-  return { claimed: true, id: data.id };
+  if (!error) return { claimed: true, id: data.id };
+  if (isMissingTableError(error)) return { migrationNeeded: true };
+  if (error.code !== '23505') return { error: boundedString(error.message, 160) };
+
+  // Bucket already exists. Only a genuinely in-flight run should block; a run
+  // that already FINISHED (success or error) may be re-claimed for a retry.
+  const existing = await client.from('market_intelligence_runs')
+    .select('id,status,finished_at').eq('run_key', runKey).maybeSingle();
+  if (existing.error || !existing.data) return { claimed: false };
+  if (existing.data.status === 'running' && !existing.data.finished_at) return { claimed: false };
+  const reclaim = await client.from('market_intelligence_runs')
+    .update({ status: 'running', trigger, started_at: new Date().toISOString(), finished_at: null })
+    .eq('id', existing.data.id);
+  if (reclaim.error) return { claimed: false };
+  return { claimed: true, id: existing.data.id };
 }
 
 export async function finishRun(client, id, patch) {
