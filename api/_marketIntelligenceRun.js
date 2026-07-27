@@ -27,6 +27,7 @@ export function buildDeps(env = process.env) {
     client: db.intelligenceSupabase(),
     env,
     now: () => Date.now(),
+    startedAt: Date.now(),
     fredKey: env.FRED_API_KEY || '',
     alphaKey: env.ALPHA_VANTAGE_API_KEY || '',
   };
@@ -38,14 +39,17 @@ export async function runMarkets(deps) {
   const statuses = [];
   const points = [];
 
-  const t = await P.fetchTreasury();
+  // Fetch Treasury + all FRED series concurrently so the run fits the function
+  // time budget; one provider failing never blocks the others.
+  const [t, ...fredResults] = await Promise.all([
+    P.fetchTreasury(),
+    ...FRED_SERIES.filter(s => s.verified).map(meta => P.fetchFredSeries(meta, deps.fredKey)),
+  ]);
   statuses.push(t.status);
   for (const [tenor, obs] of Object.entries(t.series ?? {})) {
     for (const o of obs) points.push({ series_key: `ust_${tenor}`, provider: 'treasury', observation_date: o.date, value: o.value, unit: '%' });
   }
-
-  for (const meta of FRED_SERIES.filter(s => s.verified)) {
-    const r = await P.fetchFredSeries(meta, deps.fredKey);
+  for (const r of fredResults) {
     statuses.push(r.status);
     points.push(...(r.dataPoints ?? []));
   }
@@ -61,16 +65,18 @@ export async function runNews(deps, { includeFed = true } = {}) {
   const statuses = [];
   let raw = [];
 
+  // Fetch every feed + GDELT group CONCURRENTLY (was sequential — 15 serial
+  // fetches blew past the 60s function limit before any write). allSettled so a
+  // single slow/failed source can't abort the batch.
   const feeds = [...(includeFed ? P.officialFeeds() : []), ...P.industryFeeds()];
-  for (const feed of feeds) {
-    const r = await P.fetchRss(feed);
-    statuses.push(r.status);
-    raw.push(...(r.items ?? []));
-  }
-  for (const group of P.gdeltGroups()) {
-    const r = await P.fetchGdeltGroup(group);
-    statuses.push(r.status);
-    raw.push(...(r.items ?? []));
+  const settled = await Promise.allSettled([
+    ...feeds.map(feed => P.fetchRss(feed)),
+    ...P.gdeltGroups().map(group => P.fetchGdeltGroup(group)),
+  ]);
+  for (const s of settled) {
+    if (s.status !== 'fulfilled') continue;
+    statuses.push(s.value.status);
+    raw.push(...(s.value.items ?? []));
   }
 
   const nowMs = now();
@@ -95,12 +101,13 @@ export async function runNews(deps, { includeFed = true } = {}) {
 }
 
 // ── AI enrichment: top unprocessed items, bounded by cost caps ───────────────
-export async function runEnrichment(deps, candidateItems) {
+export async function runEnrichment(deps, candidateItems, { deadline = Infinity } = {}) {
   const { ai: A, client } = deps;
   const selected = A.selectItemsForEnrichment(candidateItems, {});
   let processed = 0;
   const model = A.intelligenceModel();
   for (const item of selected) {
+    if (Date.now() > deadline) break; // stop before the function times out; rest enriched next run
     const res = await A.enrichItem(item);
     if (!res.ok) continue;
     processed += 1;
@@ -174,11 +181,14 @@ export async function runTasks(tasks, deps) {
       summary.itemsInserted += r.itemsInserted;
       summary.itemsUpdated += r.itemsUpdated;
       if (r.migrationNeeded) summary.migrationNeeded = true;
-      // enrich freshly-scored items (they carry no id until re-read; enrich reads back)
+      // enrich freshly-scored items (they carry no id until re-read; enrich reads
+      // back). Bounded by a wall-clock deadline so the news write always lands
+      // even if the model is slow — remaining items get enriched on the next run.
       if (deps.client && !r.migrationNeeded) {
         const back = await deps.client.from('market_intelligence_items').select('*')
           .is('ai_generated_at', null).order('importance_score', { ascending: false, nullsFirst: false }).limit(60);
-        const e = await runEnrichment(deps, back?.data ?? []);
+        const deadline = (deps.startedAt ?? Date.now()) + 45000;
+        const e = await runEnrichment(deps, back?.data ?? [], { deadline });
         summary.itemsAiProcessed += e.itemsAiProcessed;
       }
     }
