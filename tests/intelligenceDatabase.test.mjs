@@ -100,11 +100,22 @@ import {
         importance_score: 50,
         is_hidden: false,
       },
+      {
+        id: 100,
+        canonical_url: 'https://local.example/sherman',
+        provider: 'google_news',
+        title: 'Sherman infrastructure project advances',
+        category: 'cre',
+        importance_score: 1,
+        tags: ['market:Sherman, TX'],
+        is_hidden: false,
+      },
     ],
     dataPoints: [],
     latestRun: null,
   }, { now });
   assert.ok(crowded.topStories.some(item => item.category === 'private_equity'), 'category balancing prevents rates from crowding out PE');
+  assert.ok(crowded.topStories.some(item => item.tags.includes('market:Sherman, TX')), 'active-market evidence reaches synthesis despite a low national score');
 
   // Stale when brief is old / missing.
   const staleDash = assembleDashboard({ snapshot: null, items: rows, dataPoints: [], latestRun: null }, { now });

@@ -165,6 +165,17 @@ export function balancedTopStories(stories, limit = 24) {
       }
     }
   }
+  const representedMarkets = new Set();
+  for (const story of stories) {
+    const marketTag = story.tags?.find(tag => String(tag).startsWith('market:'));
+    if (!marketTag || representedMarkets.has(marketTag)) continue;
+    const key = story.id ?? story.url;
+    if (!selectedIds.has(key)) {
+      selected.push(story);
+      selectedIds.add(key);
+    }
+    representedMarkets.add(marketTag);
+  }
   for (const story of stories) {
     if (selected.length >= limit) break;
     const key = story.id ?? story.url;
@@ -277,7 +288,7 @@ export async function readDashboard(client, { now = Date.now() } = {}) {
 
   const [items, points, run] = await Promise.all([
     client.from('market_intelligence_items').select('*')
-      .order('importance_score', { ascending: false, nullsFirst: false }).limit(120),
+      .order('importance_score', { ascending: false, nullsFirst: false }).limit(500),
     client.from('market_data_points').select('*')
       .order('observation_date', { ascending: false }).limit(2000),
     client.from('market_intelligence_runs').select('*')

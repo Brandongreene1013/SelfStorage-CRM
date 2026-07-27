@@ -60,7 +60,7 @@ Return exactly:
  "ratesSummary": <=2 sentences,
  "storageSummary": <=2 sentences,
  "creSummary": <=2 sentences,
- "marketBriefs": array with one object per active market, each
+ "marketBriefs": array only for markets explicitly listed in metrics.activeMarkets (never substitute other geographies), each
    {"market":str,"signal":<=1 sentence,"talkingPoints":array of 1-3 sourced short strings,
     "evidenceItemIds":array,"confidence":"high"|"medium"|"low"}; return [] when no market evidence exists,
  "whatItMeans": <=3 sentences for the broker's deals,
@@ -233,6 +233,15 @@ export async function generateSnapshot(topItems, marketMetrics, { callModel } = 
   }
   const validated = validateSnapshot(extractJson(text));
   if (!validated.ok) return { ok: false, error: `invalid snapshot: ${validated.error}` };
+  const allowedMarkets = new Map(
+    boundedArray(marketMetrics?.activeMarkets, 10)
+      .map(market => boundedString(market?.label ?? market, 100))
+      .filter(Boolean)
+      .map(label => [label.toLowerCase(), label]),
+  );
+  validated.value.marketBriefs = validated.value.marketBriefs
+    .filter(market => allowedMarkets.has(market.market.toLowerCase()))
+    .map(market => ({ ...market, market: allowedMarkets.get(market.market.toLowerCase()) }));
   return { ok: true, value: validated.value, evidenceItemIds: validated.value.evidenceItemIds };
 }
 

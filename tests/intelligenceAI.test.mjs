@@ -108,6 +108,12 @@ import {
       talkingPoints: ['Institutional demand remains visible.'],
       evidenceItemIds: [2],
       confidence: 'medium',
+    }, {
+      market: 'Miami, FL',
+      signal: 'This market was not requested.',
+      talkingPoints: ['Should be removed.'],
+      evidenceItemIds: [9],
+      confidence: 'high',
     }],
     whatItMeans: 'Financing costs stable for now.',
     dealEnvironment: { debtCost: { read: 'Restrictive', direction: 'STABLE', confidence: 'High' } },
@@ -126,11 +132,20 @@ import {
   const snapModel = async () => JSON.stringify({
     headline: 'Test brief', keyDevelopments: ['a', 'b', 'c'], themes: ['x', 'y', 'z'],
     ratesSummary: 'r', storageSummary: 's', creSummary: 'c', whatItMeans: 'w',
+    marketBriefs: [
+      { market: 'Dallas, TX', signal: 'Allowed.', talkingPoints: ['One.'], confidence: 'medium' },
+      { market: 'Miami, FL', signal: 'Not active.', talkingPoints: ['No.'], confidence: 'high' },
+    ],
     dealEnvironment: {}, evidenceItemIds: [1], confidence: 'low',
   });
-  const gen = await generateSnapshot([{ id: 1, title: 'x' }], {}, { callModel: snapModel });
+  const gen = await generateSnapshot(
+    [{ id: 1, title: 'x' }],
+    { activeMarkets: [{ label: 'Dallas, TX' }] },
+    { callModel: snapModel },
+  );
   assert.equal(gen.ok, true);
   assert.deepEqual(gen.evidenceItemIds, [1]);
+  assert.deepEqual(gen.value.marketBriefs.map(market => market.market), ['Dallas, TX'], 'non-active geographies are rejected');
 }
 
 console.log('intelligence AI tests passed');
