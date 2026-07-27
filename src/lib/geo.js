@@ -39,13 +39,18 @@ export function haversineMiles([lat1, lng1], [lat2, lng2]) {
   return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Brandon's main markets. DFW uses a metroplex midpoint rather than either
-// downtown so Arlington/Mid-Cities distances read sensibly.
+// A geographically balanced set of common U.S. market anchors. DFW uses a
+// metroplex midpoint rather than either downtown so Arlington/Mid-Cities
+// distances read sensibly.
 export const PRESET_ANCHORS = [
+  { label: 'New York', coords: [40.7128, -74.006] },
+  { label: 'Atlanta', coords: [33.749, -84.388] },
+  { label: 'Chicago', coords: [41.8781, -87.6298] },
   { label: 'DFW', coords: [32.8, -97.05] },
-  { label: 'Houston', coords: [29.786, -95.389] },
-  { label: 'Austin', coords: [30.267, -97.743] },
-  { label: 'San Antonio', coords: [29.424, -98.495] },
+  { label: 'Los Angeles', coords: [34.0522, -118.2437] },
+  { label: 'Miami', coords: [25.7617, -80.1918] },
+  { label: 'Phoenix', coords: [33.4484, -112.074] },
+  { label: 'Seattle', coords: [47.6062, -122.3321] },
 ];
 
 const STATE_ABBR = {
@@ -63,9 +68,25 @@ const STATE_ABBR = {
   wyoming: 'wy', 'district of columbia': 'dc', 'puerto rico': 'pr',
 };
 
+function parseCityAndState(query) {
+  const commaParts = query.split(',').map(part => part.trim()).filter(Boolean);
+  if (commaParts.length >= 2) return { city: commaParts[0], state: commaParts[1] };
+
+  const stateNames = Object.keys(STATE_ABBR).sort((a, b) => b.length - a.length);
+  const fullState = stateNames.find(name => query.endsWith(` ${name}`));
+  if (fullState) return {
+    city: query.slice(0, -(fullState.length + 1)).trim(),
+    state: fullState,
+  };
+
+  const abbreviation = query.match(/^(.+?)\s+([a-z]{2})$/);
+  if (abbreviation) return { city: abbreviation[1].trim(), state: abbreviation[2] };
+  return { city: query, state: null };
+}
+
 // Turn what Brandon types into coordinates. Accepts a ZIP ("76033"), a
-// "city, ST" / "city, state" pair, or a bare city name (Texas is tried first,
-// then any state with a unique match). Returns { label, coords } or null.
+// "city, ST" / "city ST" / "city, state" value, or an unambiguous bare city
+// name anywhere in the country. Returns { label, coords } or null.
 export function resolveAnchor(query, geo) {
   if (!query || !geo) return null;
   const q = String(query).trim().toLowerCase();
@@ -78,10 +99,10 @@ export function resolveAnchor(query, geo) {
   }
 
   const titleCase = s => s.replace(/\b\w/g, ch => ch.toUpperCase());
-  const parts = q.split(',').map(s => s.trim()).filter(Boolean);
-  const city = parts[0]?.replace(/\s+/g, ' ');
+  const parsed = parseCityAndState(q);
+  const city = parsed.city?.replace(/\s+/g, ' ');
   if (!city) return null;
-  let state = parts[1] || null;
+  let state = parsed.state;
   if (state) state = STATE_ABBR[state] || (state.length === 2 ? state : null);
 
   if (state) {
@@ -89,9 +110,8 @@ export function resolveAnchor(query, geo) {
     return coords ? { label: `${titleCase(city)}, ${state.toUpperCase()}`, coords } : null;
   }
 
-  // No state given: prefer Texas, then fall back to a unique national match.
-  const tx = geo.places[`${city},tx`];
-  if (tx) return { label: `${titleCase(city)}, TX`, coords: tx };
+  // A bare city is accepted only when it has one national match. Ambiguous
+  // names require a state instead of silently favoring one part of the country.
   const hits = Object.keys(geo.places).filter(k => k.startsWith(`${city},`));
   if (hits.length === 1) {
     const st = hits[0].split(',')[1];

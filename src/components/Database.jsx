@@ -2187,7 +2187,7 @@ function LocationSortControl({ anchor, onSet, onClear, geoData, geoError, onOpen
       </button>
       {open && (
         <div className={`absolute top-full ${alignRight ? 'right-0' : 'left-0'} mt-1.5 z-30 w-72 max-w-[calc(100vw-24px)] bg-slate-900 border border-slate-700 rounded-xl p-3 shadow-xl shadow-black/50 space-y-2.5`}>
-          <p className="text-xs font-semibold text-slate-400 uppercase">Sort by distance to</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase">Popular U.S. markets</p>
           <div className="flex flex-wrap gap-1.5">
             {PRESET_ANCHORS.map(p => (
               <button
@@ -2208,7 +2208,7 @@ function LocationSortControl({ anchor, onSet, onClear, geoData, geoError, onOpen
               value={query}
               onChange={e => { setQuery(e.target.value); setNotFound(false); }}
               onKeyDown={e => { if (e.key === 'Enter') applyQuery(); }}
-              placeholder={geoData ? 'City or ZIP (e.g. Cleburne, 76033)' : 'Loading location data…'}
+              placeholder={geoData ? 'City, state or ZIP (e.g. Atlanta, GA)' : 'Loading location data…'}
               disabled={!geoData && !geoError}
               className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-sky-500"
             />
@@ -2220,7 +2220,7 @@ function LocationSortControl({ anchor, onSet, onClear, geoData, geoError, onOpen
               Set
             </button>
           </div>
-          {notFound && <p className="text-xs text-red-400">Couldn't find that city — try "City, ST" or a ZIP code.</p>}
+          {notFound && <p className="text-xs text-red-400">Couldn't find a unique match — try "City, ST" or a ZIP code.</p>}
           {geoError && <p className="text-xs text-red-400">{geoError}</p>}
           {anchor && (
             <button onClick={() => { onClear(); setOpen(false); }} className="text-xs font-semibold text-slate-500 hover:text-red-400 transition-all">
