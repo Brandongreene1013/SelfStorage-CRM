@@ -40,6 +40,7 @@ This file is the map for future Codex/Claude sessions. Read `AGENTS.md`, `CODEX_
 - `SPRINT_25_DASHBOARD_INTELLIGENCE_AND_OWNER_RADAR_HANDOFF.md` — Daily/weekly production intelligence, owner radar, commission counter, current command center.
 - `SPRINT_26_CALL_MODE_HEADER_RESEARCH_POLISH_HANDOFF.md` — Brief Call Mode polish: address/copy/Whitepages at top, duplicate ownership lower, multiple mailing addresses exposed in Call Mode/contact creation.
 - `SPRINT_27_MARKET_INTELLIGENCE_DAILY_BRIEF_HANDOFF.md` — Reliable category news, CRM-derived active markets, market talking points, and the daily 6:30 AM ET batch.
+- `SPRINT_28_SALESFORCE_IMPORT_STABILIZATION_HANDOFF.md` — QA/stabilization of the dark-launched Salesforce screenshot importer (staged upload → Claude vision extraction → review card → idempotent commit RPC). Fixes the stuck-`analyzing` timeout gap and documents the production go-live checklist (run migration, flip `SALESFORCE_SCREENSHOT_IMPORT_ENABLED`, smoke test).
 
 ## Current Major Systems
 - Dashboard command center: `src/components/Dashboard.jsx`, `src/hooks/useDailyProgress.js`, `api/daily-activity.js`, `api/_dailyActivity.js`.

@@ -60,6 +60,7 @@ The handoff collection is now current through Sprint 27:
 - `SPRINT_25_DASHBOARD_INTELLIGENCE_AND_OWNER_RADAR_HANDOFF.md`
 - `SPRINT_26_CALL_MODE_HEADER_RESEARCH_POLISH_HANDOFF.md` is the current brief in-progress handoff for Call Mode header polish and multiple mailing address exposure.
 - `SPRINT_27_MARKET_INTELLIGENCE_DAILY_BRIEF_HANDOFF.md` documents the current Dashboard market-intelligence providers, CRM-derived active markets, and 6:30 AM ET daily batch.
+- `SPRINT_28_SALESFORCE_IMPORT_STABILIZATION_HANDOFF.md` is the current handoff for the Salesforce screenshot importer: QA'd, hardened (stuck-`analyzing` timeout fix), and **dark-launched** — it stays invisible/inert in production until Brandon runs the migration and sets `SALESFORCE_SCREENSHOT_IMPORT_ENABLED=true`. That doc has the full go-live checklist.
 
 Older sprint docs from Sprint 1-19 remain at repo root.
 
@@ -100,6 +101,13 @@ Older sprint docs from Sprint 1-19 remain at repo root.
   - `src/data/financialModel.js`
   - `api/_financialModel.js`
   - `src/lib/excelModel.js`
+- Salesforce screenshot import (dark-launched — see SPRINT_28 handoff):
+  - `api/salesforce-import.js`
+  - `api/_salesforceImport.js`
+  - `api/_salesforceExtractionPrompt.js`
+  - `src/components/analyst/SalesforceScreenshotImport.jsx`
+  - `src/lib/salesforceImportClient.js`
+  - `sql/salesforce_screenshot_import_migration.sql`
 
 ## Hard Rules / Risk Areas
 - There is no staging environment. Pushes to production/main deploy live.

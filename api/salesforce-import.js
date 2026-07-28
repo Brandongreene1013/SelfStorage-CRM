@@ -170,26 +170,40 @@ async function analyzeScreenshots(sb, session, images) {
     text: `Analyze these ${images.length} Salesforce screenshot(s) as one import session. The required importSessionId is ${session.id}.`,
   });
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': process.env.ANTHROPIC_KEY || '',
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 3500,
-      system: SALESFORCE_EXTRACTION_PROMPT,
-      messages: [{ role: 'user', content }],
-      tools: [{
-        name: 'return_salesforce_import_draft',
-        description: 'Return the complete structured Salesforce screenshot extraction.',
-        input_schema: SALESFORCE_DRAFT_TOOL_SCHEMA,
-      }],
-      tool_choice: { type: 'tool', name: 'return_salesforce_import_draft' },
-    }),
-  });
+  // Abort before Vercel's maxDuration (60s) hard-kills the function. A hard kill
+  // leaves the session stuck in 'analyzing'; an abort throws here so the caller's
+  // catch can record a 'failed' status the user can retry from.
+  const abort = new AbortController();
+  const abortTimer = setTimeout(() => abort.abort(), 50_000);
+  let response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: abort.signal,
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_KEY || '',
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 3500,
+        system: SALESFORCE_EXTRACTION_PROMPT,
+        messages: [{ role: 'user', content }],
+        tools: [{
+          name: 'return_salesforce_import_draft',
+          description: 'Return the complete structured Salesforce screenshot extraction.',
+          input_schema: SALESFORCE_DRAFT_TOOL_SCHEMA,
+        }],
+        tool_choice: { type: 'tool', name: 'return_salesforce_import_draft' },
+      }),
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('The analysis timed out. Your screenshots are safe; try again.');
+    throw error;
+  } finally {
+    clearTimeout(abortTimer);
+  }
   if (!response.ok) {
     const providerError = await response.text();
     console.error('Salesforce vision provider failure', response.status, providerError.slice(0, 500));
@@ -406,7 +420,14 @@ export default async function handler(req, res) {
     }
 
     if (action === 'analyze') {
-      if (session.status !== 'collecting_screenshots' && session.status !== 'failed') throw new Error('This import cannot be analyzed in its current state.');
+      // A previous analysis that was hard-killed mid-run (e.g. serverless timeout)
+      // can leave the session wedged in 'analyzing'. Allow a retry once it is stale
+      // so it is not stuck until the 24h expiry.
+      const staleAnalyzing = session.status === 'analyzing'
+        && Date.parse(session.updated_at || 0) < Date.now() - 90_000;
+      if (session.status !== 'collecting_screenshots' && session.status !== 'failed' && !staleAnalyzing) {
+        throw new Error('This import cannot be analyzed in its current state.');
+      }
       const images = await sessionImages(sb, session.id);
       if (images.length < 1) throw new Error('Paste at least one Salesforce screenshot first.');
       await sb.from('salesforce_screenshot_imports').update({
