@@ -1,10 +1,15 @@
 import { useState, useRef, useMemo } from 'react';
 import { IMPORT_FIELD_OPTIONS, parseImportData } from '../hooks/useDatabase';
+import {
+  chooseBestWorksheet,
+  matrixToDelimitedText,
+  normalizeWorksheetRows,
+} from '../lib/spreadsheetImport';
 import ModalLayout from './ui/ModalLayout';
 
 const SOURCES = ['', 'Salesforce', 'TractIQ', 'Reonomy', 'CoStar', 'County Records', 'Manual Excel', 'Other'];
 
-async function excelToTSV(file) {
+async function excelToWorksheets(file) {
   // xlsx is heavy; load it only when a spreadsheet is actually imported
   const XLSX = await import('xlsx');
   return new Promise((resolve, reject) => {
@@ -12,11 +17,15 @@ async function excelToTSV(file) {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const csv = XLSX.utils.sheet_to_csv(worksheet, { FS: '\t' });
-        resolve({ tsv: csv, sheetName, sheetNames: workbook.SheetNames });
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        resolve(workbook.SheetNames.map(sheetName => ({
+          name: sheetName,
+          rows: XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+            header: 1,
+            defval: '',
+            raw: false,
+          }),
+        })));
       } catch (err) {
         reject(err);
       }
@@ -54,6 +63,7 @@ export default function ImportListModal({
   onOpenImportedList,
   onStartImportedCallSession,
   onOpenDuplicateReview,
+  reuseExistingMatches = false,
 }) {
   const intoFixed = !!fixedListName;
   const [name, setName] = useState('');
@@ -61,7 +71,7 @@ export default function ImportListModal({
   const [rawText, setRawText] = useState('');
   const [preview, setPreview] = useState(null);
   const [mappings, setMappings] = useState([]);
-  const [duplicateMode, setDuplicateMode] = useState('import');
+  const [duplicateMode, setDuplicateMode] = useState(reuseExistingMatches ? 'reuse' : 'import');
   const [importResult, setImportResult] = useState(null);
   const [error, setError] = useState('');
   const [fileName, setFileName] = useState('');
@@ -70,6 +80,9 @@ export default function ImportListModal({
   const [importing, setImporting] = useState(false);
   const [showMapping, setShowMapping] = useState(false);
   const [showPreviewRows, setShowPreviewRows] = useState(false);
+  const [worksheetOptions, setWorksheetOptions] = useState([]);
+  const [selectedWorksheet, setSelectedWorksheet] = useState('');
+  const [detectedFormat, setDetectedFormat] = useState('');
   const fileInputRef = useRef(null);
 
   const effectiveSource = useMemo(() => {
@@ -79,12 +92,12 @@ export default function ImportListModal({
   }, [source, fileName]);
 
   const importableCount = preview
-    ? duplicateMode === 'skip' || duplicateMode === 'append'
+    ? duplicateMode === 'skip' || duplicateMode === 'append' || duplicateMode === 'reuse'
       ? preview.rows.filter(row => !row.flags.includes('Possible duplicate')).length
       : preview.rows.length
     : 0;
   const duplicateCount = preview?.summary.possibleDuplicates ?? 0;
-  const actionableCount = duplicateMode === 'append'
+  const actionableCount = duplicateMode === 'append' || duplicateMode === 'reuse'
     ? importableCount + duplicateCount
     : importableCount;
 
@@ -93,6 +106,21 @@ export default function ImportListModal({
     setPreview(parsed);
     setMappings(parsed.mappings);
     return parsed;
+  }
+
+  function applyWorksheet(option) {
+    if (!option) return;
+    if (option.format === 'legacy-bov-broker-tab') setSource('Salesforce');
+    setSelectedWorksheet(option.name);
+    setDetectedFormat(option.formatLabel);
+    setRawText(option.tsv);
+    const parsed = buildPreview(option.tsv);
+    setShowMapping(parsed.mappingWarnings.length > 0);
+    setShowPreviewRows(false);
+    setImportResult(null);
+    setError(parsed.contacts.length === 0
+      ? 'No usable rows found on this worksheet. Choose another tab or review the column mapping.'
+      : '');
   }
 
   async function handleFile(file) {
@@ -117,9 +145,32 @@ export default function ImportListModal({
           r.onerror = rej;
           r.readAsText(file);
         });
+        setWorksheetOptions([]);
+        setSelectedWorksheet('');
+        setDetectedFormat('Standard delimited file');
       } else {
-        const result = await excelToTSV(file);
-        tsv = result.tsv;
+        const worksheets = await excelToWorksheets(file);
+        const options = worksheets.map(worksheet => {
+          const normalized = normalizeWorksheetRows(worksheet.rows, worksheet.name);
+          const worksheetTsv = matrixToDelimitedText(normalized.matrix);
+          const parsed = parseImportData(worksheetTsv, { existingContacts });
+          return {
+            name: worksheet.name,
+            tsv: worksheetTsv,
+            format: normalized.format,
+            formatLabel: normalized.formatLabel,
+            rowCount: normalized.rowCount,
+            contactsCount: parsed.contacts.length,
+            readyCount: parsed.summary.readyToCall,
+            mappingWarningCount: parsed.mappingWarnings.length,
+          };
+        });
+        const best = chooseBestWorksheet(options, fixedListName);
+        setWorksheetOptions(options);
+        setSelectedWorksheet(best?.name ?? '');
+        setDetectedFormat(best?.formatLabel ?? '');
+        if (best?.format === 'legacy-bov-broker-tab') setSource('Salesforce');
+        tsv = best?.tsv ?? '';
       }
 
       setRawText(tsv);
@@ -137,6 +188,10 @@ export default function ImportListModal({
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleWorksheetChange(sheetName) {
+    applyWorksheet(worksheetOptions.find(option => option.name === sheetName));
   }
 
   function handleDrop(e) {
@@ -169,6 +224,7 @@ export default function ImportListModal({
         fileName,
         source: effectiveSource,
       });
+      if (result?.error) throw new Error(result.error);
       setImportResult({ ...result, listName: intoFixed ? fixedListName : name.trim(), source: effectiveSource });
     } catch (err) {
       setError('Import failed: ' + err.message);
@@ -216,7 +272,7 @@ export default function ImportListModal({
 
         {intoFixed && (
           <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-2.5 text-sm text-emerald-300">
-            Adding these contacts straight into <strong>{fixedListName}</strong>.
+            Adding these contacts to <strong>{fixedListName}</strong>. New people remain in Master Database, and existing CRM matches are reused.
           </div>
         )}
 
@@ -262,6 +318,31 @@ export default function ImportListModal({
           )}
         </div>
 
+        {worksheetOptions.length > 1 && (
+          <div className="rounded-xl border border-blue-500/25 bg-blue-500/10 p-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-blue-300">Excel worksheet</p>
+                <p className="text-xs text-slate-400">
+                  Best match selected automatically{fixedListName ? ` for ${fixedListName}` : ''}. Change it if needed.
+                </p>
+              </div>
+              <select
+                value={selectedWorksheet}
+                onChange={event => handleWorksheetChange(event.target.value)}
+                className="min-w-56 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+              >
+                {worksheetOptions.map(option => (
+                  <option key={option.name} value={option.name}>
+                    {option.name} ({option.contactsCount} rows)
+                  </option>
+                ))}
+              </select>
+            </div>
+            {detectedFormat && <p className="mt-2 text-[11px] font-semibold text-blue-200">{detectedFormat}</p>}
+          </div>
+        )}
+
         {error && (
           <p className="text-xs text-red-400 font-semibold bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">{error}</p>
         )}
@@ -301,6 +382,7 @@ export default function ImportListModal({
                 className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
               >
                 <option value="import">Import anyway</option>
+                {reuseExistingMatches && <option value="reuse">Use existing CRM matches + import new</option>}
                 <option value="skip">Skip possible duplicates</option>
                 <option value="append">Append missing phones/notes</option>
               </select>
@@ -399,6 +481,7 @@ export default function ImportListModal({
             <p className="text-sm font-bold text-emerald-300 mb-2">Import complete: {importResult.listName}</p>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {metric('Rows imported', importResult.count ?? 0, 'green')}
+              {(importResult.matchedExisting ?? 0) > 0 && metric('Existing matches added', importResult.matchedExisting, 'blue')}
               {metric('Rows skipped', importResult.skipped ?? 0, (importResult.skipped ?? 0) ? 'amber' : 'slate')}
               {metric('Duplicates skipped', importResult.skippedDuplicates ?? 0, (importResult.skippedDuplicates ?? 0) ? 'amber' : 'slate')}
               {metric('Duplicates appended', importResult.mergedDuplicates ?? 0, (importResult.mergedDuplicates ?? 0) ? 'blue' : 'slate')}
@@ -460,7 +543,9 @@ export default function ImportListModal({
           >
             {importing ? 'Importing...' : duplicateMode === 'append'
               ? `Import/Append ${actionableCount || ''} Rows`
-              : `Import ${importableCount || ''} Rows`}
+              : duplicateMode === 'reuse'
+                ? `Add ${actionableCount || ''} to List`
+                : `Import ${importableCount || ''} Rows`}
           </button>
         )}
       </div>

@@ -2441,7 +2441,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
   const [subView, setSubView]       = useState('contacts');
   const [showImport, setShowImport]     = useState(false);
-  const [showMasterImport, setShowMasterImport] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
   const [showNewList, setShowNewList]   = useState(false);
   const [newListName, setNewListName]   = useState('');
@@ -3503,13 +3503,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                   >
                     🧹 Review Duplicates{duplicateGroupCount > 0 ? ` (${duplicateGroupCount})` : ''}
                   </button>
-                  <button
-                    onClick={() => setShowMasterImport(true)}
-                    className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 text-emerald-400 font-bold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
-                  >
-                    Bulk Upload
-                  </button>
                 </>
+              )}
+              {activeListId !== 'all' && (
+                <button
+                  onClick={() => setShowBulkImport(true)}
+                  className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 text-emerald-400 font-bold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
+                >
+                  Bulk Upload
+                </button>
               )}
               {activeListId !== 'all' && (
                 <button
@@ -3710,13 +3712,16 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         />
       )}
 
-      {showMasterImport && (
+      {showBulkImport && activeListId && activeListId !== 'all' && (
         <ImportListModal
-          fixedListName="Master Database"
+          fixedListName={activeListId === masterListId
+            ? 'Master Database'
+            : (lists.find(list => list.id === activeListId)?.name ?? 'Selected List')}
           existingContacts={contacts}
-          onImport={(_name, _source, rawText, options) => importIntoList(masterListId, rawText, options)}
-          onClose={() => setShowMasterImport(false)}
-          onOpenDuplicateReview={() => { setShowMasterImport(false); setSubView('duplicates'); }}
+          reuseExistingMatches={activeListId !== masterListId}
+          onImport={(_name, _source, rawText, options) => importIntoList(activeListId, rawText, options)}
+          onClose={() => setShowBulkImport(false)}
+          onOpenDuplicateReview={() => { setShowBulkImport(false); setSubView('duplicates'); }}
         />
       )}
 

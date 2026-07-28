@@ -494,7 +494,7 @@ function selectImportRows(rawText, options) {
     ? { rows: options.rows, contacts: options.rows.map(row => row.contact), summary: summarizeImportRows(options.rows) }
     : parseImportData(rawText, { mappings: options?.mappings, existingContacts: options?.existingContacts });
   const duplicateMode = options?.duplicateMode ?? 'import';
-  const rows = duplicateMode === 'skip'
+  const rows = duplicateMode === 'skip' || duplicateMode === 'reuse'
     ? parsed.rows.filter(row => !row.flags.includes('Possible duplicate'))
     : duplicateMode === 'append'
       ? parsed.rows.filter(row => !row.flags.includes('Possible duplicate'))
@@ -1229,13 +1229,18 @@ export function useDatabase() {
   // Bulk-import parsed contacts INTO an existing list (e.g. Master Database).
   const importIntoList = useCallback(async (listId, rawText, options = {}) => {
     if (!listId) return { count: 0 };
+    const targetedList = listId !== masterListId;
+    if (targetedList && !masterListId) return { count: 0, error: 'Master Database is not ready. Refresh and try again.' };
     const meta = importMetadata(options);
     const importRows = selectImportRows(rawText, options);
     const parsed = importRows.contacts;
     const appendResult = options.duplicateMode === 'append'
       ? await appendDuplicateRows(importRows.duplicateRows, meta)
       : { merged: 0, appendedPhones: 0 };
-    if (parsed.length === 0 && appendResult.merged === 0) {
+    const matchedExistingIds = targetedList && ['reuse', 'append'].includes(options.duplicateMode)
+      ? [...new Set(importRows.duplicateRows.flatMap(row => row.duplicateMatches?.map(match => match.id) ?? []))]
+      : [];
+    if (parsed.length === 0 && appendResult.merged === 0 && matchedExistingIds.length === 0) {
       return {
         count: 0,
         skipped: importRows.skippedDuplicates,
@@ -1246,7 +1251,8 @@ export function useDatabase() {
       };
     }
 
-    const rows = parsed.map(c => contactInsertRow(listId, c, meta));
+    const homeListId = targetedList ? masterListId : listId;
+    const rows = parsed.map(c => contactInsertRow(homeListId, c, meta));
 
     const BATCH = 500;
     const inserted = [];
@@ -1254,19 +1260,58 @@ export function useDatabase() {
       const { data } = await insertContactsWithFallback(rows.slice(i, i + BATCH));
       if (data) inserted.push(...data);
     }
-    setContacts(prev => [...prev, ...inserted.map(dbToContact)]);
+
+    const membershipContactIds = targetedList
+      ? [...new Set([...inserted.map(row => row.id), ...matchedExistingIds])]
+      : [];
+    if (membershipContactIds.length > 0) {
+      const { error: membershipError } = await supabase
+        .from('contact_list_memberships')
+        .upsert(
+          membershipContactIds.map(contactId => ({ contact_id: contactId, list_id: listId })),
+          { onConflict: 'contact_id,list_id', ignoreDuplicates: true },
+        );
+      if (membershipError) {
+        if (inserted.length > 0) {
+          await supabase.from('contacts').delete().in('id', inserted.map(row => row.id));
+        }
+        setListMembershipMigrationNeeded(true);
+        return {
+          count: 0,
+          error: 'Run sql/contact_list_memberships_migration.sql in Supabase, then refresh and retry the upload.',
+        };
+      }
+      setListMembershipMigrationNeeded(false);
+    }
+
+    const insertedContacts = inserted.map(row => {
+      const contact = dbToContact(row);
+      return targetedList
+        ? { ...contact, listIds: [...new Set([contact.listId, listId].filter(Boolean))] }
+        : contact;
+    });
+    setContacts(prev => [
+      ...prev.map(contact => matchedExistingIds.includes(contact.id)
+        ? { ...contact, listIds: [...new Set([...(contact.listIds ?? [contact.listId]), listId].filter(Boolean))] }
+        : contact),
+      ...insertedContacts,
+    ]);
     return {
       count: inserted.length,
       skipped: importRows.rows.length - inserted.length,
-      skippedDuplicates: options.duplicateMode === 'append' ? 0 : importRows.skippedDuplicates,
+      skippedDuplicates: targetedList && ['reuse', 'append'].includes(options.duplicateMode)
+        ? 0
+        : importRows.skippedDuplicates,
       mergedDuplicates: appendResult.merged,
       appendedPhones: appendResult.appendedPhones,
       missingPhoneCount: importRows.originalSummary.missingPhone,
       readyToCallCount: importRows.originalSummary.readyToCall,
       additionalPhonesImported: importRows.importedAdditionalPhones + appendResult.appendedPhones,
       sourceApplied: meta.source,
+      matchedExisting: matchedExistingIds.length,
+      addedToList: membershipContactIds.length,
     };
-  }, [appendDuplicateRows]);
+  }, [appendDuplicateRows, masterListId]);
 
   // Sprint 11 — merge a weaker duplicate into the kept master record.
   // Fill-blanks-only: new phones become alternates, populated master fields
