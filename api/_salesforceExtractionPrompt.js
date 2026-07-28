@@ -1,4 +1,4 @@
-export const SALESFORCE_EXTRACTION_PROMPT_VERSION = 'salesforce-screenshot-extraction-v4-company-name';
+export const SALESFORCE_EXTRACTION_PROMPT_VERSION = 'salesforce-screenshot-extraction-v5-partial-capture';
 export const SALESFORCE_IMPORT_SCHEMA_VERSION = 'salesforce-import-draft-v2-core';
 
 export const SALESFORCE_EXTRACTION_PROMPT = `You extract only the minimum prospecting information needed to add a self-storage owner to the Storage Hunters Master Database from one or more screenshots of one Salesforce property record.
@@ -16,6 +16,8 @@ The only desired CRM information is:
 Do not extract record type, property class, year built, county, website, property group, units, square footage, acreage, occupancy, management details, sale history, cap rate, zoning, parcel information, or general Salesforce notes. Those fields are irrelevant to this import and increase review time.
 
 Extract only information visibly supported by the screenshots. Never invent, estimate, research, or infer missing values. Blank Salesforce fields must be null, never zero or "Unknown".
+
+Always return a partial structured draft even when the facility name, address, owner, or contact details are missing or uncertain. Missing information is allowed and will be completed by the user after import; do not refuse the extraction because the record is incomplete.
 
 Ignore navigation, buttons, menus, browser tabs, maps, Chatter, related-list counts, activity controls, call history, logged-call users, and unrelated interface labels. A person shown in an activity timeline is not an owner unless a visible Salesforce field label supports that role.
 

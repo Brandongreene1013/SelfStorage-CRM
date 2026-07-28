@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   clipboardImageFiles,
   createSalesforceImport,
@@ -110,7 +110,6 @@ export default function SalesforceScreenshotImport({ initialFiles = [], onInitia
   const [session, setSession] = useState(null);
   const [draft, setDraft] = useState(null);
   const [decisions, setDecisions] = useState(blankDecision);
-  const [addressOverride, setAddressOverride] = useState(false);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [pasteHint, setPasteHint] = useState('Paste Salesforce screenshots with Ctrl+V');
@@ -233,7 +232,6 @@ export default function SalesforceScreenshotImport({ initialFiles = [], onInitia
     setSession(null);
     setDraft(null);
     setDecisions(blankDecision());
-    setAddressOverride(false);
     setError('');
     setPasteHint('Paste Salesforce screenshots with Ctrl+V');
     idempotencyRef.current = crypto.randomUUID();
@@ -252,19 +250,11 @@ export default function SalesforceScreenshotImport({ initialFiles = [], onInitia
     const result = await act('commit', {
       draft,
       duplicateDecisions: decisions,
-      addressOverride,
-      multiplePropertiesConfirmed: multipleConfirmed,
       idempotencyKey: idempotencyRef.current,
-    }, 'Importing approved records…');
+    }, 'Adding what was found…');
     onOpenFacility?.(result.result || result.session?.importResult || {});
     return result;
   };
-
-  const warningNeedsMultipleConfirmation = useMemo(
-    () => draft?.warnings?.some(warning => warning.code === 'multiple_properties'),
-    [draft],
-  );
-  const [multipleConfirmed, setMultipleConfirmed] = useState(false);
 
   if (session?.status === 'imported') {
     const result = session.importResult || {};
@@ -287,8 +277,8 @@ export default function SalesforceScreenshotImport({ initialFiles = [], onInitia
       <div className="space-y-4 pb-10">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-bold text-white">Review before anything enters the CRM</h3>
-            <p className="text-xs text-slate-500">Every extracted value is editable. Hover confidence labels to see the screenshot evidence.</p>
+            <h3 className="text-lg font-bold text-white">Quick review</h3>
+            <p className="text-xs text-slate-500">Add whatever was found now. Missing or imperfect details can be edited in the Master Database later.</p>
           </div>
           <span className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-400">
             Overall confidence {Math.round((draft.overallConfidence || 0) * 100)}%
@@ -308,12 +298,6 @@ export default function SalesforceScreenshotImport({ initialFiles = [], onInitia
         {draft.warnings?.length > 0 && (
           <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
             {draft.warnings.map((warning, index) => <p key={index} className="text-xs text-amber-200">• {warning.message}</p>)}
-            {warningNeedsMultipleConfirmation && (
-              <label className="flex items-center gap-2 text-xs font-semibold text-amber-100">
-                <input type="checkbox" checked={multipleConfirmed} onChange={event => setMultipleConfirmed(event.target.checked)} />
-                I reviewed the warning that these screenshots may contain more than one property.
-              </label>
-            )}
           </div>
         )}
         {draft.facility && (
@@ -324,12 +308,6 @@ export default function SalesforceScreenshotImport({ initialFiles = [], onInitia
             onChange={(key, value) => updateField('facility', key, value)}
             duplicate={<DuplicatePicker allowSkip={false} title={fieldValue(draft.facility.name)} matches={duplicates.facility} value={decisions.facility} onChange={value => setDecisions(current => ({ ...current, facility: value }))} />}
           />
-        )}
-        {!fieldValue(draft.facility?.streetAddress) && (
-          <label className="flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 text-xs text-rose-200">
-            <input type="checkbox" checked={addressOverride} onChange={event => setAddressOverride(event.target.checked)} />
-            Import this facility even though its address is missing.
-          </label>
         )}
         {draft.contacts.map((contact, index) => (
           <EntitySection
@@ -352,16 +330,16 @@ export default function SalesforceScreenshotImport({ initialFiles = [], onInitia
         ))}
         <button onClick={() => addEntity('contacts', CONTACT_FIELDS)} className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300">+ Add owner</button>
         {error && <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">{error}</p>}
-        <p className="text-right text-sm font-semibold text-white">Are you sure you want to add this facility to the master database?</p>
+        <p className="text-right text-sm text-slate-400">Warnings and blank fields will not stop this import.</p>
         <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-slate-800 bg-slate-950/95 py-4">
           <button disabled={!!busy} onClick={() => reset(true)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300">No, Cancel</button>
           <button disabled={!!busy} onClick={() => saveDraft().catch(() => {})} className="rounded-lg border border-amber-500/40 px-4 py-2 text-sm font-semibold text-amber-300">Save review</button>
           <button
-            disabled={!!busy || (warningNeedsMultipleConfirmation && !multipleConfirmed)}
+            disabled={!!busy}
             onClick={() => commit().catch(() => {})}
             className="rounded-lg bg-amber-500 px-5 py-2 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {busy || 'Yes, Add Facility'}
+            {busy || 'Add What Was Found'}
           </button>
         </div>
       </div>

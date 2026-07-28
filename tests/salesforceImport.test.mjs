@@ -87,7 +87,7 @@ assert.equal(screenshotDraft.facility.name.value, 'Mesa Park Self Storage');
 assert.equal(screenshotDraft.facility.streetAddress.value, '100 Example Highway');
 assert.equal(screenshotDraft.contacts[0].displayName.value, 'Alex Q Sample');
 assert.equal(screenshotDraft.contacts[0].company.value, 'Sample Holdings LLC');
-assert.equal(SALESFORCE_EXTRACTION_PROMPT_VERSION, 'salesforce-screenshot-extraction-v4-company-name');
+assert.equal(SALESFORCE_EXTRACTION_PROMPT_VERSION, 'salesforce-screenshot-extraction-v5-partial-capture');
 assert.equal(SALESFORCE_IMPORT_SCHEMA_VERSION, 'salesforce-import-draft-v2-core');
 assert.match(SALESFORCE_EXTRACTION_PROMPT, /only the minimum prospecting information/i);
 assert.match(SALESFORCE_EXTRACTION_PROMPT, /Do not extract record type/i);
@@ -95,6 +95,7 @@ assert.match(SALESFORCE_EXTRACTION_PROMPT, /logged a call/i);
 assert.match(SALESFORCE_EXTRACTION_PROMPT, /Company Name -> facility\.name/);
 assert.match(SALESFORCE_EXTRACTION_PROMPT, /Property Owner \(Company\).*contacts\[\]\.company/);
 assert.match(SALESFORCE_EXTRACTION_PROMPT, /Use Company Name as the facility-name fallback/);
+assert.match(SALESFORCE_EXTRACTION_PROMPT, /Always return a partial structured draft/);
 
 const duplicates = scoreDuplicateCandidates(draft, {
   properties: [{ id: 'property-1', facility_name: 'Alpha Storage', address: '101 Main Street', city: 'Austin', state: 'TX', zip_code: '78701', source_record_id: null }],
@@ -105,9 +106,8 @@ assert.equal(duplicates.facility[0].existingId, 'property-1');
 assert.equal(duplicates.contacts['contact-1'][0].existingId, 'contact-existing');
 
 const reviewDraft = { ...draft, duplicateCandidates: duplicates };
-const incomplete = validateApproval(reviewDraft, {}, {});
-assert.equal(incomplete.valid, false);
-assert.ok(incomplete.errors.some(error => error.includes('facility duplicate')));
+const quickImport = validateApproval(reviewDraft, {});
+assert.equal(quickImport.valid, true);
 
 const approved = validateApproval(reviewDraft, {
   facility: { action: 'use_existing', existingId: 'property-1' },
@@ -123,6 +123,32 @@ const tampered = validateApproval(reviewDraft, {
 });
 assert.equal(tampered.valid, false);
 assert.ok(tampered.errors.some(error => error.includes('listed CRM matches')));
+
+const partialRaw = structuredClone(raw);
+partialRaw.facility = null;
+partialRaw.contacts[0].company = extracted(null, 0);
+partialRaw.contacts[0].email = extracted(null, 0);
+partialRaw.contacts[0].primaryPhone = extracted(null, 0);
+const partialDraft = validateAndNormalizeDraft(partialRaw, {
+  importSessionId: 'partial-session',
+  screenshotCount: 1,
+  method: 'uploaded_screenshot',
+});
+assert.equal(partialDraft.facility.name.value, 'Facility for Jane Owner');
+assert.equal(partialDraft.facility.streetAddress.value, null);
+assert.ok(partialDraft.warnings.some(warning => warning.code === 'missing_identity'));
+assert.equal(validateApproval(partialDraft, {}).valid, true);
+
+const minimalRaw = structuredClone(raw);
+minimalRaw.facility = null;
+minimalRaw.contacts = [];
+const minimalDraft = validateAndNormalizeDraft(minimalRaw, {
+  importSessionId: 'minimal-session',
+  screenshotCount: 1,
+  method: 'uploaded_screenshot',
+});
+assert.equal(minimalDraft.facility.name.value, 'Salesforce Prospect minimal-');
+assert.equal(validateApproval(minimalDraft, {}).valid, true);
 
 if (typeof File !== 'undefined') {
   const pasted = clipboardImageFiles({

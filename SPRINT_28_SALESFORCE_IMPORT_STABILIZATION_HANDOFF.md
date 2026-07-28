@@ -8,6 +8,14 @@ section. `Property Name` remains preferred when both are populated, and
 `Property Owner (Company)` remains an owner-contact company so ownership data
 cannot overwrite the facility name.
 
+## Follow-up — Fast partial imports (July 28, 2026)
+
+Salesforce screenshot imports no longer block on a missing address, unresolved
+duplicate suggestion, or multiple-property warning. If no facility name is
+read, the API creates a clearly marked temporary name from the address, owner
+company, owner name, or import ID. The user can then correct the incomplete
+record in the Master Database after the fast import.
+
 Date: 2026-07-28
 Branch: `claude/storage-investment-crm-vV018`
 

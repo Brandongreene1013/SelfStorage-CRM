@@ -311,6 +311,28 @@ function normalizeEntity(entity, fields) {
   };
 }
 
+function emptyExtracted() {
+  return {
+    value: null,
+    rawValue: null,
+    normalizedValue: null,
+    confidence: 0,
+    screenshotId: null,
+    evidenceText: null,
+    status: 'not_found',
+  };
+}
+
+function temporaryFacilityName(facility, contacts, importSessionId) {
+  const address = cleanString(facility.streetAddress.value);
+  const company = contacts.map(contact => cleanString(contact.company.value)).find(Boolean);
+  const owner = contacts.map(contact => cleanString(contact.displayName.value)).find(Boolean);
+  if (address) return `Facility at ${address}`;
+  if (company) return `Salesforce Prospect — ${company}`;
+  if (owner) return `Facility for ${owner}`;
+  return `Salesforce Prospect ${String(importSessionId).slice(0, 8)}`;
+}
+
 function dedupeEntities(entities, keyFn) {
   const seen = new Map();
   entities.forEach(entity => {
@@ -340,13 +362,28 @@ export function validateAndNormalizeDraft(raw, { importSessionId, screenshotCoun
       screenshotCount,
     },
   });
-  const facility = parsed.facility ? normalizeEntity(parsed.facility, facilityFields) : null;
   const contacts = dedupeEntities(
     parsed.contacts.map(contact => normalizeEntity(contact, contactFields)),
     contact => normalizeEmail(contact.email.value)
       || normalizePhone(contact.primaryPhone.value)
       || cleanString(contact.displayName.value)?.toLowerCase(),
   );
+  const facility = parsed.facility
+    ? normalizeEntity(parsed.facility, facilityFields)
+    : normalizeEntity(Object.fromEntries(facilityFields.map(field => [field, emptyExtracted()])), facilityFields);
+  const needsTemporaryFacilityName = !facility.name.value;
+  if (needsTemporaryFacilityName) {
+    const value = temporaryFacilityName(facility, contacts, importSessionId);
+    facility.name = {
+      value,
+      rawValue: null,
+      normalizedValue: value,
+      confidence: 0,
+      screenshotId: null,
+      evidenceText: 'Temporary facility name added so this partial Salesforce record can be imported.',
+      status: 'ambiguous',
+    };
+  }
   const companies = dedupeEntities(
     parsed.companies.map(company => normalizeEntity(company, companyFields)),
     company => cleanString(company.name.value)?.toLowerCase(),
@@ -363,6 +400,17 @@ export function validateAndNormalizeDraft(raw, { importSessionId, screenshotCoun
     companies,
     propertyHistory: normalizeEntity(parsed.propertyHistory, historyFields),
     duplicateCandidates: [],
+    warnings: needsTemporaryFacilityName
+      ? [
+          ...parsed.warnings,
+          {
+            code: 'missing_identity',
+            message: `A temporary facility name ("${facility.name.value}") was added. You can rename it after import.`,
+            screenshotIds: [],
+            fieldPath: 'facility.name',
+          },
+        ]
+      : parsed.warnings,
   };
 }
 
@@ -461,13 +509,9 @@ export function scoreDuplicateCandidates(draft, snapshot) {
   return results;
 }
 
-export function validateApproval(draft, decisions, { addressOverride = false } = {}) {
+export function validateApproval(draft, decisions) {
   const parsed = salesforceImportDraftSchema.parse(draft);
   const errors = [];
-  if (!parsed.facility?.name?.value) errors.push('Facility name is required.');
-  if (!parsed.facility?.streetAddress?.value && !addressOverride) {
-    errors.push('Facility address is required unless the missing address is explicitly approved.');
-  }
   const selectedCount = (parsed.facility ? 1 : 0)
     + parsed.contacts.filter(item => item.selected).length
     + parsed.companies.filter(item => item.selected).length;
@@ -496,16 +540,11 @@ export function validateApproval(draft, decisions, { addressOverride = false } =
       errors.push(`Choose one of the listed CRM matches for ${label}.`);
     }
   };
-  if ((duplicates.facility || []).length && !decisions?.facility?.action) {
-    errors.push('Review the possible facility duplicate.');
-  }
   checkDecision(decisions?.facility, duplicates.facility || [], 'the facility');
   for (const [tempId, matches] of Object.entries(duplicates.contacts || {})) {
-    if (matches.length && !decisions?.contacts?.[tempId]?.action) errors.push(`Review the duplicate for contact ${tempId}.`);
     checkDecision(decisions?.contacts?.[tempId], matches, `contact ${tempId}`);
   }
   for (const [tempId, matches] of Object.entries(duplicates.companies || {})) {
-    if (matches.length && !decisions?.companies?.[tempId]?.action) errors.push(`Review the duplicate for company ${tempId}.`);
     checkDecision(decisions?.companies?.[tempId], matches, `company ${tempId}`);
   }
   return { valid: errors.length === 0, errors, draft: parsed };

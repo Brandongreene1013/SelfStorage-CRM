@@ -515,13 +515,7 @@ export default async function handler(req, res) {
         method: session.source_method,
       });
       draft.duplicateCandidates = scoreDuplicateCandidates(draft, await loadDuplicateSnapshot(sb));
-      const validation = validateApproval(draft, req.body?.duplicateDecisions || {}, {
-        addressOverride: req.body?.addressOverride === true,
-      });
-      if (draft.warnings.some(warning => warning.code === 'multiple_properties') && req.body?.multiplePropertiesConfirmed !== true) {
-        validation.errors.push('Confirm that you reviewed the possible multiple-property screenshot set.');
-        validation.valid = false;
-      }
+      const validation = validateApproval(draft, req.body?.duplicateDecisions || {});
       if (!validation.valid) return json(res, 422, { error: 'Resolve the review issues before importing.', validationErrors: validation.errors });
       const idempotencyKey = String(req.body?.idempotencyKey || '');
       if (idempotencyKey.length < 16 || idempotencyKey.length > 200) throw new Error('Invalid approval key.');
