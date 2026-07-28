@@ -2,7 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import { IMPORT_FIELD_OPTIONS, parseImportData } from '../hooks/useDatabase';
 import ModalLayout from './ui/ModalLayout';
 
-const SOURCES = ['', 'TractIQ', 'Reonomy', 'CoStar', 'County Records', 'Manual Excel', 'Other'];
+const SOURCES = ['', 'Salesforce', 'TractIQ', 'Reonomy', 'CoStar', 'County Records', 'Manual Excel', 'Other'];
 
 async function excelToTSV(file) {
   // xlsx is heavy; load it only when a spreadsheet is actually imported
