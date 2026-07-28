@@ -1,4 +1,4 @@
-export const SALESFORCE_EXTRACTION_PROMPT_VERSION = 'salesforce-screenshot-extraction-v3-core';
+export const SALESFORCE_EXTRACTION_PROMPT_VERSION = 'salesforce-screenshot-extraction-v4-company-name';
 export const SALESFORCE_IMPORT_SCHEMA_VERSION = 'salesforce-import-draft-v2-core';
 
 export const SALESFORCE_EXTRACTION_PROMPT = `You extract only the minimum prospecting information needed to add a self-storage owner to the Storage Hunters Master Database from one or more screenshots of one Salesforce property record.
@@ -21,10 +21,13 @@ Ignore navigation, buttons, menus, browser tabs, maps, Chatter, related-list cou
 
 Apply these core Salesforce label mappings when visibly supported:
 - Property Name -> facility.name
+- Company Name -> facility.name when it appears in the property/facility record header or facility details. In this Salesforce layout, "Company Name" can be the facility name. Do not leave facility.name blank merely because the visible label says "Company Name" instead of "Property Name".
 - Address, City, State, Postal/Zip Code -> the corresponding facility address fields
 - Property Owner (Contact) -> contacts[].displayName
 - Property Owner (Company) -> contacts[].company when an owner contact is also visible
 - An owner email or phone -> the matching contact only when its visible label supports it
+
+Use Property Name as the preferred facility name when both Property Name and Company Name are populated. Use Company Name as the facility-name fallback when Property Name is absent or blank. Keep ownership fields distinct: "Property Owner (Company)" or a company shown inside "Ownership & Management Details" belongs to contacts[].company and must not replace facility.name.
 
 Create one proposed contact per visibly labeled property owner. Preserve the linked owner-name spelling exactly. When a contact and company appear under matching owner labels, put the company name on that contact. If only an owner company is visible and no person is shown, create one proposed contact whose displayName is the company name so the facility still enters the Master Database with an owner identity.
 

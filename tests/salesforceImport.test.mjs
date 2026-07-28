@@ -87,11 +87,14 @@ assert.equal(screenshotDraft.facility.name.value, 'Mesa Park Self Storage');
 assert.equal(screenshotDraft.facility.streetAddress.value, '100 Example Highway');
 assert.equal(screenshotDraft.contacts[0].displayName.value, 'Alex Q Sample');
 assert.equal(screenshotDraft.contacts[0].company.value, 'Sample Holdings LLC');
-assert.equal(SALESFORCE_EXTRACTION_PROMPT_VERSION, 'salesforce-screenshot-extraction-v3-core');
+assert.equal(SALESFORCE_EXTRACTION_PROMPT_VERSION, 'salesforce-screenshot-extraction-v4-company-name');
 assert.equal(SALESFORCE_IMPORT_SCHEMA_VERSION, 'salesforce-import-draft-v2-core');
 assert.match(SALESFORCE_EXTRACTION_PROMPT, /only the minimum prospecting information/i);
 assert.match(SALESFORCE_EXTRACTION_PROMPT, /Do not extract record type/i);
 assert.match(SALESFORCE_EXTRACTION_PROMPT, /logged a call/i);
+assert.match(SALESFORCE_EXTRACTION_PROMPT, /Company Name -> facility\.name/);
+assert.match(SALESFORCE_EXTRACTION_PROMPT, /Property Owner \(Company\).*contacts\[\]\.company/);
+assert.match(SALESFORCE_EXTRACTION_PROMPT, /Use Company Name as the facility-name fallback/);
 
 const duplicates = scoreDuplicateCandidates(draft, {
   properties: [{ id: 'property-1', facility_name: 'Alpha Storage', address: '101 Main Street', city: 'Austin', state: 'TX', zip_code: '78701', source_record_id: null }],

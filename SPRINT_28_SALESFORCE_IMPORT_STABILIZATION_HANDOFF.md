@@ -1,5 +1,13 @@
 # Sprint 28 — Salesforce Screenshot Import: Stabilization & Go-Live Handoff
 
+## Follow-up — Company Name facility label (July 28, 2026)
+
+Extraction prompt v4 recognizes Salesforce's `Company Name` field as
+`facility.name` when it appears in the property header or facility-details
+section. `Property Name` remains preferred when both are populated, and
+`Property Owner (Company)` remains an owner-contact company so ownership data
+cannot overwrite the facility name.
+
 Date: 2026-07-28
 Branch: `claude/storage-investment-crm-vV018`
 
