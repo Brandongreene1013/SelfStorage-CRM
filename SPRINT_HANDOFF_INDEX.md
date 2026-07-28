@@ -41,6 +41,7 @@ This file is the map for future Codex/Claude sessions. Read `AGENTS.md`, `CODEX_
 - `SPRINT_26_CALL_MODE_HEADER_RESEARCH_POLISH_HANDOFF.md` — Brief Call Mode polish: address/copy/Whitepages at top, duplicate ownership lower, multiple mailing addresses exposed in Call Mode/contact creation.
 - `SPRINT_27_MARKET_INTELLIGENCE_DAILY_BRIEF_HANDOFF.md` — Reliable category news, CRM-derived active markets, market talking points, and the daily 6:30 AM ET batch.
 - `SPRINT_28_SALESFORCE_IMPORT_STABILIZATION_HANDOFF.md` — QA/stabilization of the dark-launched Salesforce screenshot importer (staged upload → Claude vision extraction → review card → idempotent commit RPC). Fixes the stuck-`analyzing` timeout gap and documents the production go-live checklist (run migration, flip `SALESFORCE_SCREENSHOT_IMPORT_ENABLED`, smoke test).
+- `SPRINT_29_TARGETED_CALL_LISTS_HANDOFF.md` — Multi-select contact cards and additive targeted call-list membership. Contacts remain canonical in Master Database while belonging to multiple call lists; includes the pending `contact_list_memberships` migration and go-live checklist.
 
 ## Current Major Systems
 - Dashboard command center: `src/components/Dashboard.jsx`, `src/hooks/useDailyProgress.js`, `api/daily-activity.js`, `api/_dailyActivity.js`.

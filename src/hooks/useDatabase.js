@@ -4,6 +4,7 @@ import { buildContactOutcomeFields } from '../lib/contactMutations';
 import { selectAllRows } from '../lib/selectAllRows';
 import { buildMergePlan } from '../lib/duplicateReview';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
+import { contactInList } from '../lib/listMemberships';
 import {
   buildCaptureLogEntries,
   hasMeaningfulOwnerName,
@@ -855,6 +856,7 @@ function dbToContact(row) {
   return {
     id: row.id,
     listId: row.list_id,
+    listIds: row.list_id ? [row.list_id] : [],
     ownerName: row.owner_name ?? '',
     ownerIdentifiedAt: row.owner_identified_at ?? null,
     ownerEntity: row.owner_entity ?? '',
@@ -945,6 +947,7 @@ export function useDatabase() {
   const [lists, setLists] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [masterListId, setMasterListId] = useState(null);
+  const [listMembershipMigrationNeeded, setListMembershipMigrationNeeded] = useState(false);
   const [analyticsMigrationNeeded, setAnalyticsMigrationNeeded] = useState(false);
   // Sprint 12/13 — duplicate groups marked "Not a duplicate": full records
   // ({ pairKey, note, createdAt }) so the Dismissed view can show when/why,
@@ -996,14 +999,34 @@ export function useDatabase() {
     // Bulk imports give hundreds of contacts the SAME created_at, and Postgres
     // breaks ties arbitrarily — so without the id tie-breaker every app reload
     // dealt the queue back in a different order.
-    const [listsRes, contactsRes] = await Promise.all([
+    const [listsRes, contactsRes, membershipsRes] = await Promise.all([
       selectAllRows(() => supabase.from('lists').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
       selectAllRows(() => supabase.from('contacts').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
+      selectAllRows(() => supabase.from('contact_list_memberships').select('contact_id,list_id,created_at').order('created_at', { ascending: true })),
     ]);
 
     let loadedLists = [];
     if (!listsRes.error && listsRes.data) loadedLists = listsRes.data.map(dbToList);
-    if (!contactsRes.error && contactsRes.data) setContacts(contactsRes.data.map(dbToContact));
+    const membershipsByContact = new Map();
+    if (!membershipsRes.error) {
+      for (const membership of membershipsRes.data ?? []) {
+        const ids = membershipsByContact.get(membership.contact_id) ?? [];
+        ids.push(membership.list_id);
+        membershipsByContact.set(membership.contact_id, ids);
+      }
+      setListMembershipMigrationNeeded(false);
+    } else {
+      setListMembershipMigrationNeeded(true);
+    }
+    if (!contactsRes.error && contactsRes.data) {
+      setContacts(contactsRes.data.map(row => {
+        const contact = dbToContact(row);
+        return {
+          ...contact,
+          listIds: [...new Set([contact.listId, ...(membershipsByContact.get(contact.id) ?? [])].filter(Boolean))],
+        };
+      }));
+    }
     const { error: analyticsColumnError } = await supabase
       .from('contacts')
       .select('owner_identified_at')
@@ -1279,20 +1302,93 @@ export function useDatabase() {
     }
   }, []);
 
+  const addContactsToList = useCallback(async (contactIds, listId) => {
+    const ids = [...new Set((contactIds ?? []).filter(id => contacts.some(contact => contact.id === id)))];
+    if (!listId || ids.length === 0) return { error: 'Select at least one person and a target list.' };
+    if (listId === masterListId) return { error: 'People already remain in the Master Database. Choose a targeted call list.' };
+
+    const rows = ids.map(contactId => ({ contact_id: contactId, list_id: listId }));
+    const { error } = await supabase
+      .from('contact_list_memberships')
+      .upsert(rows, { onConflict: 'contact_id,list_id', ignoreDuplicates: true });
+    if (error) {
+      setListMembershipMigrationNeeded(true);
+      return { error: 'Run sql/contact_list_memberships_migration.sql in Supabase, then refresh to build targeted call lists.' };
+    }
+
+    setListMembershipMigrationNeeded(false);
+    setContacts(prev => prev.map(contact => ids.includes(contact.id)
+      ? { ...contact, listIds: [...new Set([...(contact.listIds ?? [contact.listId]), listId].filter(Boolean))] }
+      : contact));
+    const addedCount = ids.filter(id => !contactInList(contacts.find(contact => contact.id === id), listId)).length;
+    return { ok: true, addedCount, selectedCount: ids.length };
+  }, [contacts, masterListId]);
+
+  const removeContactsFromList = useCallback(async (contactIds, listId) => {
+    const ids = [...new Set((contactIds ?? []).filter(Boolean))];
+    if (!listId || listId === masterListId) return { error: 'Choose a targeted call list.' };
+    if (!masterListId) return { error: 'Master Database is not ready. Refresh and try again.' };
+
+    const homeIds = contacts.filter(contact => ids.includes(contact.id) && contact.listId === listId).map(contact => contact.id);
+    const membershipIds = ids.filter(id => !homeIds.includes(id));
+
+    if (homeIds.length) {
+      const { error } = await supabase.from('contacts')
+        .update({ list_id: masterListId, updated_at: new Date().toISOString() })
+        .in('id', homeIds);
+      if (error) return { error: error.message };
+    }
+    if (membershipIds.length) {
+      const { error } = await supabase.from('contact_list_memberships')
+        .delete()
+        .eq('list_id', listId)
+        .in('contact_id', membershipIds);
+      if (error) {
+        setListMembershipMigrationNeeded(true);
+        return { error: 'Run sql/contact_list_memberships_migration.sql in Supabase, then refresh to manage targeted call lists.' };
+      }
+    }
+
+    setContacts(prev => prev.map(contact => {
+      if (!ids.includes(contact.id)) return contact;
+      const movedHome = homeIds.includes(contact.id);
+      return {
+        ...contact,
+        listId: movedHome ? masterListId : contact.listId,
+        listIds: [...new Set([
+          ...(contact.listIds ?? [contact.listId]).filter(id => id !== listId),
+          ...(movedHome ? [masterListId] : []),
+        ].filter(Boolean))],
+      };
+    }));
+    return { ok: true, removedCount: ids.length };
+  }, [contacts, masterListId]);
+
   const deleteList = useCallback(async (listId) => {
     if (!listId) return { error: 'No list selected.' };
     if (listId === masterListId) return { error: 'The Master Database cannot be deleted.' };
+    if (!masterListId) return { error: 'Master Database is not ready. Refresh and try again.' };
 
-    const deletedContacts = contacts.filter(c => c.listId === listId).length;
-    const contactDelete = await supabase.from('contacts').delete().eq('list_id', listId);
-    if (contactDelete.error) return { error: contactDelete.error.message };
+    const homeContacts = contacts.filter(c => c.listId === listId);
+    if (homeContacts.length) {
+      const contactMove = await supabase.from('contacts')
+        .update({ list_id: masterListId, updated_at: new Date().toISOString() })
+        .eq('list_id', listId);
+      if (contactMove.error) return { error: contactMove.error.message };
+    }
 
     const listDelete = await supabase.from('lists').delete().eq('id', listId);
     if (listDelete.error) return { error: listDelete.error.message };
 
     setLists(prev => prev.filter(l => l.id !== listId));
-    setContacts(prev => prev.filter(c => c.listId !== listId));
-    return { ok: true, deletedContacts };
+    setContacts(prev => prev.map(contact => ({
+      ...contact,
+      listId: contact.listId === listId ? masterListId : contact.listId,
+      listIds: [...new Set((contact.listIds ?? [contact.listId])
+        .filter(id => id !== listId)
+        .concat(contact.listId === listId ? [masterListId] : []))],
+    })));
+    return { ok: true, preservedContacts: homeContacts.length };
   }, [contacts, masterListId]);
 
   const renameList = useCallback(async (listId, newName) => {
@@ -1557,12 +1653,24 @@ export function useDatabase() {
     return { ok: true };
   }, [contacts]);
 
-  // Move a contact into a different list (drag-and-drop between Database lists)
+  // Targeted lists are additive memberships. Promoting a legacy list contact
+  // to Master preserves its original list membership before changing its home.
   const moveContactToList = useCallback(async (contactId, listId) => {
+    const contact = contacts.find(item => item.id === contactId);
+    if (!contact) return { error: 'Contact not found. Refresh and try again.' };
+    if (contactInList(contact, listId)) return { ok: true, addedCount: 0 };
+    if (listId !== masterListId) return addContactsToList([contactId], listId);
+
+    const preserved = await addContactsToList([contactId], contact.listId);
+    if (preserved?.error) return preserved;
     const { error } = await supabase
       .from('contacts').update({ list_id: listId, updated_at: new Date().toISOString() }).eq('id', contactId);
-    if (!error) setContacts(prev => prev.map(c => c.id === contactId ? { ...c, listId } : c));
-  }, []);
+    if (error) return { error: error.message };
+    setContacts(prev => prev.map(c => c.id === contactId
+      ? { ...c, listId, listIds: [...new Set([...(c.listIds ?? []), listId])] }
+      : c));
+    return { ok: true, addedCount: 1 };
+  }, [addContactsToList, contacts, masterListId]);
 
   const updateContactStatus = useCallback(async (contactId, status, callNote, activityDate, options = {}) => {
     const contact = contacts.find(c => c.id === contactId);
@@ -1711,6 +1819,7 @@ export function useDatabase() {
     contacts,
     masterListId,
     analyticsMigrationNeeded,
+    listMembershipMigrationNeeded,
     importList,
     importIntoList,
     mergeDuplicateContact,
@@ -1720,6 +1829,8 @@ export function useDatabase() {
     dismissDuplicateGroup,
     restoreDuplicateGroup,
     moveContactToList,
+    addContactsToList,
+    removeContactsFromList,
     createList,
     addContact,
     updateContactStatus,

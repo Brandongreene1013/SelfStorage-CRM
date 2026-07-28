@@ -32,6 +32,7 @@ import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from
 import { createActivityEventId, buildActivityAnalytics, easternToday } from '../lib/activityAnalytics';
 import { EVENT_META, eventTimeLabel } from '../lib/activityLog';
 import { sortDatabaseContacts } from '../lib/databaseSort';
+import { contactInList } from '../lib/listMemberships';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -1478,7 +1479,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, lists = [], onMoveToList, onToClients, taskApi }) {
+function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, masterListId, lists = [], onMoveToList, onToClients, taskApi, selected = false, onToggleSelected }) {
   const [added, setAdded] = useState(false);
   const [activityMode, setActivityMode] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
@@ -1517,7 +1518,9 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
     <div
       ref={setNodeRef}
       onClick={onClick}
-      className={`bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-black/30 group min-w-0 ${isDragging ? 'opacity-40' : ''}`}
+      className={`bg-slate-900 border rounded-xl p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-black/30 group min-w-0 ${
+        selected ? 'border-amber-500/70 ring-2 ring-amber-500/20' : 'border-slate-800 hover:border-slate-600'
+      } ${isDragging ? 'opacity-40' : ''}`}
     >
       {/* Status + lead temp + market */}
       <div className="flex flex-wrap items-start justify-between mb-3 gap-2">
@@ -1559,6 +1562,24 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           })()}
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
+          <label
+            onClick={event => event.stopPropagation()}
+            className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border transition-all ${
+              selected
+                ? 'border-amber-400 bg-amber-500 text-slate-950'
+                : 'border-slate-600 bg-slate-800 text-transparent hover:border-amber-500/70'
+            }`}
+            title={selected ? 'Remove from selection' : 'Select person'}
+          >
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggleSelected?.(contact.id)}
+              className="sr-only"
+              aria-label={`Select ${contact.ownerName || contact.facilityName || 'person'}`}
+            />
+            <span className="text-xs font-bold" aria-hidden="true">✓</span>
+          </label>
           <button
             {...listeners}
             {...attributes}
@@ -1575,9 +1596,15 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           {(() => {
             const moveOptions = [];
             if (onToClients) moveOptions.push({ label: 'Move to Pipeline', onClick: () => onToClients(contact) });
-            lists.filter(l => l.id !== contact.listId).forEach(l =>
-              moveOptions.push({ label: `Move to ${l.name}`, onClick: () => onMoveToList?.(contact.id, l.id) }));
-            return moveOptions.length ? <MoveMenu options={moveOptions} label="Move" /> : null;
+            lists.filter(l => l.id !== masterListId && !contactInList(contact, l.id)).forEach(l =>
+              moveOptions.push({
+                label: `Add to ${l.name}`,
+                onClick: async () => {
+                  const result = await onMoveToList?.(contact.id, l.id);
+                  if (result?.error) alert(result.error);
+                },
+              }));
+            return moveOptions.length ? <MoveMenu options={moveOptions} label="Actions" /> : null;
           })()}
         </div>
       </div>
@@ -2385,7 +2412,8 @@ function CallModeQueuePicker({
 export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, ownershipApi, mailerApi, entryRequest, onEntryConsumed }) {
   const {
     lists, contacts, masterListId,
-    importList, importIntoList, mergeDuplicateContact, moveContactToList, createList, addContact,
+    importList, importIntoList, mergeDuplicateContact, moveContactToList, addContactsToList,
+    removeContactsFromList, createList, addContact, listMembershipMigrationNeeded,
     updateContactStatus,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB, logContactAction, deleteContactAction, deleteContactCallHistory,
@@ -2394,7 +2422,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
-  function handleDragEnd({ active, over }) {
+  async function handleDragEnd({ active, over }) {
     setActiveDrag(null);
     if (!over) return;
     const contact = contacts.find(c => c.id === active.id);
@@ -2404,7 +2432,10 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       onContactToClients?.(contact);
     } else if (target.startsWith('list:')) {
       const listId = target.slice(5);
-      if (contact.listId !== listId) moveContactToList(contact.id, listId);
+      if (!contactInList(contact, listId)) {
+        const result = await moveContactToList(contact.id, listId);
+        if (result?.error) alert(result.error);
+      }
     }
   }
 
@@ -2414,6 +2445,10 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [showAddContact, setShowAddContact] = useState(false);
   const [showNewList, setShowNewList]   = useState(false);
   const [newListName, setNewListName]   = useState('');
+  const [newListForSelection, setNewListForSelection] = useState(false);
+  const [selectedContactIds, setSelectedContactIds] = useState(() => new Set());
+  const [bulkTargetListId, setBulkTargetListId] = useState('');
+  const [bulkStatus, setBulkStatus] = useState('');
   // Default to no list selected — clean empty state on open
   const [activeListId, setActiveListId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -2429,11 +2464,10 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   async function handleDeleteList(listId) {
     if (!listId || listId === masterListId) return;
     const list = lists.find(l => l.id === listId);
-    const count = contacts.filter(c => c.listId === listId).length;
+    const count = contacts.filter(c => contactInList(c, listId)).length;
     const ok = confirm(
-      `Delete "${list?.name ?? 'this list'}" from the database?\n\n` +
-      `This will permanently delete ${count} contact${count === 1 ? '' : 's'} still assigned to this list.\n\n` +
-      'Anything already added to the Master Database will stay there.'
+      `Delete the list "${list?.name ?? 'this list'}"?\n\n` +
+      `${count} contact${count === 1 ? '' : 's'} will be removed from this list, but their CRM records will remain in the Master Database.`
     );
     if (!ok) return;
 
@@ -2443,6 +2477,69 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       return;
     }
     if (activeListId === listId) setActiveListId('all');
+  }
+
+  function toggleContactSelection(contactId) {
+    setBulkStatus('');
+    setSelectedContactIds(previous => {
+      const next = new Set(previous);
+      if (next.has(contactId)) next.delete(contactId); else next.add(contactId);
+      return next;
+    });
+  }
+
+  async function addSelectedToList(listId = bulkTargetListId) {
+    const ids = [...selectedContactIds];
+    if (!listId || ids.length === 0) return;
+    const result = await addContactsToList(ids, listId);
+    if (result?.error) {
+      setBulkStatus(result.error);
+      return;
+    }
+    const listName = lists.find(list => list.id === listId)?.name ?? 'list';
+    setBulkStatus(`${ids.length} ${ids.length === 1 ? 'person' : 'people'} added to ${listName}.`);
+    setSelectedContactIds(new Set());
+    setBulkTargetListId('');
+  }
+
+  async function removeSelectedFromActiveList() {
+    const ids = [...selectedContactIds];
+    if (!activeListId || activeListId === masterListId || activeListId === 'all' || ids.length === 0) return;
+    const result = await removeContactsFromList(ids, activeListId);
+    if (result?.error) {
+      setBulkStatus(result.error);
+      return;
+    }
+    setBulkStatus(`${ids.length} ${ids.length === 1 ? 'person' : 'people'} removed from this list and kept in Master Database.`);
+    setSelectedContactIds(new Set());
+  }
+
+  async function createTargetedList() {
+    const name = newListName.trim();
+    if (!name) return;
+    if (newListForSelection && listMembershipMigrationNeeded) {
+      setBulkStatus('Run sql/contact_list_memberships_migration.sql in Supabase, then refresh before creating a targeted call list.');
+      return;
+    }
+    const list = await createList(name, 'Targeted Call List');
+    if (!list) {
+      setBulkStatus('Could not create the list. Please try again.');
+      return;
+    }
+    if (newListForSelection && selectedContactIds.size > 0) {
+      const result = await addContactsToList([...selectedContactIds], list.id);
+      if (result?.error) {
+        setBulkStatus(result.error);
+        return;
+      }
+      setSelectedContactIds(new Set());
+      setBulkStatus(`Created ${list.name} and added the selected people.`);
+    }
+    setActiveListId(list.id);
+    setSubView('contacts');
+    setNewListName('');
+    setNewListForSelection(false);
+    setShowNewList(false);
   }
 
   // Sprint 22 — location sort. Each list remembers its own anchor ("sort the
@@ -2659,7 +2756,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const filtered = useMemo(() => {
     if (activeListId === null) return [];
     const result = contacts.filter(c => {
-      if (activeListId !== 'all' && c.listId !== activeListId) return false;
+      if (activeListId !== 'all' && !contactInList(c, activeListId)) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
       if (relationshipFilter !== 'all' && (c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE) !== relationshipFilter) return false;
       if (leadTempFilter === 'none' && c.leadTemp) return false;
@@ -2870,7 +2967,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     let label = s.label ?? 'Call Mode';
     if (s.queueKey === 'activeList') {
       if (!s.listId || !lists.some(l => l.id === s.listId)) return null;
-      queue = contacts.filter(c => c.listId === s.listId && ['fresh', 'callback', 'no_answer', 'voicemail'].includes(c.status));
+      queue = contacts.filter(c => contactInList(c, s.listId) && ['fresh', 'callback', 'no_answer', 'voicemail'].includes(c.status));
       label = lists.find(l => l.id === s.listId)?.name ?? label;
     } else {
       queue = QUEUE_DEFS.find(q => q.key === s.queueKey)?.queue ?? [];
@@ -3052,7 +3149,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           <span className="text-lg font-bold leading-none">+</span> Import
         </button>
         <button
-          onClick={() => setShowNewList(true)}
+          onClick={() => { setNewListForSelection(false); setShowNewList(true); }}
           className="bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300 font-bold px-3 py-2 rounded-xl text-sm transition-all flex items-center justify-center gap-1.5"
           title="Create blank list"
         >
@@ -3105,7 +3202,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             <ListSidebarItem
               key={l.id}
               list={l}
-              count={contacts.filter(c => c.listId === l.id).length}
+              count={contacts.filter(c => contactInList(c, l.id)).length}
               isActive={activeListId === l.id && subView === 'contacts'}
               onSelect={() => { setActiveListId(l.id); setSubView('contacts'); }}
               onRename={(name) => renameList(l.id, name)}
@@ -3121,8 +3218,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             </p>
             <div className="divide-y divide-slate-800/70">
               {importHistory.map(l => {
-                const count = l.importRowCount || contacts.filter(c => c.listId === l.id).length;
-                const ready = l.readyToCallCount || contacts.filter(c => c.listId === l.id && ['fresh', 'callback', 'no_answer', 'voicemail'].includes(c.status)).length;
+                const count = l.importRowCount || contacts.filter(c => contactInList(c, l.id)).length;
+                const ready = l.readyToCallCount || contacts.filter(c => contactInList(c, l.id) && ['fresh', 'callback', 'no_answer', 'voicemail'].includes(c.status)).length;
                 return (
                   <div key={`history-${l.id}`} className="px-3 py-2.5 space-y-2">
                     <div className="min-w-0">
@@ -3368,6 +3465,18 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 onOpen={() => setGeoWanted(true)}
               />
               <span className="text-xs text-slate-600">{filtered.length + clientsInView.length} contacts</span>
+              {filtered.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkStatus('');
+                    setSelectedContactIds(previous => new Set([...previous, ...filtered.map(contact => contact.id)]));
+                  }}
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-400 transition-all hover:border-slate-500 hover:text-white"
+                >
+                  Select visible
+                </button>
+              )}
               {activeListId !== null && (
                 <button
                   onClick={() => {
@@ -3411,6 +3520,78 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 </button>
               )}
             </div>
+
+            {selectedContactIds.size > 0 && (
+              <div className="sticky top-20 z-20 flex flex-col gap-3 rounded-xl border border-amber-500/35 bg-slate-900/95 p-3 shadow-xl shadow-black/30 backdrop-blur sm:flex-row sm:items-center">
+                <div className="flex min-w-fit items-center gap-2">
+                  <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-amber-500 px-2 text-xs font-bold text-slate-950">
+                    {selectedContactIds.size}
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-white">People selected</p>
+                    <p className="text-[11px] text-slate-500">Add them to a targeted call list without removing them from Master Database.</p>
+                  </div>
+                </div>
+                <div className="flex flex-1 flex-wrap items-center gap-2 sm:justify-end">
+                  <select
+                    value={bulkTargetListId}
+                    onChange={event => { setBulkTargetListId(event.target.value); setBulkStatus(''); }}
+                    className="min-w-44 flex-1 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-amber-500 focus:outline-none sm:max-w-64"
+                  >
+                    <option value="">Choose a call list…</option>
+                    {lists.filter(list => list.id !== masterListId).map(list => (
+                      <option key={list.id} value={list.id}>{list.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!bulkTargetListId}
+                    onClick={() => addSelectedToList()}
+                    className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-slate-950 transition-all hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"
+                  >
+                    Add to list
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setNewListForSelection(true); setShowNewList(true); }}
+                    className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-300 transition-all hover:border-slate-500 hover:text-white"
+                  >
+                    + New list
+                  </button>
+                  {activeListId && activeListId !== masterListId && activeListId !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={removeSelectedFromActiveList}
+                      className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 transition-all hover:bg-red-500/20"
+                    >
+                      Remove from this list
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedContactIds(new Set()); setBulkStatus(''); }}
+                    className="px-2 py-2 text-xs font-semibold text-slate-500 hover:text-white"
+                  >
+                    Clear
+                  </button>
+                </div>
+                {listMembershipMigrationNeeded && (
+                  <p className="text-xs text-amber-300 sm:basis-full">
+                    Run sql/contact_list_memberships_migration.sql in Supabase before saving targeted lists.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {bulkStatus && (
+              <div className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                /Could not|Run sql|error/i.test(bulkStatus)
+                  ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                  : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+              }`}>
+                {bulkStatus}
+              </div>
+            )}
             {activeFilterChips.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 {activeFilterChips.map(chip => (
@@ -3457,11 +3638,14 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     onLogAction={logContactAction}
                     onDeleteAction={deleteContactAction}
                     isMasterDB={masterView}
+                    masterListId={masterListId}
                     lists={lists}
                     onMoveToList={moveContactToList}
                     onToClients={onContactToClients}
                     taskApi={taskApi}
                     ownershipApi={ownershipApi}
+                    selected={selectedContactIds.has(c.id)}
+                    onToggleSelected={toggleContactSelection}
                   />
                   </div>
                 ))}
@@ -3538,8 +3722,17 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
       {/* New Blank List modal */}
       {showNewList && (
-        <ModalLayout onClose={() => setShowNewList(false)} size="sm" className="p-6 space-y-4">
-            <h2 className="text-base font-bold text-white">Create Blank List</h2>
+        <ModalLayout onClose={() => { setShowNewList(false); setNewListForSelection(false); }} size="sm" className="p-6 space-y-4">
+            <div>
+              <h2 className="text-base font-bold text-white">
+                {newListForSelection ? 'Create Targeted Call List' : 'Create Blank List'}
+              </h2>
+              {newListForSelection && (
+                <p className="mt-1 text-xs text-slate-500">
+                  The {selectedContactIds.size} selected {selectedContactIds.size === 1 ? 'person' : 'people'} will be added while remaining in Master Database.
+                </p>
+              )}
+            </div>
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">List Name *</label>
               <input
@@ -3548,34 +3741,25 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 onChange={e => setNewListName(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && newListName.trim()) {
-                    const list = createList(newListName.trim(), 'Internal DB');
-                    setActiveListId(list.id);
-                    setSubView('contacts');
-                    setNewListName('');
-                    setShowNewList(false);
+                    e.preventDefault();
+                    createTargetedList();
                   }
                 }}
-                placeholder="e.g. Personal Referrals, Drive-by Prospects..."
+                placeholder="e.g. DFW owners, Q3 callbacks..."
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
               />
             </div>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setShowNewList(false)}
+              <button onClick={() => { setShowNewList(false); setNewListForSelection(false); }}
                 className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-all">Cancel</button>
               <button
                 disabled={!newListName.trim()}
-                onClick={() => {
-                  const list = createList(newListName.trim(), 'Internal DB');
-                  setActiveListId(list.id);
-                  setSubView('contacts');
-                  setNewListName('');
-                  setShowNewList(false);
-                }}
+                onClick={createTargetedList}
                 className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
                   newListName.trim() ? 'bg-amber-500 hover:bg-amber-400 text-slate-900' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
                 }`}
               >
-                Create List
+                {newListForSelection ? 'Create & Add People' : 'Create List'}
               </button>
             </div>
         </ModalLayout>

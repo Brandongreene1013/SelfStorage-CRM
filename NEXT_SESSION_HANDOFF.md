@@ -50,7 +50,7 @@ Production read-only smoke check:
   - Dashboard top counters showed zero at check time; confirm with Brandon if that conflicts with expected logged activity.
 
 ## Latest Sprint Docs
-The handoff collection is now current through Sprint 27:
+The handoff collection is now current through Sprint 29:
 - `SPRINT_HANDOFF_INDEX.md`
 - `SPRINT_20_CALL_MODE_INLINE_EDITING_PWA_HANDOFF.md`
 - `SPRINT_21_OWNERSHIP_PANEL_MULTI_PROPERTY_HANDOFF.md`
@@ -61,6 +61,7 @@ The handoff collection is now current through Sprint 27:
 - `SPRINT_26_CALL_MODE_HEADER_RESEARCH_POLISH_HANDOFF.md` is the current brief in-progress handoff for Call Mode header polish and multiple mailing address exposure.
 - `SPRINT_27_MARKET_INTELLIGENCE_DAILY_BRIEF_HANDOFF.md` documents the current Dashboard market-intelligence providers, CRM-derived active markets, and 6:30 AM ET daily batch.
 - `SPRINT_28_SALESFORCE_IMPORT_STABILIZATION_HANDOFF.md` is the current handoff for the Salesforce screenshot importer: QA'd, hardened (stuck-`analyzing` timeout fix), and **dark-launched** — it stays invisible/inert in production until Brandon runs the migration and sets `SALESFORCE_SCREENSHOT_IMPORT_ENABLED=true`. That doc has the full go-live checklist.
+- `SPRINT_29_TARGETED_CALL_LISTS_HANDOFF.md` documents additive targeted call lists: card checkboxes, bulk add/create/remove actions, Master Database preservation, Call Mode membership support, and the pending membership migration.
 
 Older sprint docs from Sprint 1-19 remain at repo root.
 
@@ -175,6 +176,9 @@ Pending as of 2026-07-28:
 - `sql/client_lead_source_migration.sql` adds `clients.lead_source`. Run it
   before using Lead Source in Add/Edit Client; the UI reports the missing
   migration instead of silently dropping a selected source.
+- `sql/contact_list_memberships_migration.sql` adds many-to-many targeted
+  call-list membership. Run it before using the new bulk-selection list
+  workflow; contacts stay canonical in Master Database.
 
 Previously verified current as of 2026-07-23:
 Every migration then under sql/ was applied to live Supabase, verified by a full
