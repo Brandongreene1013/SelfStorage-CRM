@@ -411,6 +411,7 @@ begin
           email = coalesce(nullif(email, ''), coalesce(v_contact->'email'->>'value', '')),
           address = coalesce(nullif(address, ''), coalesce(v_address, '')),
           mailing_address = coalesce(nullif(mailing_address, ''), coalesce(v_contact->'mailingAddress'->>'value', '')),
+          lead_source = coalesce(nullif(lead_source, ''), 'Salesforce'),
           source_record_id = coalesce(source_record_id, nullif(v_contact->'sourceRecordId'->>'value', '')),
           ownership_group_id = coalesce(ownership_group_id, v_primary_group_id),
           updated_at = now()
@@ -426,7 +427,7 @@ begin
         owner_entity, company_name, facility_name, relationship_type,
         contact_role, job_title, phone, alternate_phones, email, address,
         mailing_address, state, notes, status, call_history, action_log,
-        source, source_record_id, source_metadata, imported_at,
+        lead_source, source, source_record_id, source_metadata, imported_at,
         ownership_group_id, owner_identified_at, updated_at
       ) values (
         v_master_list_id,
@@ -453,6 +454,7 @@ begin
         'fresh',
         '[]'::jsonb,
         '[]'::jsonb,
+        'Salesforce',
         'Salesforce Screenshot',
         nullif(v_contact->'sourceRecordId'->>'value', ''),
         jsonb_build_object('importId', p_import_id, 'propertyId', v_property_id),
@@ -469,13 +471,13 @@ begin
   if v_created_contacts = '{}'::jsonb then
     insert into public.contacts (
       list_id, owner_name, facility_name, relationship_type, address, state,
-      notes, status, call_history, action_log, source, source_metadata,
+      notes, status, call_history, action_log, lead_source, source, source_metadata,
       imported_at, ownership_group_id, updated_at
     ) values (
       v_master_list_id, '', v_name, 'storage_owner_seller',
       coalesce(v_address, ''), coalesce(v_facility->'state'->>'value', ''),
       'Facility imported from Salesforce screenshot; owner not visible.',
-      'fresh', '[]'::jsonb, '[]'::jsonb, 'Salesforce Screenshot',
+      'fresh', '[]'::jsonb, '[]'::jsonb, 'Salesforce', 'Salesforce Screenshot',
       jsonb_build_object('importId', p_import_id, 'propertyId', v_property_id),
       now(), v_primary_group_id, now()
     ) returning id into v_contact_id;

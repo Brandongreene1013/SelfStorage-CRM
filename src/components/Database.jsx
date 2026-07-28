@@ -13,7 +13,19 @@ import MoveMenu from './MoveMenu';
 import { AddToMailerButton } from './MailerListPicker';
 import MailingAddressList from './MailingAddressList';
 import EstateTransitionPanel from './EstateTransitionPanel';
-import { ACTION_TYPES, CALL_ACTION_TYPES, DEFAULT_RELATIONSHIP_TYPE, LEAD_SOURCES, LEAD_TEMPS, PROPERTY_TYPES, RELATIONSHIP_TYPES } from '../data/constants';
+import {
+  ACTION_TYPES,
+  CALL_ACTION_TYPES,
+  DEFAULT_RELATIONSHIP_TYPE,
+  LEAD_SOURCE_DEFINITIONS,
+  LEAD_SOURCES,
+  LEAD_TEMPS,
+  PROPERTY_TYPES,
+  RELATIONSHIP_TYPES,
+  canonicalLeadSource,
+  leadSourceOptions,
+  matchesLeadSource,
+} from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, buildCallbackTaskQueue, mergeQueueContact, TASK_TYPE_MAP } from './tasks';
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
@@ -76,17 +88,6 @@ const SOURCE_COLORS = {
   'Other':       'bg-slate-600/40 text-slate-400 border-slate-600/30',
 };
 
-const LEAD_SOURCE_FILTERS = [
-  { value: 'tractiq', label: 'TractIQ', match: ['tractiq'] },
-  { value: 'salesforce', label: 'Salesforce', match: ['salesforce'] },
-  { value: 'facebook', label: 'Facebook', match: ['facebook'] },
-  { value: 'costar', label: 'CoStar', match: ['costar'] },
-  { value: 'reonomy', label: 'Reonomy', match: ['reonomy'] },
-  { value: 'crexi', label: 'Crexi', match: ['crexi'] },
-  { value: 'loopnet', label: 'LoopNet', match: ['loopnet'] },
-  { value: 'businessesforsale', label: 'BusinessesForSale', match: ['businessesforsale'] },
-];
-
 const RELATIONSHIP_TYPE_MAP = Object.fromEntries(RELATIONSHIP_TYPES.map(t => [t.value, t]));
 
 function relationshipMeta(value) {
@@ -104,11 +105,8 @@ function contactOrigins(contact, lists = []) {
 }
 
 function matchesLeadSourceFilter(contact, lists, filter) {
-  const definition = LEAD_SOURCE_FILTERS.find(option => option.value === filter);
-  if (!definition) return true;
-  const origins = contactOrigins(contact, lists)
-    .map(origin => origin.toLowerCase().replace(/[^a-z0-9]/g, ''));
-  return origins.some(origin => definition.match.some(term => origin.includes(term)));
+  if (!LEAD_SOURCE_DEFINITIONS.some(option => option.value === filter)) return true;
+  return contactOrigins(contact, lists).some(origin => matchesLeadSource(origin, filter));
 }
 
 function SourceBadge({ source }) {
@@ -1245,12 +1243,12 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Lead / Relationship Source</label>
               <select
-                value={contact.leadSource ?? ''}
+                value={canonicalLeadSource(contact.leadSource)}
                 onChange={e => field('leadSource')(e.target.value)}
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
               >
                 <option value="">No source set</option>
-                {LEAD_SOURCES.map(sourceOption => (
+                {leadSourceOptions(contact.leadSource).map(sourceOption => (
                   <option key={sourceOption} value={sourceOption}>{sourceOption}</option>
                 ))}
               </select>
@@ -2135,7 +2133,7 @@ function DatabaseFilterMenu({
             ])}
             {field('Lead source', 'source', [
               { value: 'all', label: 'All lead sources' },
-              ...LEAD_SOURCE_FILTERS,
+              ...LEAD_SOURCE_DEFINITIONS.map(({ value, label }) => ({ value, label })),
             ])}
             {field('Contact information', 'data', [
               { value: 'all', label: 'Any completeness' },
@@ -2620,7 +2618,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     stateFilter !== 'all' && { key: 'state', label: stateFilter },
     sourceFilter !== 'all' && {
       key: 'source',
-      label: `Source: ${LEAD_SOURCE_FILTERS.find(option => option.value === sourceFilter)?.label || sourceFilter}`,
+      label: `Source: ${LEAD_SOURCE_DEFINITIONS.find(option => option.value === sourceFilter)?.label || sourceFilter}`,
     },
     dataFilter !== 'all' && {
       key: 'data',
@@ -3803,12 +3801,12 @@ function CallModeDetailsPanel({ contact, onUpdateContact, ownershipApi, mailerAp
         <div>
           <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Lead / Relationship Source</label>
           <select
-            value={contact.leadSource ?? ''}
+            value={canonicalLeadSource(contact.leadSource)}
             onChange={e => field('leadSource')(e.target.value)}
             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
           >
             <option value="">No source set</option>
-            {LEAD_SOURCES.map(sourceOption => (
+            {leadSourceOptions(contact.leadSource).map(sourceOption => (
               <option key={sourceOption} value={sourceOption}>{sourceOption}</option>
             ))}
           </select>

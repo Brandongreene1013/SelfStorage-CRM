@@ -9,7 +9,7 @@ import {
   hasMeaningfulOwnerName,
   withOwnerIdentificationMilestone,
 } from '../lib/activityAnalytics';
-import { DEFAULT_RELATIONSHIP_TYPE, RELATIONSHIP_TYPES } from '../data/constants';
+import { DEFAULT_RELATIONSHIP_TYPE, RELATIONSHIP_TYPES, canonicalLeadSource } from '../data/constants';
 
 const US_STATES = {
   AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',
@@ -516,7 +516,7 @@ function contactInsertRow(listId, c, meta = {}) {
     owner_entity: c.ownerEntity ?? '',
     facility_name: c.facilityName,
     relationship_type: c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
-    lead_source: c.leadSource ?? '',
+    lead_source: canonicalLeadSource(c.leadSource),
     ownership_group_id: c.ownershipGroupId ?? null,
     phone: c.phone,
     alternate_phones: c.alternatePhones ?? [],
@@ -670,7 +670,7 @@ function updatePayloadFromFields(fields) {
   if (fields.ownerEntity !== undefined) dbFields.owner_entity = fields.ownerEntity;
   if (fields.facilityName !== undefined) dbFields.facility_name = fields.facilityName;
   if (fields.relationshipType !== undefined) dbFields.relationship_type = fields.relationshipType;
-  if (fields.leadSource !== undefined) dbFields.lead_source = fields.leadSource;
+  if (fields.leadSource !== undefined) dbFields.lead_source = canonicalLeadSource(fields.leadSource) || null;
   if (fields.leadSourceNotes !== undefined) dbFields.lead_source_notes = fields.leadSourceNotes;
   if (fields.ownershipGroupId !== undefined) dbFields.ownership_group_id = fields.ownershipGroupId || null;
   if (fields.phone !== undefined) dbFields.phone = fields.phone;
@@ -816,7 +816,7 @@ export function parseImportData(text, options = {}) {
       ownerName,
       ownerEntity: cols[fieldMap.ownerEntity] ?? '',
       relationshipType: normalizeRelationshipType(cols[fieldMap.relationshipType] ?? ''),
-      leadSource: cols[fieldMap.leadSource] ?? '',
+      leadSource: canonicalLeadSource(cols[fieldMap.leadSource] ?? ''),
       phone: primaryPhone,
       alternatePhones,
       email: cols[fieldMap.email] ?? '',
@@ -860,7 +860,7 @@ function dbToContact(row) {
     ownerEntity: row.owner_entity ?? '',
     facilityName: row.facility_name ?? '',
     relationshipType: normalizeRelationshipType(row.relationship_type ?? ''),
-    leadSource: row.lead_source ?? '',
+    leadSource: canonicalLeadSource(row.lead_source ?? ''),
     leadSourceNotes: row.lead_source_notes ?? '',
     ownershipGroupId: row.ownership_group_id ?? null,
     phone: row.phone ?? '',
@@ -1313,7 +1313,7 @@ export function useDatabase() {
       owner_entity: fields.ownerEntity ?? '',
       facility_name: fields.facilityName ?? '',
       relationship_type: fields.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
-      lead_source: fields.leadSource || null,
+      lead_source: canonicalLeadSource(fields.leadSource) || null,
       phone: fields.phone ?? '',
       email: fields.email ?? '',
       age: numberOrNull(fields.age),
@@ -1627,7 +1627,7 @@ export function useDatabase() {
       owner_entity: contact.ownerEntity ?? '',
       facility_name: contact.facilityName ?? '',
       relationship_type: contact.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE,
-      lead_source: contact.leadSource || null,
+      lead_source: canonicalLeadSource(contact.leadSource) || null,
       ownership_group_id: contact.ownershipGroupId ?? null,
       phone: contact.phone ?? '',
       alternate_phones: contact.alternatePhones ?? [],

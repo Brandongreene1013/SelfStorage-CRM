@@ -4,6 +4,7 @@ import { selectAllRows } from '../lib/selectAllRows';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
 import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } from '../lib/dealValue';
 import { buildCaptureLogEntries, createActivityEventId } from '../lib/activityAnalytics';
+import { canonicalLeadSource } from '../data/constants';
 
 function isMissingColumnError(error, columnName) {
   if (!error) return false;
@@ -23,6 +24,10 @@ function hasDealValueInput(data) {
 
 function hasAgeInput(data) {
   return numberOrNull(data.age) !== null;
+}
+
+function hasLeadSourceInput(data) {
+  return Boolean(String(data.leadSource || '').trim());
 }
 
 function dealValueChanged(previous, next) {
@@ -60,6 +65,7 @@ function dbToClient(row) {
     mailingAddresses: normalizeMailingAddresses(row.mailing_addresses),
     phone: row.phone,
     email: row.email,
+    leadSource: canonicalLeadSource(row.lead_source),
     age: row.age ?? null,
     units: row.units,
     sqft: row.sqft,
@@ -120,6 +126,7 @@ export function useCRM() {
       mailingAddresses: normalizeMailingAddresses(row.mailing_addresses),
       phone: row.phone,
       email: row.email,
+      leadSource: canonicalLeadSource(row.lead_source),
       age: row.age ?? null,
       units: row.units,
       sqft: row.sqft,
@@ -153,6 +160,7 @@ export function useCRM() {
       mailing_addresses: normalizeMailingAddresses(data.mailingAddresses),
       phone: data.phone,
       email: data.email,
+      lead_source: canonicalLeadSource(data.leadSource) || null,
       age: numberOrNull(data.age),
       units: data.units ?? null,
       sqft: data.sqft ?? null,
@@ -219,6 +227,14 @@ export function useCRM() {
     if (error && isMissingColumnError(error, 'action_log')) {
       const { action_log: _actionLog, ...withoutActionLog } = dbRow;
       dbRow = withoutActionLog;
+      ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
+    }
+    if (error && isMissingExactColumnError(error, 'lead_source')) {
+      if (hasLeadSourceInput(data)) {
+        return { error: 'Run sql/client_lead_source_migration.sql in Supabase first. Client lead source is not being saved yet.' };
+      }
+      const { lead_source: _leadSource, ...withoutLeadSource } = dbRow;
+      dbRow = withoutLeadSource;
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
     if (error && isMissingExactColumnError(error, 'age')) {
@@ -289,6 +305,14 @@ export function useCRM() {
     if (error && isMissingColumnError(error, 'action_log')) {
       const { action_log: _actionLog, ...withoutActionLog } = dbRow;
       dbRow = withoutActionLog;
+      ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
+    }
+    if (error && isMissingExactColumnError(error, 'lead_source')) {
+      if (hasLeadSourceInput(data)) {
+        return { error: 'Run sql/client_lead_source_migration.sql in Supabase first. Client lead source is not being saved yet.' };
+      }
+      const { lead_source: _leadSource, ...withoutLeadSource } = dbRow;
+      dbRow = withoutLeadSource;
       ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
     }
     if (error && isMissingExactColumnError(error, 'age')) {

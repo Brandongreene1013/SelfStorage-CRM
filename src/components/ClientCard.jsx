@@ -177,6 +177,12 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         </div>
       )}
 
+      {showDetails && client.leadSource && (
+        <p className="mb-2 text-xs text-slate-500">
+          Lead source: <span className="font-semibold text-slate-300">{client.leadSource}</span>
+        </p>
+      )}
+
       {/* Stats row */}
       {showDetails && (client.units || client.sqft) && (
         <div className="flex gap-3 mb-2">

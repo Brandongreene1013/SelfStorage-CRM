@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PIPELINE_STAGES, CLIENT_TYPES, PROPERTY_TYPES } from '../data/constants';
+import { PIPELINE_STAGES, CLIENT_TYPES, PROPERTY_TYPES, canonicalLeadSource, leadSourceOptions } from '../data/constants';
 import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } from '../lib/dealValue';
 import ModalLayout from './ui/ModalLayout';
 import { AddToMailerButton } from './MailerListPicker';
@@ -12,6 +12,7 @@ const EMPTY = {
   facilityName: '',
   phone: '',
   email: '',
+  leadSource: '',
   age: '',
   address: '',
   mailingAddress: '',
@@ -39,6 +40,7 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
         facilityName: client.facilityName ?? '',
         phone: client.phone ?? '',
         email: client.email ?? '',
+        leadSource: canonicalLeadSource(client.leadSource),
         age: client.age ?? '',
         address: client.address ?? '',
         mailingAddress: client.mailingAddress ?? '',
@@ -130,6 +132,22 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Lead Source */}
+          <div>
+            <label className={labelCls}>Lead Source</label>
+            <select
+              name="leadSource"
+              value={form.leadSource}
+              onChange={handleChange}
+              className={inputCls}
+            >
+              <option value="">No source set</option>
+              {leadSourceOptions(form.leadSource).map(source => (
+                <option key={source} value={source}>{source}</option>
+              ))}
+            </select>
           </div>
 
           {/* Property Type */}

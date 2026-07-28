@@ -16,7 +16,7 @@ const Calendar = lazy(() => import('./components/Calendar'));
 import Database from './components/Database';
 const Analyst = lazy(() => import('./components/Analyst'));
 import ErrorBoundary from './components/ErrorBoundary';
-import { PIPELINE_STAGES } from './data/constants';
+import { PIPELINE_STAGES, canonicalLeadSource } from './data/constants';
 import { SearchToolbar, FilterPills, EmptyState, PageHeader, Button } from './components/ui';
 import { downloadCrmBackup } from './lib/crmBackupExport';
 import { buildCommissionSummary, formatMoney } from './lib/dealValue';
@@ -36,6 +36,7 @@ function clientFieldsFromContact(contact) {
     mailingAddresses: contact.mailingAddresses ?? [],
     phone: contact.phone ?? '',
     email: contact.email ?? '',
+    leadSource: canonicalLeadSource(contact.leadSource),
     age: contact.age ?? null,
     notes: contact.notes ?? '',
     leadTemp: contact.leadTemp ?? '',
@@ -52,6 +53,7 @@ function contactFieldsFromClient(client) {
     facilityName: client.facilityName ?? '',
     phone: client.phone ?? '',
     email: client.email ?? '',
+    leadSource: canonicalLeadSource(client.leadSource),
     age: client.age ?? null,
     address: client.address ?? '',
     mailingAddress: client.mailingAddress ?? '',

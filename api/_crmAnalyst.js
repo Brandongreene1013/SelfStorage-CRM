@@ -184,6 +184,7 @@ function normalizeClient(row, context) {
     market: addressMarket({ city, state }),
     phone: row.phone || linkedContact?.phone || '',
     email: row.email || linkedContact?.email || '',
+    leadSource: row.lead_source || linkedContact?.lead_source || '',
     status: PIPELINE_STAGES[row.stage_id] || `Stage ${row.stage_id || 1}`,
     pipelineStage: PIPELINE_STAGES[row.stage_id] || `Stage ${row.stage_id || 1}`,
     pipelineStageId: row.stage_id || 1,

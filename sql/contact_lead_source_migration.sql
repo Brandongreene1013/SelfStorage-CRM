@@ -8,4 +8,4 @@ create index if not exists idx_contacts_lead_source
   on public.contacts (lead_source);
 
 comment on column public.contacts.lead_source is
-  'Optional source/origin for the person or relationship, e.g. Cold Call, Facebook Group, LinkedIn, CoStar, Reonomy, TractIQ, Referral.';
+  'Optional canonical prospecting source: Salesforce, TractIQ, Facebook, CoStar, Reonomy, Crexi, LoopNet, or BusinessesForSale.';

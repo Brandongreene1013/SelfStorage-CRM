@@ -27,23 +27,47 @@ export const RELATIONSHIP_TYPES = [
   { value: 'other', label: 'Other', short: 'Other', variant: 'slate' },
 ];
 
-export const LEAD_SOURCES = [
-  'Cold Call',
-  'Facebook Marketplace',
-  'Facebook Group',
-  'LinkedIn',
-  'In Real Life',
-  'RIPCO CRM',
-  'Referral',
-  'CoStar',
-  'Reonomy',
-  'TractIQ',
-  'Crexi / LoopNet',
-  'Existing Client',
-  'Broker Referral',
-  'Owner Referral',
-  'Other',
+// One canonical prospecting-source vocabulary for contact/client forms,
+// Database filtering, CRM transfers, and AI data access. Aliases keep older
+// imported values filterable without continuing to create new variants.
+export const LEAD_SOURCE_DEFINITIONS = [
+  { value: 'tractiq', label: 'TractIQ', aliases: ['tractiq'] },
+  { value: 'salesforce', label: 'Salesforce', aliases: ['salesforce'] },
+  { value: 'facebook', label: 'Facebook', aliases: ['facebook'] },
+  { value: 'costar', label: 'CoStar', aliases: ['costar'] },
+  { value: 'reonomy', label: 'Reonomy', aliases: ['reonomy'] },
+  { value: 'crexi', label: 'Crexi', aliases: ['crexi'] },
+  { value: 'loopnet', label: 'LoopNet', aliases: ['loopnet'] },
+  { value: 'businessesforsale', label: 'BusinessesForSale', aliases: ['businessesforsale'] },
 ];
+
+export const LEAD_SOURCES = LEAD_SOURCE_DEFINITIONS.map(source => source.label);
+
+function normalizeLeadSourceKey(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+export function canonicalLeadSource(value) {
+  const key = normalizeLeadSourceKey(value);
+  if (!key) return '';
+  const matches = LEAD_SOURCE_DEFINITIONS.filter(source =>
+    source.aliases.some(alias => key.includes(alias))
+  );
+  return matches.length === 1 ? matches[0].label : String(value).trim();
+}
+
+export function leadSourceOptions(currentValue = '') {
+  const current = canonicalLeadSource(currentValue);
+  return current && !LEAD_SOURCES.includes(current)
+    ? [current, ...LEAD_SOURCES]
+    : LEAD_SOURCES;
+}
+
+export function matchesLeadSource(value, sourceValue) {
+  const source = LEAD_SOURCE_DEFINITIONS.find(option => option.value === sourceValue);
+  const key = normalizeLeadSourceKey(value);
+  return Boolean(source && key && source.aliases.some(alias => key.includes(alias)));
+}
 
 export const STORAGE_CLASSES = ['Class A', 'Class B', 'Class C'];
 

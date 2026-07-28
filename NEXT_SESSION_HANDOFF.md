@@ -170,8 +170,14 @@ Before risky imports, delete flows, migrations, or mass updates:
    with graceful fallback. Migration run and verified live 2026-07-23
    (guarded write/revert round-trip).
 
-## Schema status — fully current as of 2026-07-23
-Every migration under sql/ is applied to live Supabase, verified by a full
+## Schema status
+Pending as of 2026-07-28:
+- `sql/client_lead_source_migration.sql` adds `clients.lead_source`. Run it
+  before using Lead Source in Add/Edit Client; the UI reports the missing
+  migration instead of silently dropping a selected source.
+
+Previously verified current as of 2026-07-23:
+Every migration then under sql/ was applied to live Supabase, verified by a full
 column sweep against every table the code references (contacts 40 cols incl.
 owner_identified_at + lead_source_notes; clients incl. deal-value, age, and
 contact_id; properties, ownership_groups, calendar_event, tasks, meetings,
