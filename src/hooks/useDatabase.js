@@ -1703,18 +1703,36 @@ export function useDatabase() {
   const moveContactToList = useCallback(async (contactId, listId) => {
     const contact = contacts.find(item => item.id === contactId);
     if (!contact) return { error: 'Contact not found. Refresh and try again.' };
-    if (contactInList(contact, listId)) return { ok: true, addedCount: 0 };
-    if (listId !== masterListId) return addContactsToList([contactId], listId);
+    if (!listId) return { error: 'Target list not found. Refresh and try again.' };
+    if (listId !== masterListId) {
+      if (contactInList(contact, listId)) return { ok: true, addedCount: 0, contactId, listId };
+      return addContactsToList([contactId], listId);
+    }
+    // Master is a home-record change, not merely an additive-membership check.
+    // A contact can already carry Master in listIds while still being homed in
+    // a targeted list, so contactInList() must never short-circuit this branch.
+    if (contact.listId === masterListId) {
+      return { ok: true, addedCount: 0, contactId, listId: masterListId };
+    }
 
-    const preserved = await addContactsToList([contactId], contact.listId);
-    if (preserved?.error) return preserved;
-    const { error } = await supabase
-      .from('contacts').update({ list_id: listId, updated_at: new Date().toISOString() }).eq('id', contactId);
+    if (contact.listId) {
+      const preserved = await addContactsToList([contactId], contact.listId);
+      if (preserved?.error) return preserved;
+    }
+    const { data: movedRow, error } = await supabase
+      .from('contacts')
+      .update({ list_id: listId, updated_at: new Date().toISOString() })
+      .eq('id', contactId)
+      .select('id,list_id')
+      .single();
     if (error) return { error: error.message };
+    if (movedRow?.id !== contactId || movedRow?.list_id !== masterListId) {
+      return { error: 'The CRM could not verify the exact contact moved. Refresh before trying again.' };
+    }
     setContacts(prev => prev.map(c => c.id === contactId
       ? { ...c, listId, listIds: [...new Set([...(c.listIds ?? []), listId])] }
       : c));
-    return { ok: true, addedCount: 1 };
+    return { ok: true, addedCount: 1, contactId, listId };
   }, [addContactsToList, contacts, masterListId]);
 
   const updateContactStatus = useCallback(async (contactId, status, callNote, activityDate, options = {}) => {

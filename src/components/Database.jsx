@@ -27,12 +27,13 @@ import {
   matchesLeadSource,
 } from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
-import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, buildCallbackTaskQueue, mergeQueueContact, TASK_TYPE_MAP } from './tasks';
+import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
 import { createActivityEventId, buildActivityAnalytics, easternToday } from '../lib/activityAnalytics';
 import { EVENT_META, eventTimeLabel } from '../lib/activityLog';
 import { sortDatabaseContacts } from '../lib/databaseSort';
 import { contactInList } from '../lib/listMemberships';
+import { callModeContactIndex, callModeTarget, createCallModeSession, resolveCallModeContact } from '../lib/callModeSession';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -156,6 +157,13 @@ function appendDateToLogNote(note, label, value) {
 
 function contactDisplayName(contact) {
   return contact?.facilityName || contact?.ownerName || contact?.address || 'Unknown Property';
+}
+
+function callModeIdentityLabel(contact) {
+  const owner = String(contact?.ownerName ?? '').trim();
+  const facility = String(contact?.facilityName ?? '').trim();
+  if (owner && facility && owner.toLowerCase() !== facility.toLowerCase()) return `${owner} — ${facility}`;
+  return owner || facility || String(contact?.address ?? '').trim() || 'Unknown contact';
 }
 
 function hasUsableContactValue(value) {
@@ -2949,11 +2957,11 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   // All Call Mode index changes flow through here so the per-queue position
   // memory stays current no matter how the index moved (next/back, outcome
   // advance, queue shrink).
-  function setQueueIndex(next) {
+  function setQueueIndex(next, stableQueue = activeQueueDef?.queue ?? []) {
     setCallQueueIndex(next);
     if (callQueueSource) {
-      rememberCallPosition(positionKey(callQueueSource), savedQueuePosition(next, activeQueueDef?.queue ?? []));
-      recordCallSession(callQueueSource, activeListId, next, activeQueueDef?.queue ?? [], activeQueueDef?.label ?? 'Call Mode');
+      rememberCallPosition(positionKey(callQueueSource), savedQueuePosition(next, stableQueue));
+      recordCallSession(callQueueSource, activeListId, next, stableQueue, activeQueueDef?.label ?? 'Call Mode');
     }
   }
 
@@ -3367,6 +3375,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             />
           ) : (
             <CallQueue
+              key={`${callQueueSource}:${activeListId ?? 'all'}`}
               queue={activeQueueDef?.queue ?? []}
               index={callQueueIndex}
               setIndex={setQueueIndex}
@@ -3382,7 +3391,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               onDeleteAction={deleteContactAction}
               onDeleteCallHistory={deleteContactCallHistory}
               onPromote={onContactToClients}
-              onMoveToMaster={(contact) => moveContactToList(contact.id, masterListId)}
+              onMoveToMaster={(contactId) => moveContactToList(contactId, masterListId)}
               masterListId={masterListId}
               contacts={contacts}
               taskApi={taskApi}
@@ -3796,7 +3805,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 // ─── Call Queue ────────────────────────────────────────────────────────────────
 const OFFER_FOLLOWUP_STATUSES = ['voicemail', 'conversation', 'appointment'];
 const DEFAULT_COMPLETE_STATUSES = ['conversation', 'appointment', 'not_interested', 'callback'];
-const CALLABLE_QUEUE_STATUSES = ['fresh', 'callback', 'no_answer', 'voicemail'];
+
+function defaultCallFollowUpTitle(status) {
+  if (status === 'voicemail') return 'Follow up after voicemail';
+  if (status === 'appointment') return 'Follow up after appointment';
+  if (status === 'conversation') return 'Follow up after conversation';
+  if (status === 'callback') return 'Call back';
+  if (status === 'no_answer') return 'Call again after no answer';
+  return 'Follow up';
+}
 const OUTCOME_SHORTCUTS = {
   no_answer: 'X',
   voicemail: 'V',
@@ -4077,11 +4094,14 @@ function CallModeTodayPanel({ events, onOpenContact }) {
 }
 
 function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, sharedContactInfo, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
-  const queueCurrent = queue[Math.min(index, Math.max(queue.length - 1, 0))];
-  const latestContact = allContacts.find(c => c.id === queueCurrent?.id);
-  // Queue builders attach task/reason metadata that the base contact does not
-  // carry. Preserve it while taking the latest persisted contact fields.
-  const current = mergeQueueContact(queueCurrent, latestContact);
+  // Freeze the queue by contact ID for the lifetime of this Call Mode session.
+  // Outcomes and list moves mutate the live queue; resolving by its changing
+  // array index can silently put the controls on a different person.
+  const sessionQueueRef = useRef(null);
+  if (sessionQueueRef.current === null) sessionQueueRef.current = createCallModeSession(queue);
+  const sessionQueue = sessionQueueRef.current;
+  const current = resolveCallModeContact(sessionQueue, index, allContacts);
+  const selectSessionIndex = useCallback((nextIndex) => setIndex(nextIndex, sessionQueue), [setIndex, sessionQueue]);
   const [noteDraft, setNoteDraft] = useState({ contactId: null, text: '' });
   const [noteSavedFor, setNoteSavedFor] = useState(null);
   const [noteSaveError, setNoteSaveError] = useState(null);
@@ -4091,7 +4111,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const [estateContactId, setEstateContactId] = useState(null);
   const [showContactDetails, setShowContactDetails] = useState(false);
   const [sidePanel, setSidePanel] = useState('tasks');
-  const [activityMode, setActivityMode] = useState(null);
+  const [activityTarget, setActivityTarget] = useState(null);
   const [outcomeSaving, setOutcomeSaving] = useState(false);
   const [postOutcomeSaving, setPostOutcomeSaving] = useState(false);
   const [deletingCallIndex, setDeletingCallIndex] = useState(null);
@@ -4111,8 +4131,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   // when contacts change (i.e. right after an outcome is logged), so it ticks up.
   const todayActivity = useMemo(() => buildActivityAnalytics({ contacts }, easternToday()).todayEvents, [contacts]);
   function openTodayContact(contactId) {
-    const idx = queue.findIndex(c => c?.id === contactId);
-    if (idx >= 0) setIndex(idx);
+    const idx = callModeContactIndex(sessionQueue, contactId);
+    if (idx >= 0) selectSessionIndex(idx);
   }
 
   // "Not the same owner" — reuse the shared duplicate_dismissals store so the
@@ -4141,21 +4161,22 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   }
 
   async function go(delta) {
-    if (!current) return;
+    if (!current || activePostOutcome || postOutcomeSaving) return;
     // Don't advance past a note that failed to save, or the broker loses it.
     if (hasNoteChanges) {
       const result = await saveNotes();
       if (result?.error) return;
     }
-    setIndex(Math.min(queue.length - 1, Math.max(0, index + delta)));
+    selectSessionIndex(Math.min(sessionQueue.length - 1, Math.max(0, index + delta)));
   }
 
   async function moveCurrentToMaster() {
     if (!current || !onMoveToMaster || !masterListId) return;
     if (current.listId === masterListId) return;
-    const result = await onMoveToMaster(current);
+    const lockedId = current.id;
+    const result = await onMoveToMaster(lockedId);
     if (result?.error) alert('Could not move to Master Database: ' + result.error);
-    else setMovedMasterId(current.id);
+    else setMovedMasterId(lockedId);
   }
 
   async function addCurrentFacilityToOwner(candidateId) {
@@ -4203,23 +4224,10 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     feedback('success', 'Property added to owner.');
   }
 
-  async function moveSnapshotToMaster(outcome = activePostOutcome) {
-    const contact = outcome?.contactSnapshot;
-    if (!contact || !onMoveToMaster || !masterListId) return true;
-    if (contact.listId === masterListId || outcome.movedToMaster) return true;
-    const result = await onMoveToMaster(contact);
-    if (result?.error) {
-      alert('Could not move to Master Database: ' + result.error);
-      return false;
-    }
-    setPostOutcome(prev => prev?.contactId === contact.id ? { ...prev, movedToMaster: true } : prev);
-    return true;
-  }
-
   async function deleteCurrentContact() {
     if (!current) return;
     if (hasNoteChanges) await saveNotes();
-    const nextIndex = Math.max(0, Math.min(index, queue.length - 2));
+    const nextIndex = Math.max(0, Math.min(index, sessionQueue.length - 2));
     const result = await onDeleteContact?.(current.id);
     if (result?.error) {
       alert('Could not delete contact: ' + result.error);
@@ -4228,7 +4236,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     setConfirmDelete(false);
     setPostOutcome(null);
     setNoteDraft({ contactId: null, text: '' });
-    setIndex(nextIndex);
+    selectSessionIndex(nextIndex);
   }
   async function handleOutcome(status) {
     if (!current || outcomeSaving || activePostOutcome) return;
@@ -4269,12 +4277,16 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
         queueTaskTitle: current.queueTaskTitle,
         movedToMaster: current.listId === masterListId,
         completeExisting: hasQueueTask && DEFAULT_COMPLETE_STATUSES.includes(status),
+        createFollowUp: offerFollowUp,
+        moveToMaster: false,
+        followUpTitle: defaultCallFollowUpTitle(status),
+        followUpDueDate: datePlusDays(status === 'appointment' ? 1 : 2),
       });
       return;
     }
     setPostOutcome(null);
     setNoteDraft({ contactId: null, text: '' });
-    setIndex(Math.min(queue.length - 1, index + 1));
+    selectSessionIndex(Math.min(sessionQueue.length - 1, index + 1));
   }
 
   async function handleDeleteCallHistory(index) {
@@ -4289,12 +4301,13 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   }
 
   useEffect(() => {
-    if (queue.length > 0 && index > queue.length - 1) setIndex(queue.length - 1);
-  }, [queue.length, index, setIndex]);
+    if (sessionQueue.length > 0 && index > sessionQueue.length - 1) selectSessionIndex(sessionQueue.length - 1);
+  }, [sessionQueue.length, index, selectSessionIndex]);
 
   useEffect(() => {
     function onKeyDown(e) {
       if (isTypingTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (activePostOutcome || activityTarget || outcomeSaving || postOutcomeSaving) return;
       const key = e.key.toLowerCase();
       if (key === 'n' || key === 'arrowright') { e.preventDefault(); go(1); }
       if (key === 'arrowleft') { e.preventDefault(); go(-1); }
@@ -4312,7 +4325,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
-  if (queue.length === 0) {
+  if (sessionQueue.length === 0) {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center">
         <div className="text-4xl mb-3 text-slate-500">CALL</div>
@@ -4332,7 +4345,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     );
   }
 
-  const progress = ((index + 1) / queue.length) * 100;
+  const progress = ((index + 1) / sessionQueue.length) * 100;
   const openTasks = taskApi?.getRelatedTasks('contact', current.id) ?? [];
   const nextTask = getNextOpenTask(openTasks);
   const due = dueMeta(nextTask?.dueDate);
@@ -4345,46 +4358,70 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     .reverse()
     .slice(0, 8);
 
-  async function finalizePostOutcome({ addFollowUp = false, moveToMaster = false } = {}) {
+  async function finalizePostOutcome({ skipAll = false } = {}) {
     const outcome = activePostOutcome;
     if (!outcome || postOutcomeSaving) return;
+    const lockedTarget = callModeTarget(outcome.contactSnapshot);
+    const liveTarget = allContacts.find(contact => contact.id === lockedTarget?.contactId);
+    if (!lockedTarget || !liveTarget) {
+      alert('This exact contact record no longer exists. Nothing was saved to another person.');
+      return;
+    }
+    if (!skipAll && outcome.createFollowUp && !outcome.followUpTitle?.trim()) {
+      alert('Add a clear follow-up title before saving.');
+      return;
+    }
+
     setPostOutcomeSaving(true);
-    const contact = outcome.contactSnapshot;
+    let completedExisting = false;
+    let createdTask = null;
+    const rollbackCompletedTask = async () => {
+      if (completedExisting && outcome.queueTaskId) await taskApi?.reopenTask(outcome.queueTaskId);
+    };
     try {
-      if (moveToMaster) {
-        const moved = await moveSnapshotToMaster(outcome);
-        if (!moved) return;
-      }
       if (outcome.completeExisting && outcome.queueTaskId) {
         const completeResult = await taskApi?.completeTask(outcome.queueTaskId);
         if (completeResult?.error) {
           alert('Could not complete the existing callback task: ' + completeResult.error);
           return;
         }
+        completedExisting = true;
       }
-      if (addFollowUp && OFFER_FOLLOWUP_STATUSES.includes(outcome.status)) {
-        const dueDate = new Date();
-        dueDate.setDate(dueDate.getDate() + (outcome.status === 'appointment' ? 1 : 2));
+
+      if (!skipAll && outcome.createFollowUp) {
         const createResult = await taskApi?.createTask({
-          title: outcome.status === 'voicemail' ? 'Follow up after voicemail' : outcome.status === 'appointment' ? 'Follow up after appointment' : 'Follow up after conversation',
+          title: outcome.followUpTitle.trim(),
           description: (outcome.noteText ?? '').trim(),
           taskType: outcome.status === 'appointment' ? 'meeting' : 'call',
           priority: outcome.status === 'appointment' ? 'high' : 'normal',
-          dueDate: dueDate.toISOString().slice(0, 10),
+          dueDate: outcome.followUpDueDate || null,
           relatedType: 'contact',
-          relatedId: contact.id,
-          relatedName: contactDisplayName(contact),
+          relatedId: lockedTarget.contactId,
+          relatedName: callModeIdentityLabel(liveTarget),
           source: 'database',
         });
         if (createResult?.error) {
+          await rollbackCompletedTask();
           alert('Could not create the follow-up task: ' + createResult.error);
           return;
         }
+        createdTask = createResult.task;
       }
+
+      if (!skipAll && outcome.moveToMaster && liveTarget.listId !== masterListId) {
+        const moveResult = await onMoveToMaster?.(lockedTarget.contactId);
+        if (moveResult?.error) {
+          if (createdTask?.id) await taskApi?.deleteTask(createdTask.id);
+          await rollbackCompletedTask();
+          alert('Could not move this exact contact to Master Database. The new task was rolled back: ' + moveResult.error);
+          return;
+        }
+        setMovedMasterId(lockedTarget.contactId);
+      }
+
       setPostOutcome(null);
       setNoteDraft({ contactId: null, text: '' });
-      const wasRemovedFromQueue = moveToMaster || !CALLABLE_QUEUE_STATUSES.includes(outcome.status);
-      setIndex(Math.min(queue.length - 1, index + (wasRemovedFromQueue ? 0 : 1)));
+      selectSessionIndex(Math.min(sessionQueue.length - 1, index + 1));
     } finally {
       setPostOutcomeSaving(false);
     }
@@ -4395,23 +4432,23 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
       <div className="bg-slate-900 border border-slate-800 rounded-xl px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
           <div>
-            <h2 className="text-lg font-bold text-white">{queueLabel ?? 'Call Mode'} — {index + 1} of {queue.length}</h2>
+            <h2 className="text-lg font-bold text-white">{queueLabel ?? 'Call Mode'} — {index + 1} of {sessionQueue.length}</h2>
             {queueReasonText && <p className="text-xs text-slate-500 mt-0.5">{queueReasonText}</p>}
           </div>
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold text-amber-400">{Math.round(progress)}% through queue</p>
             {index > 0 && (
-              <button onClick={() => setIndex(0)} title="Jump back to the first contact in this queue"
-                className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5">
+              <button onClick={() => selectSessionIndex(0)} disabled={!!activePostOutcome} title="Jump back to the first contact in this queue"
+                className="text-xs font-semibold text-slate-400 hover:text-white disabled:text-slate-700 border border-slate-700 rounded-lg px-3 py-1.5">
                 Restart Queue
               </button>
             )}
             {onBackToPicker && (
-              <button onClick={onBackToPicker} className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5">
+              <button onClick={onBackToPicker} disabled={!!activePostOutcome} className="text-xs font-semibold text-slate-400 hover:text-white disabled:text-slate-700 border border-slate-700 rounded-lg px-3 py-1.5">
                 Change Queue
               </button>
             )}
-            <button onClick={onExit} className="text-xs font-semibold text-slate-400 hover:text-white border border-slate-700 rounded-lg px-3 py-1.5">
+            <button onClick={onExit} disabled={!!activePostOutcome} className="text-xs font-semibold text-slate-400 hover:text-white disabled:text-slate-700 border border-slate-700 rounded-lg px-3 py-1.5">
               Exit
             </button>
           </div>
@@ -4562,9 +4599,9 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   className="bg-slate-800 border border-amber-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
               </div>
               <button onClick={saveNotes} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all">Save Note</button>
-              <button onClick={() => go(-1)} disabled={index === 0} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
-              <button onClick={() => go(1)} disabled={index >= queue.length - 1} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2 whitespace-nowrap">Next Contact</button>
-              <button onClick={() => setConfirmDelete(true)} className="text-sm text-red-500 hover:text-red-400 transition-all font-semibold px-2 py-2">Delete</button>
+              <button onClick={() => go(-1)} disabled={index === 0 || !!activePostOutcome} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
+              <button onClick={() => go(1)} disabled={index >= sessionQueue.length - 1 || !!activePostOutcome} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2 whitespace-nowrap">Next Contact</button>
+              <button onClick={() => setConfirmDelete(true)} disabled={!!activePostOutcome} className="text-sm text-red-500 hover:text-red-400 disabled:text-slate-700 transition-all font-semibold px-2 py-2">Delete</button>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-slate-600 mr-1">Callback:</span>
@@ -4588,58 +4625,98 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           </div>
 
           {activePostOutcome && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-3 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                <div>
-                  <p className="text-sm text-amber-300 font-bold">
-                    Post-call decision: {STATUS_LABELS[activePostOutcome.status] ?? activePostOutcome.status}
+            <div className="bg-slate-950 border-2 border-amber-500/40 rounded-2xl p-4 space-y-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-amber-400">Locked post-call record</p>
+                <div className="mt-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+                  <p className="text-base font-bold text-white">
+                    {activePostOutcome.contactSnapshot?.ownerName || 'Owner name not entered'}
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {contactDisplayName(activePostOutcome.contactSnapshot)} is locked here until you choose the next step.
+                  {activePostOutcome.contactSnapshot?.facilityName && (
+                    <p className="text-sm text-slate-300">{activePostOutcome.contactSnapshot.facilityName}</p>
+                  )}
+                  {activePostOutcome.contactSnapshot?.address && (
+                    <p className="mt-1 text-xs text-slate-500">{activePostOutcome.contactSnapshot.address}</p>
+                  )}
+                  <p className="mt-2 text-xs font-semibold text-amber-300">
+                    Every choice below is pinned to this exact CRM record.
                   </p>
                 </div>
-                <span className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${
-                  activePostOutcome.contactSnapshot?.listId === masterListId || activePostOutcome.movedToMaster
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                    : 'border-slate-700 bg-slate-900 text-slate-400'
-                }`}>
-                  {activePostOutcome.contactSnapshot?.listId === masterListId || activePostOutcome.movedToMaster ? 'In Master DB' : 'Not in Master DB'}
-                </span>
               </div>
 
               {activePostOutcome.queueTaskId && (
-                <label className="flex items-center gap-2 text-xs text-slate-300">
+                <label className="flex items-start gap-3 rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-xs text-slate-300">
                   <input
                     type="checkbox"
                     checked={activePostOutcome.completeExisting}
                     onChange={e => setPostOutcome(p => p ? ({ ...p, completeExisting: e.target.checked }) : p)}
+                    className="mt-0.5"
                   />
-                  Complete existing callback task ({activePostOutcome.queueTaskTitle || 'Call back'})
+                  <span>
+                    <span className="block font-bold text-white">Complete the existing callback task</span>
+                    <span className="text-slate-500">{activePostOutcome.queueTaskTitle || 'Call back'}</span>
+                  </span>
                 </label>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
-                {activePostOutcome.contactSnapshot?.listId !== masterListId && !activePostOutcome.movedToMaster && (
-                  <button onClick={() => finalizePostOutcome({ moveToMaster: true })} disabled={postOutcomeSaving}
-                    className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 disabled:opacity-50 font-bold px-4 py-2.5 rounded-xl text-xs transition-all">
-                    Move to Master DB + Next
-                  </button>
-                )}
-                {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) && (
-                  <button onClick={() => finalizePostOutcome({ addFollowUp: true })} disabled={postOutcomeSaving}
-                    className="bg-amber-500 hover:bg-amber-400 text-slate-900 disabled:opacity-50 font-bold px-4 py-2.5 rounded-xl text-xs transition-all">
-                    Add Follow-Up + Next
-                  </button>
-                )}
-                {OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) && activePostOutcome.contactSnapshot?.listId !== masterListId && !activePostOutcome.movedToMaster && (
-                  <button onClick={() => finalizePostOutcome({ moveToMaster: true, addFollowUp: true })} disabled={postOutcomeSaving}
-                    className="bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 disabled:opacity-50 font-bold px-4 py-2.5 rounded-xl text-xs transition-all">
-                    Master DB + Follow-Up + Next
-                  </button>
-                )}
+              <label className="flex items-start gap-3 rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={activePostOutcome.createFollowUp}
+                  onChange={e => setPostOutcome(p => p ? ({ ...p, createFollowUp: e.target.checked }) : p)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block font-bold text-white">Create a new follow-up task for this person</span>
+                  <span className="text-slate-500">The task is written using the locked contact ID—not the queue position.</span>
+                </span>
+              </label>
+
+              {activePostOutcome.createFollowUp && (
+                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_170px] gap-3 rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Task</label>
+                    <input
+                      value={activePostOutcome.followUpTitle}
+                      onChange={e => setPostOutcome(p => p ? ({ ...p, followUpTitle: e.target.value }) : p)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Due date</label>
+                    <input
+                      type="date"
+                      value={activePostOutcome.followUpDueDate}
+                      onChange={e => setPostOutcome(p => p ? ({ ...p, followUpDueDate: e.target.value }) : p)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {activePostOutcome.contactSnapshot?.listId !== masterListId && !activePostOutcome.movedToMaster && (
+                <label className="flex items-start gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-3 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={activePostOutcome.moveToMaster}
+                    onChange={e => setPostOutcome(p => p ? ({ ...p, moveToMaster: e.target.checked }) : p)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="block font-bold text-emerald-300">Make this exact record’s home the Master Database</span>
+                    <span className="text-slate-500">Its targeted call-list memberships stay intact. No duplicate person is created.</span>
+                  </span>
+                </label>
+              )}
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                 <button onClick={() => finalizePostOutcome()} disabled={postOutcomeSaving}
-                  className="border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 disabled:opacity-50 font-bold px-4 py-2.5 rounded-xl text-xs transition-all">
-                  {postOutcomeSaving ? 'Saving...' : OFFER_FOLLOWUP_STATUSES.includes(activePostOutcome.status) ? 'Skip Task + Next' : 'Continue'}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 disabled:opacity-50 font-bold px-5 py-3 rounded-xl text-sm transition-all">
+                  {postOutcomeSaving ? 'Saving locked plan…' : `Save for ${callModeIdentityLabel(activePostOutcome.contactSnapshot)} + Next`}
+                </button>
+                <button onClick={() => finalizePostOutcome({ skipAll: true })} disabled={postOutcomeSaving}
+                  className="border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-400 disabled:opacity-50 font-bold px-4 py-3 rounded-xl text-xs transition-all">
+                  No additional step + Next
                 </button>
               </div>
             </div>
@@ -4837,8 +4914,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           <div className={`${sidePanel === 'tasks' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-white">Tasks</h3>
-              <button type="button" onClick={() => setActivityMode('task')}
-                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20">
+              <button type="button" onClick={() => setActivityTarget({ mode: 'task', contact: { ...current } })} disabled={!!activePostOutcome}
+                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 disabled:opacity-40">
                 + Task
               </button>
             </div>
@@ -4849,8 +4926,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           <div className={`${sidePanel === 'actions' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
             <div className="flex items-center justify-between gap-3 mb-3">
               <h3 className="text-sm font-bold text-white">Actions</h3>
-              <button type="button" onClick={() => setActivityMode('action')}
-                className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-xs font-bold text-blue-300 hover:bg-blue-500/20">
+              <button type="button" onClick={() => setActivityTarget({ mode: 'action', contact: { ...current } })} disabled={!!activePostOutcome}
+                className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-xs font-bold text-blue-300 hover:bg-blue-500/20 disabled:opacity-40">
                 + Action
               </button>
             </div>
@@ -4922,8 +4999,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 In Master Database
               </div>
             ) : (
-              <button onClick={moveCurrentToMaster}
-                className="w-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 font-bold px-4 py-3 rounded-2xl text-sm transition-all">
+              <button onClick={moveCurrentToMaster} disabled={!!activePostOutcome}
+                className="w-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-400 disabled:opacity-40 font-bold px-4 py-3 rounded-2xl text-sm transition-all">
                 Move to Master Database
               </button>
             )
@@ -4937,17 +5014,29 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           <p className="text-xs text-slate-600 px-1">Shortcuts: X no answer, V voicemail, C conversation, A appt, K/B callback, S save, M master, N/right next, left back, E edit.</p>
         </aside>
       </div>
-      {activityMode && (
+      {activityTarget && (
         <ActionCenterModal
-          name={contactDisplayName(current)}
-          subtitle={current.facilityName}
-          mode={activityMode}
-          actionLog={current.actionLog}
-          onLogAction={onLogAction ? (entry) => onLogAction(current.id, entry) : undefined}
-          onDeleteAction={onDeleteAction ? (actionIndex) => onDeleteAction(current.id, actionIndex) : undefined}
-          taskContext={{ relatedType: 'contact', relatedId: current.id, relatedName: contactDisplayName(current), source: 'database' }}
-          onSaveTask={taskApi?.createTask}
-          onClose={() => setActivityMode(null)}
+          key={`${activityTarget.mode}:${activityTarget.contact.id}`}
+          name={activityTarget.contact.ownerName || contactDisplayName(activityTarget.contact)}
+          subtitle={activityTarget.contact.facilityName}
+          mode={activityTarget.mode}
+          actionLog={activityTarget.contact.actionLog}
+          onLogAction={onLogAction ? (entry) => onLogAction(activityTarget.contact.id, entry) : undefined}
+          onDeleteAction={onDeleteAction ? (actionIndex) => onDeleteAction(activityTarget.contact.id, actionIndex) : undefined}
+          taskContext={{ relatedType: 'contact', relatedId: activityTarget.contact.id, relatedName: callModeIdentityLabel(activityTarget.contact), source: 'database' }}
+          onSaveTask={taskApi?.createTask ? (fields) => {
+            if (!allContacts.some(contact => contact.id === activityTarget.contact.id)) {
+              return { error: 'This exact contact no longer exists. No task was created.' };
+            }
+            return taskApi.createTask({
+              ...fields,
+              relatedType: 'contact',
+              relatedId: activityTarget.contact.id,
+              relatedName: callModeIdentityLabel(activityTarget.contact),
+              source: 'database',
+            });
+          } : undefined}
+          onClose={() => setActivityTarget(null)}
         />
       )}
       {confirmDelete && (
