@@ -2900,7 +2900,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const filtered = useMemo(() => {
     if (activeListId === null) return [];
     const result = contacts.filter(c => {
-      if (activeListId !== 'all' && activeListId !== masterListId && !contactInList(c, activeListId)) return false;
+      if (activeListId !== 'all' && !contactInList(c, activeListId)) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
       if (relationshipFilter !== 'all' && (c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE) !== relationshipFilter) return false;
       if (leadTempFilter === 'none' && c.leadTemp) return false;
@@ -2955,7 +2955,6 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   }, [
     contacts,
     activeListId,
-    masterListId,
     statusFilter,
     relationshipFilter,
     leadTempFilter,
@@ -3340,7 +3339,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               >
                 <span className="font-bold flex items-center gap-1.5">⭐ Master Database</span>
                 <span className="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 px-1.5 py-0.5 rounded-md">
-                  {contacts.length + clients.filter(client => !client.contactId).length}
+                  {contacts.filter(contact => contactInList(contact, masterListId)).length
+                    + clients.filter(client => !client.contactId).length}
                 </span>
               </button>
             </DropTarget>
