@@ -3,6 +3,7 @@
 // each event type is defined in exactly one place.
 
 export const EVENT_META = {
+  dial:               { icon: '+1', label: 'Outbound dial',         tone: 'text-blue-300' },
   no_answer:          { icon: '📵', label: 'No answer',           tone: 'text-slate-400' },
   voicemail:          { icon: '📩', label: 'Left voicemail',      tone: 'text-blue-300' },
   conversation:       { icon: '💬', label: 'Conversation',        tone: 'text-green-300' },

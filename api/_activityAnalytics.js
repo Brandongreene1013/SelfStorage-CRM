@@ -26,8 +26,11 @@ const CALL_TYPES = new Set([
   'call',
 ]);
 
+const DIAL_TYPE = 'dial';
+
 const ACTION_TYPES = new Set([
   ...CALL_TYPES,
+  DIAL_TYPE,
   'email',
   'email_gathered',
   'owner_databased',
@@ -168,6 +171,10 @@ function recordLabel(record, relatedType) {
 
 function eventMetrics(type, detail = '') {
   const metrics = {};
+  if (type === DIAL_TYPE) {
+    metrics.calls = 1;
+    metrics.actions = 1;
+  }
   if (CALL_TYPES.has(type)) {
     metrics.calls = 1;
     metrics.actions = 1;
@@ -462,6 +469,9 @@ export function aggregateActivityMetrics(events, reportingDates) {
   const appointmentBuckets = new Set(selected
     .filter(event => event.type === 'appointment' && event.ownerKey)
     .map(event => `${event.reportingDate}:${event.ownerKey}`));
+  const explicitDialBuckets = new Set(selected
+    .filter(event => event.type === DIAL_TYPE && event.ownerKey)
+    .map(event => `${event.reportingDate}:${event.ownerKey}`));
   const worked = new Set();
   const databasedOwners = new Set();
   const gatheredEmails = new Set();
@@ -473,7 +483,12 @@ export function aggregateActivityMetrics(events, reportingDates) {
       && event.ownerKey
       && appointmentBuckets.has(`${event.reportingDate}:${event.ownerKey}`)
     ) return;
+    const dialBucket = event.ownerKey ? `${event.reportingDate}:${event.ownerKey}` : null;
+    const callOutcomeCoveredByDials = CALL_TYPES.has(event.type)
+      && dialBucket
+      && explicitDialBuckets.has(dialBucket);
     Object.entries(event.metrics || {}).forEach(([key, amount]) => {
+      if (callOutcomeCoveredByDials && (key === 'calls' || key === 'actions')) return;
       if (!['ownersWorked', 'ownersIdentified'].includes(key) && !(key === 'emails' && event.type === 'email_gathered')) {
         metrics[key] = (metrics[key] ?? 0) + amount;
       }

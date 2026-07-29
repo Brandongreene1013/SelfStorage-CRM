@@ -3923,6 +3923,7 @@ const OUTCOME_SHORTCUTS = {
   callback: 'K',
 };
 const CALL_MODE_SHORTCUTS = [
+  ['D', '+1 dial'],
   ['X', 'No answer'],
   ['V', 'Voicemail'],
   ['C', 'Conversation'],
@@ -4193,6 +4194,32 @@ function CallModeTodayPanel({ events, onOpenContact }) {
   );
 }
 
+function DialTallyMarks({ count }) {
+  const groupCount = Math.ceil(count / 5);
+  if (groupCount === 0) return <p className="text-xs text-slate-600">No dials tallied for this owner on this date.</p>;
+  return (
+    <div className="flex flex-wrap items-center gap-2" aria-label={`${count} outbound dial${count === 1 ? '' : 's'}`}>
+      {Array.from({ length: groupCount }, (_, groupIndex) => {
+        const marks = Math.min(5, count - groupIndex * 5);
+        return (
+          <span key={groupIndex} className="relative block h-7 w-9" aria-hidden="true">
+            {Array.from({ length: Math.min(4, marks) }, (__, markIndex) => (
+              <span
+                key={markIndex}
+                className="absolute top-1 h-5 w-0.5 rounded-full bg-blue-300"
+                style={{ left: `${5 + markIndex * 7}px` }}
+              />
+            ))}
+            {marks === 5 && (
+              <span className="absolute left-1 top-3.5 h-0.5 w-8 -rotate-[32deg] rounded-full bg-blue-200" />
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onRemoveFromList, sourceListId, sourceListName, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, sharedContactInfo, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
   // Freeze the queue by contact ID for the lifetime of this Call Mode session.
   // Outcomes and list moves mutate the live queue; resolving by its changing
@@ -4218,6 +4245,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const [outcomeSaving, setOutcomeSaving] = useState(false);
   const [postOutcomeSaving, setPostOutcomeSaving] = useState(false);
   const [deletingCallIndex, setDeletingCallIndex] = useState(null);
+  const [dialSaving, setDialSaving] = useState(false);
+  const [dialError, setDialError] = useState('');
   const [movedMasterId, setMovedMasterId] = useState(null);
   const [propertyAssociation, setPropertyAssociation] = useState({ contactId: null, candidateId: null, status: '', message: '' });
   const [dismissingCandidateId, setDismissingCandidateId] = useState(null);
@@ -4232,7 +4261,13 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
 
   // Today's logged activity for the live "Today" rail panel — recomputed only
   // when contacts change (i.e. right after an outcome is logged), so it ticks up.
-  const todayActivity = useMemo(() => buildActivityAnalytics({ contacts }, easternToday()).todayEvents, [contacts]);
+  const todayAnalytics = useMemo(() => buildActivityAnalytics({ contacts }, easternToday()), [contacts]);
+  const todayActivity = todayAnalytics.todayEvents;
+  const grossDialsToday = todayAnalytics.today.calls;
+  const currentDateDials = (current?.actionLog ?? [])
+    .map((entry, actionIndex) => ({ entry, actionIndex }))
+    .filter(({ entry }) => entry.type === 'dial' && entry.date === activityDate);
+  const lastCurrentDateDial = currentDateDials[currentDateDials.length - 1] ?? null;
   function openTodayContact(contactId) {
     const idx = callModeContactIndex(sessionQueue, contactId);
     if (idx >= 0) selectSessionIndex(idx);
@@ -4263,8 +4298,42 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     return { ok: true };
   }
 
+  async function logDial() {
+    if (!current || !onLogAction || dialSaving || activePostOutcome) return;
+    const lockedContactId = current.id;
+    setDialSaving(true);
+    setDialError('');
+    try {
+      const result = await onLogAction(lockedContactId, {
+        eventId: createActivityEventId(),
+        type: 'dial',
+        date: activityDate || easternToday(),
+        priority: 'normal',
+        note: '',
+        at: new Date().toISOString(),
+      });
+      if (result?.error) setDialError(result.error);
+    } finally {
+      setDialSaving(false);
+    }
+  }
+
+  async function undoLastDial() {
+    if (!current || !onDeleteAction || !lastCurrentDateDial || dialSaving || activePostOutcome) return;
+    const lockedContactId = current.id;
+    const lockedActionIndex = lastCurrentDateDial.actionIndex;
+    setDialSaving(true);
+    setDialError('');
+    try {
+      const result = await onDeleteAction(lockedContactId, lockedActionIndex);
+      if (result?.error) setDialError(result.error);
+    } finally {
+      setDialSaving(false);
+    }
+  }
+
   async function go(delta) {
-    if (!current || activePostOutcome || postOutcomeSaving) return;
+    if (!current || activePostOutcome || postOutcomeSaving || dialSaving) return;
     // Don't advance past a note that failed to save, or the broker loses it.
     if (hasNoteChanges) {
       const result = await saveNotes();
@@ -4370,7 +4439,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   }
 
   async function handleOutcome(status) {
-    if (!current || outcomeSaving || activePostOutcome) return;
+    if (!current || outcomeSaving || dialSaving || activePostOutcome) return;
     if (hasNoteChanges) {
       const result = await saveNotes();
       if (result?.error) return; // surface the save failure before logging an outcome
@@ -4438,11 +4507,12 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   useEffect(() => {
     function onKeyDown(e) {
       if (isTypingTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (activePostOutcome || activityTarget || outcomeSaving || postOutcomeSaving) return;
+      if (activePostOutcome || activityTarget || outcomeSaving || postOutcomeSaving || dialSaving) return;
       const key = e.key.toLowerCase();
       if (key === 'n' || key === 'arrowright') { e.preventDefault(); go(1); }
       if (key === 'arrowleft') { e.preventDefault(); go(-1); }
       if (key === 's') { e.preventDefault(); saveNotes(); }
+      if (key === 'd') { e.preventDefault(); logDial(); }
       if (key === 'x') { e.preventDefault(); handleOutcome('no_answer'); }
       if (key === 'v') { e.preventDefault(); handleOutcome('voicemail'); }
       if (key === 'c') { e.preventDefault(); handleOutcome('conversation'); }
@@ -4686,12 +4756,47 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 {STATUS_LABELS[current.status] ?? 'Fresh'}
               </StatusBadge>
             </div>
+            <div className="mb-3 grid grid-cols-1 gap-3 rounded-xl border border-blue-500/25 bg-blue-500/5 p-3 sm:grid-cols-[120px_minmax(0,1fr)_auto] sm:items-center">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-blue-300/70">Gross dials today</p>
+                <p className="text-3xl font-bold tabular-nums text-blue-200">{grossDialsToday}</p>
+              </div>
+              <div className="min-w-0 border-blue-500/20 sm:border-l sm:pl-4">
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                    This owner · {activityDate}
+                  </p>
+                  <span className="text-sm font-bold tabular-nums text-white">{currentDateDials.length}</span>
+                </div>
+                <DialTallyMarks count={currentDateDials.length} />
+                {dialError && <p className="mt-1 text-xs font-semibold text-red-300">{dialError}</p>}
+              </div>
+              <div className="flex items-center gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={undoLastDial}
+                  disabled={!lastCurrentDateDial || dialSaving || !!activePostOutcome}
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs font-bold text-slate-400 transition-colors hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:text-slate-700"
+                  title="Remove the most recent dial tally for this owner and date"
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={logDial}
+                  disabled={dialSaving || !!activePostOutcome}
+                  className="min-w-28 rounded-lg bg-blue-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition-colors hover:bg-blue-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"
+                >
+                  {dialSaving ? 'Saving…' : '+1 Dial'}
+                </button>
+              </div>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
               {CALL_OUTCOMES.map(o => (
                 <button key={o.status} onClick={() => handleOutcome(o.status)}
-                  disabled={outcomeSaving || !!activePostOutcome}
+                  disabled={outcomeSaving || dialSaving || !!activePostOutcome}
                   className={`relative border rounded-xl px-3 py-3 text-xs font-bold transition-all text-center ${o.color} ${
-                    outcomeSaving || activePostOutcome ? 'opacity-50 cursor-not-allowed' : ''
+                    outcomeSaving || dialSaving || activePostOutcome ? 'opacity-50 cursor-not-allowed' : ''
                   }`}>
                   <span className="absolute right-2 top-2 rounded bg-slate-950/50 px-1.5 py-0.5 text-[10px] text-slate-300">{OUTCOME_SHORTCUTS[o.status]}</span>
                   <span className="text-base block">{o.icon}</span>
@@ -4730,8 +4835,8 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   className="bg-slate-800 border border-amber-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
               </div>
               <button onClick={saveNotes} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all">Save Note</button>
-              <button onClick={() => go(-1)} disabled={index === 0 || !!activePostOutcome} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
-              <button onClick={() => go(1)} disabled={index >= sessionQueue.length - 1 || !!activePostOutcome} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2 whitespace-nowrap">Next Contact</button>
+              <button onClick={() => go(-1)} disabled={index === 0 || dialSaving || !!activePostOutcome} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
+              <button onClick={() => go(1)} disabled={index >= sessionQueue.length - 1 || dialSaving || !!activePostOutcome} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2 whitespace-nowrap">Next Contact</button>
               {sourceListId && (
                 <button
                   onClick={() => {
@@ -5078,11 +5183,12 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                 {recentActivity.map(({ entry, index }) => {
                   const action = CALL_ACTION_TYPES.find(item => item.value === entry.type);
+                  const eventPresentation = EVENT_META[entry.type];
                   return (
                     <div key={`${entry.at ?? entry.date}-${index}`} className="flex items-start gap-2 text-xs text-slate-400 bg-slate-800 rounded-lg px-3 py-2">
-                      <span className="flex-shrink-0">{action?.icon ?? '•'}</span>
+                      <span className="flex-shrink-0">{action?.icon ?? eventPresentation?.icon ?? '•'}</span>
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold text-slate-300">{action?.label ?? entry.type ?? 'Action'}</p>
+                        <p className="font-bold text-slate-300">{action?.label ?? eventPresentation?.label ?? entry.type ?? 'Action'}</p>
                         {entry.note && <p className="mt-0.5 break-words text-slate-500">{entry.note}</p>}
                         {entry.date && <p className="mt-0.5 text-slate-600">{entry.date}</p>}
                       </div>
@@ -5154,7 +5260,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               Promote to Client / Pipeline
             </button>
           )}
-          <p className="text-xs text-slate-600 px-1">Shortcuts: X no answer, V voicemail, C conversation, A appt, K/B callback, S save, M master, N/right next, left back, E edit.</p>
+          <p className="text-xs text-slate-600 px-1">Shortcuts: D +1 dial, X no answer, V voicemail, C conversation, A appt, K/B callback, S save, M master, N/right next, left back, E edit.</p>
         </aside>
       </div>
       {activityTarget && (

@@ -1,6 +1,9 @@
 import { ACTION_TYPES, CALL_ACTION_TYPES } from '../data/constants';
 
-const TYPE_MAP = Object.fromEntries([...ACTION_TYPES, ...CALL_ACTION_TYPES].map(action => [action.value, action]));
+const TYPE_MAP = {
+  ...Object.fromEntries([...ACTION_TYPES, ...CALL_ACTION_TYPES].map(action => [action.value, action])),
+  dial: { value: 'dial', label: 'Outbound dial', icon: '+1' },
+};
 
 // Compact activity summary shown on contact and client cards.
 export function LastActionLine({ actionLog, onDeleteLast }) {

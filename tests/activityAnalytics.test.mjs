@@ -72,6 +72,33 @@ const contact = {
 }
 
 {
+  const metrics = buildActivityAnalytics({
+    contacts: [
+      {
+        id: 'tallied-owner',
+        ownerName: 'Tallied Owner',
+        actionLog: [
+          { eventId: 'dial-1', type: 'dial', date: reportingDate },
+          { eventId: 'dial-2', type: 'dial', date: reportingDate },
+          { eventId: 'dial-3', type: 'dial', date: reportingDate },
+          { eventId: 'dial-outcome', type: 'conversation', date: reportingDate },
+        ],
+      },
+      {
+        id: 'legacy-owner',
+        ownerName: 'Legacy Owner',
+        actionLog: [{ eventId: 'legacy-outcome', type: 'voicemail', date: reportingDate }],
+      },
+    ],
+  }, reportingDate).today;
+  assert.equal(metrics.calls, 4, 'three explicit dials plus one untallied legacy owner outcome');
+  assert.equal(metrics.actions, 4, 'a tallied outcome must not double-count the dial activity');
+  assert.equal(metrics.conversations, 1);
+  assert.equal(metrics.voicemails, 1);
+  assert.equal(metrics.ownersWorked, 2);
+}
+
+{
   const analytics = buildActivityAnalytics({
     contacts: [contact],
     manualAdjustments: [{
