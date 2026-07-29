@@ -4,7 +4,7 @@ import { buildContactOutcomeFields } from '../lib/contactMutations';
 import { selectAllRows } from '../lib/selectAllRows';
 import { buildMergePlan } from '../lib/duplicateReview';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
-import { contactInList } from '../lib/listMemberships';
+import { contactInList, originatingListIds } from '../lib/listMemberships';
 import {
   buildCaptureLogEntries,
   hasMeaningfulOwnerName,
@@ -1375,20 +1375,23 @@ export function useDatabase() {
     if (!masterListId) return { error: 'Master Database is not ready. Refresh and try again.' };
 
     const homeIds = contacts.filter(contact => ids.includes(contact.id) && contact.listId === listId).map(contact => contact.id);
-    const membershipIds = ids.filter(id => !homeIds.includes(id));
-
     if (homeIds.length) {
       const { error } = await supabase.from('contacts')
         .update({ list_id: masterListId, updated_at: new Date().toISOString() })
         .in('id', homeIds);
       if (error) return { error: error.message };
     }
-    if (membershipIds.length) {
+    if (ids.length) {
       const { error } = await supabase.from('contact_list_memberships')
         .delete()
         .eq('list_id', listId)
-        .in('contact_id', membershipIds);
+        .in('contact_id', ids);
       if (error) {
+        if (homeIds.length) {
+          await supabase.from('contacts')
+            .update({ list_id: listId, updated_at: new Date().toISOString() })
+            .in('id', homeIds);
+        }
         setListMembershipMigrationNeeded(true);
         return { error: 'Run sql/contact_list_memberships_migration.sql in Supabase, then refresh to manage targeted call lists.' };
       }
@@ -1408,6 +1411,73 @@ export function useDatabase() {
     }));
     return { ok: true, removedCount: ids.length };
   }, [contacts, masterListId]);
+
+  const removeContactsFromMaster = useCallback(async (contactIds, destinationListId = null) => {
+    const ids = [...new Set((contactIds ?? []).filter(Boolean))];
+    if (!masterListId) return { error: 'Master Database is not ready. Refresh and try again.' };
+    if (ids.length === 0) return { error: 'Select at least one person.' };
+
+    const targetedListIds = lists.filter(list => list.id !== masterListId).map(list => list.id);
+    if (destinationListId && !targetedListIds.includes(destinationListId)) {
+      return { error: 'Choose a valid cold-call list.' };
+    }
+
+    const selected = ids.map(id => contacts.find(contact => contact.id === id)).filter(Boolean);
+    if (selected.length !== ids.length) return { error: 'One or more contacts no longer exist. Refresh and try again.' };
+    if (selected.some(contact => contact.listId !== masterListId)) {
+      return { error: 'Only people currently homed in Master Database can be removed from it.' };
+    }
+
+    const moves = selected.map(contact => ({
+      contact,
+      listId: destinationListId || originatingListIds(contact, masterListId, targetedListIds)[0] || null,
+    }));
+    const missing = moves.filter(move => !move.listId);
+    if (missing.length) {
+      return {
+        error: `${missing.length === 1 ? 'This person has' : `${missing.length} people have`} no originating cold-call list. Choose a destination list first.`,
+      };
+    }
+
+    const movedIds = [];
+    for (const listId of [...new Set(moves.map(move => move.listId))]) {
+      const groupIds = moves.filter(move => move.listId === listId).map(move => move.contact.id);
+      const { data: rows, error } = await supabase
+        .from('contacts')
+        .update({ list_id: listId, updated_at: new Date().toISOString() })
+        .in('id', groupIds)
+        .select('id,list_id');
+      if (error || (rows ?? []).length !== groupIds.length || (rows ?? []).some(row => row.list_id !== listId)) {
+        const rollbackIds = [...new Set([...movedIds, ...(rows ?? []).map(row => row.id)])];
+        if (rollbackIds.length) {
+          await supabase.from('contacts')
+            .update({ list_id: masterListId, updated_at: new Date().toISOString() })
+            .in('id', rollbackIds);
+        }
+        return { error: error?.message || 'The CRM could not verify every contact moved. Refresh before trying again.' };
+      }
+      movedIds.push(...groupIds);
+    }
+
+    const destinationById = new Map(moves.map(move => [move.contact.id, move.listId]));
+    setContacts(prev => prev.map(contact => {
+      const nextListId = destinationById.get(contact.id);
+      if (!nextListId) return contact;
+      return {
+        ...contact,
+        listId: nextListId,
+        listIds: [...new Set([
+          nextListId,
+          ...(contact.listIds ?? []).filter(listId => listId !== masterListId),
+        ])],
+      };
+    }));
+    return {
+      ok: true,
+      movedCount: moves.length,
+      destinations: moves.map(move => ({ contactId: move.contact.id, listId: move.listId })),
+    };
+  }, [contacts, lists, masterListId]);
 
   const deleteList = useCallback(async (listId) => {
     if (!listId) return { error: 'No list selected.' };
@@ -1894,6 +1964,7 @@ export function useDatabase() {
     moveContactToList,
     addContactsToList,
     removeContactsFromList,
+    removeContactsFromMaster,
     createList,
     addContact,
     updateContactStatus,

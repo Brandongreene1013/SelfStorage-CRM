@@ -32,7 +32,7 @@ import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from
 import { createActivityEventId, buildActivityAnalytics, easternToday } from '../lib/activityAnalytics';
 import { EVENT_META, eventTimeLabel } from '../lib/activityLog';
 import { sortDatabaseContacts } from '../lib/databaseSort';
-import { contactInList } from '../lib/listMemberships';
+import { contactInList, originatingListIds } from '../lib/listMemberships';
 import { callModeContactIndex, callModeTarget, createCallModeSession, removeCallModeSessionContact, resolveCallModeContact } from '../lib/callModeSession';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
@@ -1483,10 +1483,13 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, masterListId, lists = [], onMoveToList, onToClients, taskApi, selected = false, onToggleSelected }) {
+function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, masterListId, lists = [], onMoveToList, onRemoveFromMaster, onToClients, taskApi, selected = false, onToggleSelected }) {
   const [added, setAdded] = useState(false);
   const [activityMode, setActivityMode] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
+  const [masterRemoval, setMasterRemoval] = useState(null);
+  const [masterRemovalSaving, setMasterRemovalSaving] = useState(false);
+  const [masterRemovalError, setMasterRemovalError] = useState('');
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: contact.id, data: { contact } });
 
@@ -1498,6 +1501,9 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
   const fallbackDue = dueMeta(contact.nextActionDate);
   const source = contactSource(contact, lists);
   const rel = relationshipMeta(contact.relationshipType);
+  const targetedLists = lists.filter(list => list.id !== masterListId);
+  const originIds = originatingListIds(contact, masterListId, targetedLists.map(list => list.id));
+  const originalListId = originIds[0] ?? '';
   const mapsQuery = encodeURIComponent(
     [contact.facilityName, 'self storage', contact.market || contact.state].filter(Boolean).join(' ')
   );
@@ -1515,6 +1521,22 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
     } else if (result) {
       setAdded(true);
       setTimeout(() => setAdded(false), 2500);
+    }
+  }
+
+  async function handleRemoveFromMaster() {
+    if (!masterRemoval?.listId || masterRemovalSaving || !onRemoveFromMaster) return;
+    setMasterRemovalSaving(true);
+    setMasterRemovalError('');
+    try {
+      const result = await onRemoveFromMaster([contact.id], masterRemoval.listId);
+      if (result?.error) {
+        setMasterRemovalError(result.error);
+        return;
+      }
+      setMasterRemoval(null);
+    } finally {
+      setMasterRemovalSaving(false);
     }
   }
 
@@ -1796,6 +1818,86 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
         >
           {added ? 'Added to Master DB' : 'Add to Master Database'}
         </button>
+      )}
+
+      {isMasterDB && onRemoveFromMaster && (
+        <button
+          type="button"
+          onClick={event => {
+            event.stopPropagation();
+            setMasterRemovalError('');
+            setMasterRemoval({ listId: originalListId });
+          }}
+          className="mt-3 w-full rounded-lg border border-slate-700 bg-transparent py-1.5 text-xs font-semibold text-slate-500 transition-all hover:border-amber-500/40 hover:text-amber-300"
+        >
+          Remove from Master Database
+        </button>
+      )}
+
+      {masterRemoval && (
+        <ModalLayout onClose={() => !masterRemovalSaving && setMasterRemoval(null)} size="sm" className="overflow-hidden">
+          <div className="border-b border-slate-800 p-5">
+            <h2 className="text-base font-bold text-white">Remove from Master Database?</h2>
+            <p className="mt-1 text-sm text-slate-400">{contact.ownerName || contact.facilityName || 'Unknown contact'}</p>
+          </div>
+          <div className="space-y-4 p-5">
+            <p className="text-sm leading-relaxed text-slate-300">
+              The person and all CRM history will be kept. Choose the cold-call list where this record should remain.
+            </p>
+            <div>
+              <label htmlFor={`master-removal-list-${contact.id}`} className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Keep in list</label>
+              <select
+                id={`master-removal-list-${contact.id}`}
+                value={masterRemoval.listId}
+                onChange={event => {
+                  setMasterRemoval({ listId: event.target.value });
+                  setMasterRemovalError('');
+                }}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-white focus:border-amber-500 focus:outline-none"
+              >
+                <option value="">Choose a cold-call list…</option>
+                {originIds.length > 0 && (
+                  <optgroup label="Existing list memberships">
+                    {originIds.map((listId, listIndex) => {
+                      const list = targetedLists.find(item => item.id === listId);
+                      return list ? (
+                        <option key={list.id} value={list.id}>
+                          {list.name}{listIndex === 0 ? ' — original list' : ''}
+                        </option>
+                      ) : null;
+                    })}
+                  </optgroup>
+                )}
+                <optgroup label={originIds.length > 0 ? 'Other cold-call lists' : 'Cold-call lists'}>
+                  {targetedLists.filter(list => !originIds.includes(list.id)).map(list => (
+                    <option key={list.id} value={list.id}>{list.name}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+            {masterRemovalError && (
+              <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{masterRemovalError}</p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-slate-800 p-5">
+            <button
+              type="button"
+              onClick={() => setMasterRemoval(null)}
+              disabled={masterRemovalSaving}
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-400 hover:text-white disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleRemoveFromMaster}
+              disabled={!masterRemoval.listId || masterRemovalSaving}
+              className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-600"
+            >
+              {masterRemovalSaving ? 'Moving…' : 'Keep in selected list'}
+            </button>
+          </div>
+        </ModalLayout>
       )}
     </div>
   );
@@ -2413,7 +2515,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const {
     lists, contacts, masterListId,
     importList, importIntoList, mergeDuplicateContact, moveContactToList, addContactsToList,
-    removeContactsFromList, createList, addContact, listMembershipMigrationNeeded,
+    removeContactsFromList, removeContactsFromMaster, createList, addContact, listMembershipMigrationNeeded,
     updateContactStatus,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB, logContactAction, deleteContactAction, deleteContactCallHistory,
@@ -3649,6 +3751,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     masterListId={masterListId}
                     lists={lists}
                     onMoveToList={moveContactToList}
+                    onRemoveFromMaster={removeContactsFromMaster}
                     onToClients={onContactToClients}
                     taskApi={taskApi}
                     ownershipApi={ownershipApi}
