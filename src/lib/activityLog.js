@@ -3,6 +3,19 @@
 // each event type is defined in exactly one place.
 
 export const EVENT_META = {
+  text:               { icon: 'SMS', label: 'Text message',        tone: 'text-blue-300' },
+  bov_offered:        { icon: 'BOV', label: 'BOV offered',         tone: 'text-emerald-300' },
+  bov_sent:           { icon: 'BOV', label: 'BOV sent',            tone: 'text-emerald-300' },
+  financials_requested:{ icon: 'FIN', label: 'Financials requested', tone: 'text-slate-300' },
+  financials_received:{ icon: 'FIN', label: 'Financials received', tone: 'text-emerald-300' },
+  listing_agreement_sent:{ icon: 'LA', label: 'Listing agreement sent', tone: 'text-amber-300' },
+  listing_agreement_executed:{ icon: 'LA', label: 'Listing agreement executed', tone: 'text-emerald-300' },
+  marketing_update:   { icon: 'MKT', label: 'Marketing update',    tone: 'text-blue-300' },
+  offer_received:     { icon: 'LOI', label: 'Offer received',      tone: 'text-amber-300' },
+  contract_update:    { icon: 'CTR', label: 'Contract update',     tone: 'text-orange-300' },
+  closing_update:     { icon: 'CLS', label: 'Closing update',      tone: 'text-purple-300' },
+  note:               { icon: 'N', label: 'Internal note',        tone: 'text-slate-400' },
+  pipeline_stage_changed:{ icon: '→', label: 'Pipeline stage changed', tone: 'text-emerald-300' },
   dial:               { icon: '+1', label: 'Outbound dial',         tone: 'text-blue-300' },
   no_answer:          { icon: '📵', label: 'No answer',           tone: 'text-slate-400' },
   voicemail:          { icon: '📩', label: 'Left voicemail',      tone: 'text-blue-300' },

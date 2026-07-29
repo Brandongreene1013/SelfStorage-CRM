@@ -6,12 +6,16 @@ import { useCalendarEvents } from './hooks/useCalendarEvents';
 import { useTasks } from './hooks/useTasks';
 import { useOwnership } from './hooks/useOwnership';
 import { useMailerLists } from './hooks/useMailerLists';
+import { useCoreClients } from './hooks/useCoreClients';
 const MailerLists = lazy(() => import('./components/MailerLists'));
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
-import PipelineBoard from './components/PipelineBoard';
+import PipelineWorkspace from './components/PipelineWorkspace';
 import ClientCard from './components/ClientCard';
 import Dashboard from './components/Dashboard';
+import CoreClients from './components/CoreClients';
+import CoreClientModal from './components/CoreClientModal';
+import PipelineOpportunityModal from './components/PipelineOpportunityModal';
 const Calendar = lazy(() => import('./components/Calendar'));
 import Database from './components/Database';
 const Analyst = lazy(() => import('./components/Analyst'));
@@ -20,32 +24,11 @@ import { PIPELINE_STAGES, canonicalLeadSource } from './data/constants';
 import { SearchToolbar, FilterPills, EmptyState, PageHeader, Button } from './components/ui';
 import { downloadCrmBackup } from './lib/crmBackupExport';
 import { buildCommissionSummary, formatMoney } from './lib/dealValue';
+import { isMeaningfulOwnerActivity } from './lib/relationshipWorkspace';
 import './index.css';
 
-const VIEWS = ['Dashboard', 'Pipeline', 'Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
+const VIEWS = ['Dashboard', 'Pipeline', 'Core Clients', 'Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
-
-function clientFieldsFromContact(contact) {
-  return {
-    name: contact.ownerName || contact.facilityName || 'Unknown',
-    type: contact.relationshipType === 'buyer' ? 'Buyer' : 'Seller',
-    propertyType: 'Self-Storage',
-    facilityName: contact.facilityName ?? '',
-    address: contact.address ?? '',
-    mailingAddress: contact.mailingAddress ?? '',
-    mailingAddresses: contact.mailingAddresses ?? [],
-    phone: contact.phone ?? '',
-    email: contact.email ?? '',
-    leadSource: canonicalLeadSource(contact.leadSource),
-    age: contact.age ?? null,
-    notes: contact.notes ?? '',
-    leadTemp: contact.leadTemp ?? '',
-    nextActionType: contact.nextActionType ?? '',
-    nextActionDate: contact.nextActionDate ?? '',
-    nextActionNote: contact.nextActionNote ?? '',
-    ownershipGroupId: contact.ownershipGroupId ?? null,
-  };
-}
 
 function contactFieldsFromClient(client) {
   return {
@@ -111,10 +94,13 @@ export default function App() {
   const { calendarEvents } = useCalendarEvents();
   const taskApi = useTasks(); // universal task/next-action engine (Sprint 2)
   const ownershipApi = useOwnership();
+  const coreApi = useCoreClients();
   const [backupStatus, setBackupStatus] = useState('');
   const mailerApi = useMailerLists(); // mailer lists — shared so the ✉️ buttons and the Mailers tab stay in sync
 
   const [view, setView] = useState('Dashboard');
+  const [coreClientTarget, setCoreClientTarget] = useState(null);
+  const [pipelineTarget, setPipelineTarget] = useState(null);
 
   // ── Email "needs review" matches: build the flagged list + confirm/reassign/dismiss ──
   const reviewRecords = useMemo(() => [
@@ -156,26 +142,29 @@ export default function App() {
   }, [reviewRecords, mutateLog]);
 
   // ── Move a Database contact → Clients/Pipeline (drag onto the Clients target) ──
-  const handleContactToClients = useCallback(async (contact) => {
-    if (!contact) return;
-    const linkedClient = clients.find(client => client.contactId === contact.id);
-    const payload = {
-      ...clientFieldsFromContact(contact),
-      contactId: contact.id,
-      stageId: 1,
-    };
-    const result = linkedClient
-      ? await updateClient(linkedClient.id, { ...linkedClient, ...payload, stageId: linkedClient.stageId ?? 1 })
-      : await addClient(payload);
-    if (result?.error) {
-      alert(result.error);
-      return;
-    }
-    if (db.masterListId && contact.listId !== db.masterListId) {
-      await db.moveContactToList(contact.id, db.masterListId);
-    }
-    await db.updateContact(contact.id, { ...contactFieldsFromClient(result?.client ?? payload), status: contact.status === 'fresh' ? 'conversation' : contact.status });
-  }, [addClient, clients, db, updateClient]);
+  const handleContactToClients = useCallback((contact) => {
+    if (contact) setPipelineTarget(contact);
+  }, []);
+
+  const handleMeaningfulContact = useCallback(async (contactId, entry) => {
+    if (!isMeaningfulOwnerActivity(entry)) return { ok: true };
+    const profile = coreApi.coreClients.find(item => item.contactId === contactId && item.status === 'active');
+    if (!profile) return { ok: true };
+    const profileResult = await coreApi.saveCoreClient({
+      ...profile,
+      lastMeaningfulContactAt: entry.at || new Date().toISOString(),
+    });
+    return profileResult?.error ? { error: `Core Client last contact did not update: ${profileResult.error}` } : { ok: true };
+  }, [coreApi]);
+
+  const handleLogContactAction = useCallback(async (contactId, entry) => {
+    const result = await db.logContactAction(contactId, entry);
+    if (result?.error) return result;
+    const profileResult = await handleMeaningfulContact(contactId, entry);
+    return profileResult?.error
+      ? { error: `Activity saved, but ${profileResult.error}` }
+      : result;
+  }, [db, handleMeaningfulContact]);
 
   // ── Move a Client → Master Database (button on the client card) ──
   const handleClientToDatabase = useCallback(async (client) => {
@@ -385,7 +374,7 @@ export default function App() {
           >
             {backupStatus === 'exporting' ? 'Exporting' : backupStatus === 'done' ? 'Exported' : backupStatus === 'partial' ? 'Partial Export' : backupStatus === 'error' ? 'Export Failed' : 'Backup'}
           </Button>
-          {!['Calendar', 'Database', 'Mailers', 'Analyst'].includes(view) && (
+          {!['Calendar', 'Database', 'Mailers', 'Analyst', 'Core Clients'].includes(view) && (
             <Button onClick={() => setShowAddModal(true)}>
               <span className="text-lg leading-none font-bold">+</span> Add Client
             </Button>
@@ -454,6 +443,8 @@ export default function App() {
             onDeleteClientAction={deleteClientAction}
             dealValueMigrationNeeded={dealValueMigrationNeeded}
             analyticsMigrationNeeded={db.analyticsMigrationNeeded}
+            coreClients={coreApi.activeCoreClients}
+            onOpenCoreClients={() => setView('Core Clients')}
             taskApi={taskApi}
             review={{
               items: reviewItems,
@@ -466,19 +457,32 @@ export default function App() {
         )}
 
         {view === 'Pipeline' && (
-          <div>
-            <PageHeader title="Pipeline Board" badge="Drag cards to move between stages" />
-            <PipelineBoard
-              clients={visibleClients}
-              onEdit={handleEdit}
-              onStageChange={moveClientToStage}
-              onLogAction={logClientAction}
-              onDeleteAction={deleteClientAction}
-              onMoveToDatabase={handleClientToDatabase}
-              filter={filter}
-              taskApi={taskApi}
-            />
-          </div>
+          <PipelineWorkspace
+            clients={visibleClients}
+            contacts={db.contacts}
+            properties={ownershipApi.properties}
+            onEdit={handleEdit}
+            onStageChange={moveClientToStage}
+            onLogAction={logClientAction}
+            onDeleteAction={deleteClientAction}
+            onMoveToDatabase={handleClientToDatabase}
+            filter={filter}
+            taskApi={taskApi}
+          />
+        )}
+
+        {view === 'Core Clients' && (
+          <CoreClients
+            coreApi={coreApi}
+            contacts={db.contacts}
+            properties={ownershipApi.properties}
+            clients={clients}
+            taskApi={taskApi}
+            onLogContactAction={handleLogContactAction}
+            onDeleteContactAction={db.deleteContactAction}
+            onAddToPipeline={setPipelineTarget}
+            onOpenContact={handleOpenContact}
+          />
         )}
 
         {view === 'Clients' && (
@@ -535,6 +539,11 @@ export default function App() {
             }}
             taskApi={taskApi}
             ownershipApi={ownershipApi}
+            coreApi={coreApi}
+            onAddToCoreClients={setCoreClientTarget}
+            onAddToPipeline={setPipelineTarget}
+            contactActionLogger={handleLogContactAction}
+            onMeaningfulContact={handleMeaningfulContact}
             mailerApi={mailerApi}
             entryRequest={dbEntryRequest}
             onEntryConsumed={() => setDbEntryRequest(null)}
@@ -586,6 +595,26 @@ export default function App() {
           clientName={deletingClient.name}
           onConfirm={confirmDelete}
           onClose={() => setDeletingClient(null)}
+        />
+      )}
+      {coreClientTarget && (
+        <CoreClientModal
+          contact={coreClientTarget}
+          profile={coreApi.coreClients.find(item => item.contactId === coreClientTarget.id)}
+          properties={ownershipApi.properties}
+          onSave={coreApi.saveCoreClient}
+          onTaskCreate={taskApi.createTask}
+          onClose={() => setCoreClientTarget(null)}
+        />
+      )}
+      {pipelineTarget && (
+        <PipelineOpportunityModal
+          contact={pipelineTarget}
+          properties={ownershipApi.properties}
+          clients={clients}
+          onSave={addClient}
+          onTaskCreate={taskApi.createTask}
+          onClose={() => setPipelineTarget(null)}
         />
       )}
     </div>

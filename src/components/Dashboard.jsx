@@ -11,6 +11,7 @@ import { normalizeDisplayText, normalizeMeetingText } from '../lib/textNormalize
 import { buildActivityAnalytics, buildConversionFunnel, easternToday, weeklyActivityTrend } from '../lib/activityAnalytics';
 import { EVENT_META, eventTimeLabel, shiftDay } from '../lib/activityLog';
 import { mergeDashboardMeetings } from '../lib/calendarEvents';
+import { coreClientAttention, pipelineAttention } from '../lib/relationshipWorkspace';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState, ModalLayout } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
 // Lazy-loaded so the market-intelligence terminal (its own chunk) never bloats
@@ -19,6 +20,72 @@ const IntelligenceTerminal = lazy(() => import('./intelligence/IntelligenceTermi
 import ErrorBoundary from './ErrorBoundary';
 
 const todayStr = easternToday;
+
+function RelationshipAttention({ coreClients = [], contacts, clients, tasks, onOpenContact, onEditClient, onOpenCoreClients }) {
+  const today = todayStr();
+  const coreRows = coreClients.map(profile => {
+    const contact = contacts.find(item => item.id === profile.contactId);
+    return contact ? { profile, contact, attention: coreClientAttention(profile, contact, tasks, today) } : null;
+  }).filter(Boolean)
+    .filter(row => row.attention.neglected || row.attention.noNextAction
+      || ['strong', 'immediate'].includes(row.profile.motivationStrength))
+    .sort((a, b) => Number(b.attention.overdue) - Number(a.attention.overdue)
+      || Number(b.attention.cadenceOverdue) - Number(a.attention.cadenceOverdue))
+    .slice(0, 6);
+  const pipelineRows = clients.map(client => ({ client, attention: pipelineAttention(client, tasks, today) }))
+    .filter(row => Number(row.client.stageId) < 10
+      && (row.attention.overdue || row.attention.noNextAction || row.attention.stale))
+    .sort((a, b) => Number(b.attention.overdue) - Number(a.attention.overdue)
+      || Number(b.attention.stale) - Number(a.attention.stale))
+    .slice(0, 6);
+
+  if (!coreRows.length && !pipelineRows.length) return null;
+  return (
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <SectionCard title="Core Client Attention" subtitle="Motivated owners whose relationship plan needs action"
+        actions={<button onClick={onOpenCoreClients} className="text-xs font-bold text-amber-400 hover:text-amber-300">Open workspace</button>}>
+        {coreRows.length === 0 ? <p className="text-sm text-slate-500">No neglected Core Client relationships.</p> : (
+          <div className="divide-y divide-slate-800">
+            {coreRows.map(({ profile, contact, attention }) => (
+              <button key={profile.id} onClick={() => onOpenContact?.(contact)} className="flex w-full items-center gap-3 py-2.5 text-left hover:bg-white/[0.02]">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-white">{contact.ownerName || contact.facilityName || 'Unknown owner'}</p>
+                  <p className="truncate text-xs text-slate-500">{profile.sellingMotivation || 'No motivation detail recorded'}</p>
+                </div>
+                <div className="text-right">
+                  <p className={`text-xs font-bold ${attention.overdue || attention.cadenceOverdue ? 'text-red-400' : 'text-amber-300'}`}>
+                    {attention.overdue ? 'Follow-up overdue' : attention.cadenceOverdue ? `Cadence missed · ${attention.daysSinceContact}d` : attention.noNextAction ? 'No next action' : 'Strong motivation'}
+                  </p>
+                  <p className="text-[11px] text-slate-600">{attention.dueDate || 'No due date'}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+      <SectionCard title="Pipeline Attention" subtitle="Opportunities with overdue, missing, or stale next actions">
+        {pipelineRows.length === 0 ? <p className="text-sm text-slate-500">No Pipeline exceptions.</p> : (
+          <div className="divide-y divide-slate-800">
+            {pipelineRows.map(({ client, attention }) => (
+              <button key={client.id} onClick={() => onEditClient?.(client)} className="flex w-full items-center gap-3 py-2.5 text-left hover:bg-white/[0.02]">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-white">{client.opportunityName || client.facilityName || client.name}</p>
+                  <p className="truncate text-xs text-slate-500">{client.name} · {PIPELINE_STAGES.find(stage => stage.id === Number(client.stageId))?.label}</p>
+                </div>
+                <div className="text-right">
+                  <p className={`text-xs font-bold ${attention.overdue ? 'text-red-400' : 'text-amber-300'}`}>
+                    {attention.overdue ? 'Next action overdue' : attention.noNextAction ? 'No next action' : `Inactive ${attention.daysInactive}d`}
+                  </p>
+                  <p className="text-[11px] text-slate-600">{attention.daysInStage ?? 0} days in stage</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
 
 // â”€â”€â”€ Attack List / Needs Follow-Up / Pipeline Attention builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // These read the universal tasks table plus Database contacts and Clients â€”
@@ -1808,6 +1875,7 @@ function DashboardTasks({ taskApi, contacts, clients, onOpenContact, onEditClien
 export default function Dashboard({
   clients, contacts = [], meetings = [], calendarEvents = [], onNavigateCalendar,
   onStartCallMode, onOpenContact, onEditClient, onLogClientAction, onDeleteClientAction, onMoveToMasterDB, masterListId, review, taskApi, dealValueMigrationNeeded, analyticsMigrationNeeded,
+  coreClients = [], onOpenCoreClients,
 }) {
   const manualActivity = useManualActivityAdjustments();
   const buyers      = clients.filter(c => c.type === 'Buyer').length;
@@ -1969,6 +2037,16 @@ export default function Dashboard({
           )}
         </div>
       </div>
+
+      <RelationshipAttention
+        coreClients={coreClients}
+        contacts={contacts}
+        clients={clients}
+        tasks={taskApi?.tasks ?? []}
+        onOpenContact={onOpenContact}
+        onEditClient={onEditClient}
+        onOpenCoreClients={onOpenCoreClients}
+      />
 
       <WeeklyProductionScorecard data={weeklyProduction} />
 

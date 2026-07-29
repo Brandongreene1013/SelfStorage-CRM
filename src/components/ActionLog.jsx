@@ -1,7 +1,9 @@
 import { ACTION_TYPES, CALL_ACTION_TYPES } from '../data/constants';
+import { EVENT_META } from '../lib/activityLog';
 
 const TYPE_MAP = {
   ...Object.fromEntries([...ACTION_TYPES, ...CALL_ACTION_TYPES].map(action => [action.value, action])),
+  ...Object.fromEntries(Object.entries(EVENT_META).map(([value, meta]) => [value, { value, ...meta }])),
   dial: { value: 'dial', label: 'Outbound dial', icon: '+1' },
 };
 

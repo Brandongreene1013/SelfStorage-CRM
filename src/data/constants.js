@@ -11,6 +11,34 @@ export const PIPELINE_STAGES = [
   { id: 10, label: 'Post-Close',      short: 'Post-Close',  color: 'bg-purple-600',   border: 'border-purple-600',   text: 'text-purple-300',   hex: '#9333ea' },
 ];
 
+export const CORE_MOTIVATION_LEVELS = [
+  { value: 'unclear', label: 'Unclear' },
+  { value: 'low', label: 'Low' },
+  { value: 'moderate', label: 'Moderate' },
+  { value: 'strong', label: 'Strong' },
+  { value: 'immediate', label: 'Immediate' },
+];
+
+export const CORE_SELLING_TIMELINES = [
+  { value: 'unknown', label: 'Unknown' },
+  { value: '0_3_months', label: '0–3 months' },
+  { value: '3_6_months', label: '3–6 months' },
+  { value: '6_12_months', label: '6–12 months' },
+  { value: '12_24_months', label: '12–24 months' },
+  { value: 'more_than_24_months', label: 'More than 24 months' },
+];
+
+export const CORE_FOLLOW_UP_FREQUENCIES = [
+  { value: '', label: 'No cadence selected' },
+  { value: '7', label: 'Weekly' },
+  { value: '14', label: 'Every 2 weeks' },
+  { value: '30', label: 'Monthly' },
+  { value: '60', label: 'Every 2 months' },
+  { value: '90', label: 'Quarterly' },
+  { value: '182', label: 'Every 6 months' },
+  { value: '365', label: 'Annually' },
+];
+
 export const CLIENT_TYPES = ['Buyer', 'Seller'];
 
 export const DEFAULT_RELATIONSHIP_TYPE = 'storage_owner_seller';

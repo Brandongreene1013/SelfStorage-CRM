@@ -11,6 +11,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
 import { PIPELINE_STAGES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
 import { formatMoney, formatPercent, projectedCommissionAmount } from '../lib/dealValue';
+import { pipelineAttention } from '../lib/relationshipWorkspace';
 import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
 import MoveMenu from './MoveMenu';
@@ -36,6 +37,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
   const actionType = ACTION_TYPES.find(a => a.value === client.nextActionType);
   const fallbackDue = dueMeta(client.nextActionDate);
   const projectedCommission = projectedCommissionAmount(client.desiredSalePrice, client.projectedCommissionPct);
+  const attention = pipelineAttention(client, taskApi?.tasks ?? []);
   const modalDefaults = nextTask
     ? {}
     : legacyActionDefaults(client.nextActionType, client.nextActionDate, client.nextActionNote);
@@ -78,6 +80,16 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
           {client.facilityName && (
             <p className="text-xs text-slate-400 truncate">{client.facilityName}</p>
           )}
+          <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] font-semibold text-slate-500">
+            <span>{attention.daysInStage ?? 0}d in stage</span>
+            <span>·</span>
+            <span>{client.assignedUser || 'Brandon Greene'}</span>
+            {(attention.overdue || attention.stale) && (
+              <span className="rounded bg-red-500/10 px-1.5 py-0.5 font-bold text-red-400">
+                {attention.overdue ? 'Overdue' : 'Stale'}
+              </span>
+            )}
+          </div>
           {(client.desiredSalePrice || projectedCommission) && (
             <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] font-semibold">
               {client.desiredSalePrice && (

@@ -21,6 +21,10 @@ const EMPTY = {
   sqft: '',
   desiredSalePrice: '',
   projectedCommissionPct: '',
+  opportunityName: '',
+  assignedUser: 'Brandon Greene',
+  ownerPricingExpectation: '',
+  importantNotes: '',
   notes: '',
   stageId: 1,
 };
@@ -49,6 +53,10 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
         sqft: client.sqft ?? '',
         desiredSalePrice: client.desiredSalePrice ?? '',
         projectedCommissionPct: client.projectedCommissionPct ?? '',
+        opportunityName: client.opportunityName ?? '',
+        assignedUser: client.assignedUser ?? 'Brandon Greene',
+        ownerPricingExpectation: client.ownerPricingExpectation ?? '',
+        importantNotes: client.importantNotes ?? '',
         notes: client.notes ?? '',
         stageId: client.stageId ?? 1,
       });
@@ -73,6 +81,7 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
       age: numberOrNull(form.age),
       desiredSalePrice: numberOrNull(form.desiredSalePrice),
       projectedCommissionPct: numberOrNull(form.projectedCommissionPct),
+      ownerPricingExpectation: numberOrNull(form.ownerPricingExpectation),
       mailingAddresses: form.mailingAddresses,
     });
     setSaving(false);
@@ -343,6 +352,21 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
           </div>
 
           {/* Pipeline Stage */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className={labelCls}>Opportunity Name</label>
+              <input name="opportunityName" value={form.opportunityName} onChange={handleChange} placeholder="Property or portfolio opportunity" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Assigned User</label>
+              <input name="assignedUser" value={form.assignedUser} onChange={handleChange} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Owner Pricing Expectation</label>
+              <input name="ownerPricingExpectation" type="number" min="0" value={form.ownerPricingExpectation} onChange={handleChange} placeholder="Owner's stated price" className={inputCls} />
+            </div>
+          </div>
+
           <div>
             <label className={labelCls}>Pipeline Stage</label>
             <select
@@ -357,6 +381,11 @@ export default function ClientModal({ client, onSave, onClose, mailerApi }) {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className={labelCls}>Important Opportunity Notes</label>
+            <textarea name="importantNotes" value={form.importantNotes} onChange={handleChange} placeholder="Critical deal-specific context" rows={3} className={`${inputCls} resize-none`} />
           </div>
 
           {/* Notes */}

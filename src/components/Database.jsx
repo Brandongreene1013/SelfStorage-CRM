@@ -20,6 +20,7 @@ import {
   LEAD_SOURCE_DEFINITIONS,
   LEAD_SOURCES,
   LEAD_TEMPS,
+  PIPELINE_STAGES,
   PROPERTY_TYPES,
   RELATIONSHIP_TYPES,
   canonicalLeadSource,
@@ -1070,7 +1071,7 @@ function OwnershipManager({ ownershipApi, contacts, onOpenContact }) {
   );
 }
 
-function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onLogAction, onDeleteAction, onDeleteCallHistory, onLinkInheritor, onCreateInheritor, taskApi, ownershipApi, mailerApi }) {
+function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, onStatusChange, onNotesChange, onUpdate, onDelete, onLogAction, onDeleteAction, onDeleteCallHistory, onLinkInheritor, onCreateInheritor, taskApi, ownershipApi, coreClient, pipelineRecords = [], onAddToCoreClients, onAddToPipeline, mailerApi }) {
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [noteError, setNoteError]   = useState(null);
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
@@ -1197,6 +1198,8 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
                 </span>
               )}
               <SourceBadge source={source} />
+              {coreClient?.status === 'active' && <StatusBadge variant="amber" pill={false} className="font-bold">Core Client</StatusBadge>}
+              {pipelineRecords.length > 0 && <StatusBadge variant="green" pill={false} className="font-bold">{pipelineRecords.length} Pipeline</StatusBadge>}
             </div>
             {/* Facility Name — editable, primary field */}
             <EditableField
@@ -1205,11 +1208,23 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
               placeholder="Click to add facility name"
               onChange={field('facilityName')}
             />
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" onClick={() => setActivityMode('combined')} disabled={!taskApi?.createTask && !onLogAction}
                 className="min-h-10 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-200 hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40">
                 Log activity / schedule task
               </button>
+              {onAddToCoreClients && (
+                <button type="button" onClick={() => onAddToCoreClients(contact)}
+                  className="min-h-10 rounded-lg border border-amber-500/35 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20">
+                  {coreClient?.status === 'active' ? 'Update Core Client' : 'Add to Core Clients'}
+                </button>
+              )}
+              {onAddToPipeline && (
+                <button type="button" onClick={() => onAddToPipeline(contact)}
+                  className="min-h-10 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-500/20">
+                  Add Pipeline Opportunity
+                </button>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white text-2xl leading-none p-1 flex-shrink-0">✕</button>
@@ -1483,7 +1498,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, masterListId, lists = [], onMoveToList, onRemoveFromMaster, onToClients, taskApi, selected = false, onToggleSelected }) {
+function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, masterListId, lists = [], onMoveToList, onRemoveFromMaster, onToClients, taskApi, coreClient, pipelineRecords = [], selected = false, onToggleSelected }) {
   const [added, setAdded] = useState(false);
   const [activityMode, setActivityMode] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
@@ -1557,6 +1572,14 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           <StatusBadge variant={rel.variant} pill={false} className="font-bold">
             {rel.short}
           </StatusBadge>
+          {coreClient?.status === 'active' && (
+            <StatusBadge variant="amber" pill={false} className="font-bold">Core Client</StatusBadge>
+          )}
+          {pipelineRecords.length > 0 && (
+            <StatusBadge variant="green" pill={false} className="font-bold">
+              Pipeline · {pipelineRecords.length}
+            </StatusBadge>
+          )}
           {contact.isDeceased && (
             <span className="text-xs font-bold text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md whitespace-nowrap">Deceased</span>
           )}
@@ -1621,7 +1644,7 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           <SourceBadge source={source} />
           {(() => {
             const moveOptions = [];
-            if (onToClients) moveOptions.push({ label: 'Move to Pipeline', onClick: () => onToClients(contact) });
+            if (onToClients) moveOptions.push({ label: 'Add Pipeline Opportunity', onClick: () => onToClients(contact) });
             lists.filter(l => l.id !== masterListId && !contactInList(contact, l.id)).forEach(l =>
               moveOptions.push({
                 label: `Add to ${l.name}`,
@@ -2511,16 +2534,17 @@ function CallModeQueuePicker({
 }
 
 // ─── Main Database Component ──────────────────────────────────────────────────
-export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, ownershipApi, mailerApi, entryRequest, onEntryConsumed }) {
+export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, ownershipApi, coreApi, onAddToCoreClients, onAddToPipeline, contactActionLogger, onMeaningfulContact, mailerApi, entryRequest, onEntryConsumed }) {
   const {
     lists, contacts, masterListId,
     importList, importIntoList, mergeDuplicateContact, moveContactToList, addContactsToList,
-    removeContactsFromList, removeContactsFromMaster, createList, addContact, listMembershipMigrationNeeded,
+    removeContactsFromList, createList, addContact, listMembershipMigrationNeeded,
     updateContactStatus,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
-    addToMasterDB, logContactAction, deleteContactAction, deleteContactCallHistory,
+    addToMasterDB, logContactAction: persistContactAction, deleteContactAction, deleteContactCallHistory,
     duplicateDismissals, dismissedDuplicateKeys, dismissalStorage, dismissDuplicateGroup, restoreDuplicateGroup,
   } = db;
+  const logContactAction = contactActionLogger || persistContactAction;
   const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -2560,8 +2584,11 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [stateFilter, setStateFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [dataFilter, setDataFilter] = useState('all');
+  const [coreFilter, setCoreFilter] = useState('all');
+  const [pipelineStageFilter, setPipelineStageFilter] = useState('all');
   const [sortMode, setSortMode] = useState('default');
   const [search, setSearch]         = useState('');
+  const [contactPage, setContactPage] = useState(1);
 
   async function handleDeleteList(listId) {
     if (!listId || listId === masterListId) return;
@@ -2793,6 +2820,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     state: stateFilter,
     source: sourceFilter,
     data: dataFilter,
+    core: coreFilter,
+    pipelineStage: pipelineStageFilter,
   };
   const activeFilterCount = Object.values(filterValues).filter(value => value !== 'all').length;
   const activeFilterChips = [
@@ -2829,12 +2858,20 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         complete: 'Complete records',
       }[dataFilter],
     },
+    coreFilter !== 'all' && { key: 'core', label: coreFilter === 'yes' ? 'Core Clients' : 'Not Core Clients' },
+    pipelineStageFilter !== 'all' && {
+      key: 'pipelineStage',
+      label: pipelineStageFilter === 'none'
+        ? 'Not in Pipeline'
+        : `Pipeline: ${PIPELINE_STAGES.find(stage => stage.id === Number(pipelineStageFilter))?.short || pipelineStageFilter}`,
+    },
   ].filter(Boolean);
   const sortOptions = locationAnchor
     ? [...DATABASE_SORT_OPTIONS, { value: 'nearest', label: `Nearest to ${locationAnchor.label}` }]
     : DATABASE_SORT_OPTIONS;
 
   function updateFilter(key, value) {
+    setContactPage(1);
     if (key === 'status') setStatusFilter(value);
     if (key === 'relationship') setRelationshipFilter(value);
     if (key === 'leadTemp') setLeadTempFilter(value);
@@ -2842,9 +2879,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     if (key === 'state') setStateFilter(value);
     if (key === 'source') setSourceFilter(value);
     if (key === 'data') setDataFilter(value);
+    if (key === 'core') setCoreFilter(value);
+    if (key === 'pipelineStage') setPipelineStageFilter(value);
   }
 
   function resetFilters() {
+    setContactPage(1);
     setStatusFilter('all');
     setRelationshipFilter('all');
     setLeadTempFilter('all');
@@ -2852,13 +2892,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     setStateFilter('all');
     setSourceFilter('all');
     setDataFilter('all');
+    setCoreFilter('all');
+    setPipelineStageFilter('all');
   }
 
   // Filtered and sorted contacts
   const filtered = useMemo(() => {
     if (activeListId === null) return [];
     const result = contacts.filter(c => {
-      if (activeListId !== 'all' && !contactInList(c, activeListId)) return false;
+      if (activeListId !== 'all' && activeListId !== masterListId && !contactInList(c, activeListId)) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
       if (relationshipFilter !== 'all' && (c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE) !== relationshipFilter) return false;
       if (leadTempFilter === 'none' && c.leadTemp) return false;
@@ -2867,6 +2909,13 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       if (callbackFilter === 'none' && callbackIds.any.has(c.id)) return false;
       if (stateFilter !== 'all' && String(c.state || '').trim().toUpperCase() !== stateFilter) return false;
       if (!matchesLeadSourceFilter(c, lists, sourceFilter)) return false;
+      const isCoreClient = coreApi?.coreClients.some(item => item.contactId === c.id && item.status === 'active');
+      if (coreFilter === 'yes' && !isCoreClient) return false;
+      if (coreFilter === 'no' && isCoreClient) return false;
+      const contactPipeline = clients.filter(client => client.contactId === c.id);
+      if (pipelineStageFilter === 'none' && contactPipeline.length > 0) return false;
+      if (pipelineStageFilter !== 'all' && pipelineStageFilter !== 'none'
+        && !contactPipeline.some(client => Number(client.stageId) === Number(pipelineStageFilter))) return false;
       if (dataFilter === 'missing_name' && hasUsableContactValue(c.ownerName)) return false;
       if (dataFilter === 'missing_phone' && hasUsableContactValue(c.phone)) return false;
       if (dataFilter === 'missing_email' && hasUsableContactValue(c.email)) return false;
@@ -2906,6 +2955,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   }, [
     contacts,
     activeListId,
+    masterListId,
     statusFilter,
     relationshipFilter,
     leadTempFilter,
@@ -2914,6 +2964,10 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     stateFilter,
     sourceFilter,
     dataFilter,
+    coreFilter,
+    pipelineStageFilter,
+    coreApi,
+    clients,
     lists,
     search,
     locationAnchor,
@@ -2924,6 +2978,13 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const callQueue = useMemo(() =>
     filtered.filter(c => ['fresh','callback','no_answer','voicemail'].includes(c.status)),
     [filtered]
+  );
+  const contactsPerPage = 60;
+  const contactPageCount = Math.max(1, Math.ceil(filtered.length / contactsPerPage));
+  const currentContactPage = Math.min(contactPage, contactPageCount);
+  const pageContacts = filtered.slice(
+    (currentContactPage - 1) * contactsPerPage,
+    currentContactPage * contactsPerPage,
   );
 
   // Sprint 6 — task-based Call Mode queues, computed over ALL contacts (not
@@ -3172,6 +3233,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       ...(status === 'callback' ? { callbackDate } : {}),
     });
     if (outcomeResult?.error) return outcomeResult;
+    if (actionEntry) await onMeaningfulContact?.(contact.id, actionEntry);
     if (status === 'callback') {
       const taskResult = await taskApi?.createTask({
         title: 'Call back',
@@ -3195,6 +3257,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   async function handleStatusChangeFromModal(id, status, notes, activityDate, options) {
     const result = await updateContactStatus(id, status, notes, activityDate, options);
     if (result?.error) return result;
+    if (options?.actionEntry) await onMeaningfulContact?.(id, options.actionEntry);
     if (onCallLogged) onCallLogged(status);
     // refresh open contact
     setOpenContact(prev => prev?.id === id ? {
@@ -3277,7 +3340,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               >
                 <span className="font-bold flex items-center gap-1.5">⭐ Master Database</span>
                 <span className="text-xs bg-emerald-600/20 text-emerald-400 border border-emerald-600/30 px-1.5 py-0.5 rounded-md">
-                  {contacts.filter(c => c.listId === masterListId).length + clients.length}
+                  {contacts.length + clients.filter(client => !client.contactId).length}
                 </span>
               </button>
             </DropTarget>
@@ -3545,7 +3608,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             <div className="flex flex-wrap items-center gap-2">
               <input
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => { setSearch(e.target.value); setContactPage(1); }}
                 placeholder="Search facility, owner, phone, email..."
                 className="flex-1 min-w-[200px] bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
               />
@@ -3556,6 +3619,18 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 activeCount={activeFilterCount}
                 stateOptions={stateOptions}
               />
+              <select value={coreFilter} onChange={event => { setCoreFilter(event.target.value); setContactPage(1); }} aria-label="Filter Core Client status"
+                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500">
+                <option value="all">All relationships</option>
+                <option value="yes">Core Clients</option>
+                <option value="no">Not Core Clients</option>
+              </select>
+              <select value={pipelineStageFilter} onChange={event => { setPipelineStageFilter(event.target.value); setContactPage(1); }} aria-label="Filter Pipeline stage"
+                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500">
+                <option value="all">All Pipeline stages</option>
+                <option value="none">Not in Pipeline</option>
+                {PIPELINE_STAGES.map(stage => <option key={stage.id} value={stage.id}>{stage.short}</option>)}
+              </select>
               <select
                 value={sortMode}
                 onChange={event => setSortMode(event.target.value)}
@@ -3578,7 +3653,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                   type="button"
                   onClick={() => {
                     setBulkStatus('');
-                    setSelectedContactIds(previous => new Set([...previous, ...filtered.map(contact => contact.id)]));
+                    setSelectedContactIds(previous => new Set([...previous, ...pageContacts.map(contact => contact.id)]));
                   }}
                   className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-400 transition-all hover:border-slate-500 hover:text-white"
                 >
@@ -3734,7 +3809,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 items-start">
-                {filtered.map(c => (
+                {pageContacts.map(c => (
                   <div
                     key={c.id}
                     data-contact-id={c.id}
@@ -3751,10 +3826,10 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     masterListId={masterListId}
                     lists={lists}
                     onMoveToList={moveContactToList}
-                    onRemoveFromMaster={removeContactsFromMaster}
                     onToClients={onContactToClients}
                     taskApi={taskApi}
-                    ownershipApi={ownershipApi}
+                    coreClient={coreApi?.coreClients.find(item => item.contactId === c.id)}
+                    pipelineRecords={clients.filter(client => client.contactId === c.id)}
                     selected={selectedContactIds.has(c.id)}
                     onToggleSelected={toggleContactSelection}
                   />
@@ -3776,6 +3851,24 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     mailerApi={clientHandlers.mailerApi}
                   />
                 ))}
+              </div>
+            )}
+            {filtered.length > contactsPerPage && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
+                <p className="text-xs text-slate-500">
+                  Showing {(currentContactPage - 1) * contactsPerPage + 1}–{Math.min(currentContactPage * contactsPerPage, filtered.length)} of {filtered.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setContactPage(page => Math.max(1, page - 1))} disabled={currentContactPage === 1}
+                    className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
+                    Previous
+                  </button>
+                  <span className="text-xs font-semibold tabular-nums text-slate-400">Page {currentContactPage} of {contactPageCount}</span>
+                  <button type="button" onClick={() => setContactPage(page => Math.min(contactPageCount, page + 1))} disabled={currentContactPage === contactPageCount}
+                    className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
+                    Next
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -3806,6 +3899,10 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           onDeleteCallHistory={deleteContactCallHistory}
           taskApi={taskApi}
           ownershipApi={ownershipApi}
+          coreClient={coreApi?.coreClients.find(item => item.contactId === openContact.id)}
+          pipelineRecords={clients.filter(client => client.contactId === openContact.id)}
+          onAddToCoreClients={onAddToCoreClients}
+          onAddToPipeline={onAddToPipeline}
           mailerApi={mailerApi}
         />
       )}
@@ -5257,7 +5354,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           {onPromote && (
             <button onClick={() => onPromote(current)}
               className="w-full bg-blue-600/20 hover:bg-blue-600/30 border border-blue-600/40 text-blue-300 font-bold px-4 py-3 rounded-2xl text-sm transition-all">
-              Promote to Client / Pipeline
+              Add Pipeline Opportunity
             </button>
           )}
           <p className="text-xs text-slate-600 px-1">Shortcuts: D +1 dial, X no answer, V voicemail, C conversation, A appt, K/B callback, S save, M master, N/right next, left back, E edit.</p>
