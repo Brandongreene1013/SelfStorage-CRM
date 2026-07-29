@@ -33,7 +33,7 @@ import { createActivityEventId, buildActivityAnalytics, easternToday } from '../
 import { EVENT_META, eventTimeLabel } from '../lib/activityLog';
 import { sortDatabaseContacts } from '../lib/databaseSort';
 import { contactInList } from '../lib/listMemberships';
-import { callModeContactIndex, callModeTarget, createCallModeSession, resolveCallModeContact } from '../lib/callModeSession';
+import { callModeContactIndex, callModeTarget, createCallModeSession, removeCallModeSessionContact, resolveCallModeContact } from '../lib/callModeSession';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -3379,6 +3379,11 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               onSaveNotes={updateContactNotes}
               onUpdateContact={updateContact}
               onDeleteContact={deleteContact}
+              onRemoveFromList={removeContactsFromList}
+              sourceListId={callQueueSource === 'activeList' && activeListId !== masterListId ? activeListId : null}
+              sourceListName={callQueueSource === 'activeList' && activeListId !== masterListId
+                ? lists.find(list => list.id === activeListId)?.name
+                : null}
               onLogAction={logContactAction}
               onDeleteAction={deleteContactAction}
               onDeleteCallHistory={deleteContactCallHistory}
@@ -4085,7 +4090,7 @@ function CallModeTodayPanel({ events, onOpenContact }) {
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, sharedContactInfo, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onRemoveFromList, sourceListId, sourceListName, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, sharedContactInfo, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
   // Freeze the queue by contact ID for the lifetime of this Call Mode session.
   // Outcomes and list moves mutate the live queue; resolving by its changing
   // array index can silently put the controls on a different person.
@@ -4099,6 +4104,9 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const [noteSaveError, setNoteSaveError] = useState(null);
   const [postOutcome, setPostOutcome] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmListRemoval, setConfirmListRemoval] = useState(false);
+  const [removingFromList, setRemovingFromList] = useState(false);
+  const [listRemovalError, setListRemovalError] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const [estateContactId, setEstateContactId] = useState(null);
   const [showContactDetails, setShowContactDetails] = useState(false);
@@ -4230,6 +4238,34 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     setNoteDraft({ contactId: null, text: '' });
     selectSessionIndex(nextIndex);
   }
+
+  async function removeCurrentFromList() {
+    if (!current || !sourceListId || !onRemoveFromList || removingFromList) return;
+    const lockedContactId = current.id;
+    setRemovingFromList(true);
+    setListRemovalError('');
+    try {
+      if (hasNoteChanges) {
+        const noteResult = await saveNotes();
+        if (noteResult?.error) return;
+      }
+      const result = await onRemoveFromList([lockedContactId], sourceListId);
+      if (result?.error) {
+        setListRemovalError(result.error);
+        return;
+      }
+
+      const nextSession = removeCallModeSessionContact(sessionQueue, lockedContactId, index);
+      sessionQueueRef.current = nextSession.queue;
+      setConfirmListRemoval(false);
+      setPostOutcome(null);
+      setNoteDraft({ contactId: null, text: '' });
+      setIndex(nextSession.index, nextSession.queue);
+    } finally {
+      setRemovingFromList(false);
+    }
+  }
+
   async function handleOutcome(status) {
     if (!current || outcomeSaving || activePostOutcome) return;
     if (hasNoteChanges) {
@@ -4593,7 +4629,19 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               <button onClick={saveNotes} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all">Save Note</button>
               <button onClick={() => go(-1)} disabled={index === 0 || !!activePostOutcome} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
               <button onClick={() => go(1)} disabled={index >= sessionQueue.length - 1 || !!activePostOutcome} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2 whitespace-nowrap">Next Contact</button>
-              <button onClick={() => setConfirmDelete(true)} disabled={!!activePostOutcome} className="text-sm text-red-500 hover:text-red-400 disabled:text-slate-700 transition-all font-semibold px-2 py-2">Delete</button>
+              {sourceListId && (
+                <button
+                  onClick={() => {
+                    setListRemovalError('');
+                    setConfirmListRemoval(true);
+                  }}
+                  disabled={!!activePostOutcome}
+                  className="text-sm text-slate-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2"
+                >
+                  Remove from this list
+                </button>
+              )}
+              <button onClick={() => setConfirmDelete(true)} disabled={!!activePostOutcome} className="text-sm text-red-500 hover:text-red-400 disabled:text-slate-700 transition-all font-semibold px-2 py-2">Delete from CRM</button>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-slate-600 mr-1">Callback:</span>
@@ -5030,6 +5078,40 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           } : undefined}
           onClose={() => setActivityTarget(null)}
         />
+      )}
+      {confirmListRemoval && current && (
+        <ModalLayout onClose={() => !removingFromList && setConfirmListRemoval(false)} size="sm" className="overflow-hidden">
+          <div className="border-b border-slate-800 p-5">
+            <h2 className="text-base font-bold text-white">Remove from {sourceListName || 'this list'}?</h2>
+            <p className="mt-1 text-sm text-slate-400">{callModeIdentityLabel(current)}</p>
+          </div>
+          <div className="space-y-3 p-5">
+            <p className="text-sm leading-relaxed text-slate-300">
+              This removes the person only from this targeted call list. Their CRM record, call history, notes, and tasks remain intact in the database.
+            </p>
+            {listRemovalError && (
+              <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{listRemovalError}</p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-slate-800 p-5">
+            <button
+              type="button"
+              onClick={() => setConfirmListRemoval(false)}
+              disabled={removingFromList}
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-400 hover:text-white disabled:opacity-40"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={removeCurrentFromList}
+              disabled={removingFromList}
+              className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+            >
+              {removingFromList ? 'Removing…' : 'Remove from list'}
+            </button>
+          </div>
+        </ModalLayout>
       )}
       {confirmDelete && (
         <DeleteContactConfirmModal

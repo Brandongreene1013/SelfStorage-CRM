@@ -19,6 +19,23 @@ export function callModeContactIndex(sessionQueue = [], contactId) {
   return sessionQueue.findIndex(contact => contact.id === contactId);
 }
 
+export function removeCallModeSessionContact(sessionQueue = [], contactId, currentIndex = 0) {
+  const removedIndex = sessionQueue.findIndex(contact => contact.id === contactId);
+  if (removedIndex < 0) {
+    return {
+      queue: sessionQueue,
+      index: Math.min(Math.max(currentIndex, 0), Math.max(0, sessionQueue.length - 1)),
+    };
+  }
+
+  const queue = sessionQueue.filter(contact => contact.id !== contactId);
+  const shiftedIndex = removedIndex < currentIndex ? currentIndex - 1 : currentIndex;
+  return {
+    queue,
+    index: Math.min(Math.max(shiftedIndex, 0), Math.max(0, queue.length - 1)),
+  };
+}
+
 export function callModeTarget(contact) {
   if (!contact?.id) return null;
   return {
