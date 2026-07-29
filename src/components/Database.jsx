@@ -1205,14 +1205,10 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
               placeholder="Click to add facility name"
               onChange={field('facilityName')}
             />
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button type="button" onClick={() => setActivityMode('task')} disabled={!taskApi?.createTask}
-                className="min-h-10 min-w-28 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20 disabled:opacity-40">
-                + Task
-              </button>
-              <button type="button" onClick={() => setActivityMode('action')} disabled={!onLogAction}
-                className="min-h-10 min-w-28 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-xs font-bold text-blue-300 hover:bg-blue-500/20 disabled:opacity-40">
-                + Action
+            <div className="mt-3">
+              <button type="button" onClick={() => setActivityMode('combined')} disabled={!taskApi?.createTask && !onLogAction}
+                className="min-h-10 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-200 hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40">
+                Log activity / schedule task
               </button>
             </div>
           </div>
@@ -1748,14 +1744,10 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
             actionLog={contact.actionLog}
             onDeleteLast={onDeleteAction ? (index) => onDeleteAction(contact.id, index) : undefined}
           />
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" onClick={event => { event.stopPropagation(); setActivityMode('task'); }} disabled={!taskApi?.createTask}
-              className="min-h-10 text-xs font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
-              + Task
-            </button>
-            <button type="button" onClick={event => { event.stopPropagation(); setActivityMode('action'); }} disabled={!onLogAction}
-              className="min-h-10 text-xs font-bold text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
-              + Action
+          <div>
+            <button type="button" onClick={event => { event.stopPropagation(); setActivityMode('combined'); }} disabled={!taskApi?.createTask && !onLogAction}
+              className="min-h-10 w-full text-xs font-bold text-slate-200 bg-slate-800 hover:text-amber-300 border border-slate-700 hover:border-amber-500/40 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
+              Log activity / schedule task
             </button>
           </div>
         </div>
@@ -4888,7 +4880,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
             <div className="flex gap-1 bg-slate-950/70 rounded-lg p-1">
               {[
                 ['tasks', `Tasks (${openTasks.length})`],
-                ['actions', 'Actions'],
+                ['actions', 'Activity'],
                 ['research', 'Research'],
                 ['history', 'History'],
               ].map(([key, label]) => (
@@ -4914,9 +4906,9 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
           <div className={`${sidePanel === 'tasks' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-white">Tasks</h3>
-              <button type="button" onClick={() => setActivityTarget({ mode: 'task', contact: { ...current } })} disabled={!!activePostOutcome}
-                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 disabled:opacity-40">
-                + Task
+              <button type="button" onClick={() => setActivityTarget({ mode: null, contact: { ...current } })} disabled={!!activePostOutcome}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-200 hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40">
+                Log / schedule
               </button>
             </div>
             <p className="mb-2 text-xs text-slate-600">{openTasks.length} open</p>
@@ -4925,10 +4917,10 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
 
           <div className={`${sidePanel === 'actions' ? '' : 'hidden'} bg-slate-900 border border-slate-800 rounded-2xl p-4`}>
             <div className="flex items-center justify-between gap-3 mb-3">
-              <h3 className="text-sm font-bold text-white">Actions</h3>
-              <button type="button" onClick={() => setActivityTarget({ mode: 'action', contact: { ...current } })} disabled={!!activePostOutcome}
-                className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-xs font-bold text-blue-300 hover:bg-blue-500/20 disabled:opacity-40">
-                + Action
+              <h3 className="text-sm font-bold text-white">Activity</h3>
+              <button type="button" onClick={() => setActivityTarget({ mode: null, contact: { ...current } })} disabled={!!activePostOutcome}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-200 hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40">
+                Log / schedule
               </button>
             </div>
             {recentActivity.length > 0 ? (
@@ -4954,7 +4946,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 })}
               </div>
             ) : (
-              <p className="text-xs text-slate-600 italic">No actions logged yet.</p>
+              <p className="text-xs text-slate-600 italic">No activity logged yet.</p>
             )}
           </div>
 

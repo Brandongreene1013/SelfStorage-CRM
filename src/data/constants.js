@@ -84,12 +84,12 @@ export const LEAD_TEMPS = [
 ];
 
 export const ACTION_TYPES = [
-  { value: 'call',     label: 'Follow-Up Call',   icon: '📞' },
-  { value: 'email',    label: 'Send Email',       icon: '📧' },
-  { value: 'tractiq_report_sent', label: 'TractIQ Report Sent', icon: '📈' },
-  { value: 'research', label: 'Market Research',  icon: '🔍' },
-  { value: 'meeting',  label: 'Schedule Meeting', icon: '📅' },
-  { value: 'bov',      label: 'BOV Presentation', icon: '📊' },
+  { value: 'call',     label: 'Call',                icon: '📞' },
+  { value: 'email',    label: 'Email',               icon: '📧' },
+  { value: 'tractiq_report_sent', label: 'TractIQ report sent', icon: '📈' },
+  { value: 'research', label: 'Research',            icon: '🔍' },
+  { value: 'meeting',  label: 'Meeting',             icon: '📅' },
+  { value: 'bov',      label: 'BOV / valuation',     icon: '📊' },
 ];
 
 // Historical interaction types shared by Call Mode and client action logs.

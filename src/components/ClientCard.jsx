@@ -268,17 +268,10 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
               <p className="text-xs text-slate-500 mt-1 truncate">{client.nextActionNote}</p>
             )}
           </button>
-        ) : (
-          <button
-            onClick={() => setShowActionCenter(true)}
-            className="w-full bg-transparent border border-dashed border-slate-700 hover:border-amber-500/40 text-slate-500 hover:text-amber-400 font-semibold px-3 py-2.5 rounded-xl text-xs transition-all"
-          >
-            + Set Next Action
-          </button>
-        )}
+        ) : null}
       </div>
 
-      {/* Activity log: Last Action + Log button */}
+      {/* Activity and follow-up entry point */}
       {onLogAction && (
         <div className="mt-2 flex items-center justify-between gap-2">
           <LastActionLine
@@ -289,7 +282,7 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
             onClick={() => setShowActionCenter(true)}
             className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
           >
-            + Log
+            Log / schedule
           </button>
         </div>
       )}

@@ -150,17 +150,9 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
           <span className="font-semibold truncate">{actionType.label}</span>
           {fallbackDue && <span className="font-bold ml-auto flex-shrink-0">{fallbackDue.label}</span>}
         </div>
-      ) : (
-        <button
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
-          className="mt-2 w-full text-xs text-slate-600 hover:text-amber-400 border border-dashed border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1.5 transition-all"
-        >
-          + Set Action
-        </button>
-      )}
+      ) : null}
 
-      {/* Activity log: Last Action + Log button */}
+      {/* Activity and follow-up entry point */}
       {onLogAction && (
         <div className="mt-2 flex items-center justify-between gap-2">
           <LastActionLine
@@ -172,7 +164,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
             onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
             className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-0.5 transition-all"
           >
-            + Log
+            Log / schedule
           </button>
         </div>
       )}

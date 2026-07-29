@@ -304,7 +304,7 @@ function PipelineAttentionActions({ rows, onEditClient, onLogClientAction, onDel
                   </a>
                 )}
                 <button onClick={() => setActionClient(r.client)} className="text-xs font-bold bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 px-2 py-1 rounded-lg">
-                  Log / Task
+                  Log / schedule
                 </button>
               </div>
             );
