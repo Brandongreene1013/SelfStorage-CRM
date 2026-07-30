@@ -1,59 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { selectAllRows } from '../lib/selectAllRows';
-
-function dbToCoreClient(row) {
-  return {
-    id: row.id,
-    contactId: row.contact_id,
-    primaryPropertyId: row.primary_property_id ?? null,
-    sellingMotivation: row.selling_motivation ?? '',
-    motivationStrength: row.motivation_strength ?? 'unclear',
-    sellingTimeline: row.selling_timeline ?? 'unknown',
-    priceExpectations: row.price_expectations ?? '',
-    saleBarriers: row.sale_barriers ?? '',
-    followUpFrequencyDays: row.follow_up_frequency_days ?? null,
-    nextAction: row.next_action ?? '',
-    nextActionDueDate: row.next_action_due_date ?? '',
-    assignedUser: row.assigned_user ?? 'Brandon Greene',
-    notes: row.notes ?? '',
-    lastMeaningfulContactAt: row.last_meaningful_contact_at ?? null,
-    status: row.status ?? 'active',
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function coreClientToDb(profile) {
-  return {
-    contact_id: profile.contactId,
-    primary_property_id: profile.primaryPropertyId || null,
-    selling_motivation: profile.sellingMotivation?.trim() ?? '',
-    motivation_strength: profile.motivationStrength || 'unclear',
-    selling_timeline: profile.sellingTimeline || 'unknown',
-    price_expectations: profile.priceExpectations?.trim() ?? '',
-    sale_barriers: profile.saleBarriers?.trim() ?? '',
-    follow_up_frequency_days: profile.followUpFrequencyDays
-      ? Number(profile.followUpFrequencyDays)
-      : null,
-    next_action: profile.nextAction?.trim() ?? '',
-    next_action_due_date: profile.nextActionDueDate || null,
-    assigned_user: profile.assignedUser?.trim() || 'Brandon Greene',
-    notes: profile.notes?.trim() ?? '',
-    last_meaningful_contact_at: profile.lastMeaningfulContactAt || null,
-    status: profile.status || 'active',
-    updated_at: new Date().toISOString(),
-  };
-}
+import { coreClientToDb, dbToBrokerageContinuumHistory, dbToCoreClient } from '../lib/coreClients';
 
 function missingMigration(error) {
   return error?.code === 'PGRST205' || String(error?.message || '').includes('core_clients');
+}
+
+function missingBrokerageContinuum(error) {
+  const message = String(error?.message || '');
+  return error?.code === 'PGRST205'
+    || error?.code === 'PGRST202'
+    || message.includes('brokerage_continuum')
+    || message.includes('change_brokerage_continuum_stage');
 }
 
 export function useCoreClients() {
   const [coreClients, setCoreClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [migrationNeeded, setMigrationNeeded] = useState(false);
+  const [continuumMigrationNeeded, setContinuumMigrationNeeded] = useState(false);
+  const [continuumHistory, setContinuumHistory] = useState([]);
   const [error, setError] = useState('');
 
   const loadCoreClients = useCallback(async () => {
@@ -71,6 +38,19 @@ export function useCoreClients() {
       setMigrationNeeded(false);
       setError('');
       setCoreClients((data ?? []).map(dbToCoreClient));
+      const { data: historyData, error: historyError } = await selectAllRows(() => supabase
+        .from('brokerage_continuum_history')
+        .select('*')
+        .order('effective_at', { ascending: false })
+        .order('changed_at', { ascending: false }));
+      if (historyError) {
+        setContinuumMigrationNeeded(missingBrokerageContinuum(historyError));
+        setContinuumHistory([]);
+        if (!missingBrokerageContinuum(historyError)) setError(historyError.message);
+      } else {
+        setContinuumMigrationNeeded(false);
+        setContinuumHistory((historyData ?? []).map(dbToBrokerageContinuumHistory));
+      }
     }
     setLoading(false);
   }, []);
@@ -88,9 +68,11 @@ export function useCoreClients() {
       .single();
     if (saveError) {
       if (missingMigration(saveError)) setMigrationNeeded(true);
-      return { error: missingMigration(saveError)
-        ? 'Run sql/core_clients_pipeline_migration.sql in Supabase, then refresh.'
-        : saveError.message };
+      return {
+        error: missingMigration(saveError)
+            ? 'Run sql/core_clients_pipeline_migration.sql in Supabase, then refresh.'
+            : saveError.message,
+      };
     }
     const saved = dbToCoreClient(data);
     setCoreClients(previous => {
@@ -115,15 +97,58 @@ export function useCoreClients() {
     return { ok: true, coreClient: saved };
   }, []);
 
+  const changeContinuumStage = useCallback(async ({
+    coreClientId,
+    newStage,
+    changedBy,
+    reason,
+    note,
+    effectiveAt,
+    source = 'manual',
+    relatedPropertyId,
+    relatedClientId,
+  }) => {
+    const { data, error: changeError } = await supabase.rpc('change_brokerage_continuum_stage', {
+      p_core_client_id: coreClientId,
+      p_new_stage: newStage,
+      p_changed_by: changedBy || 'Brandon Greene',
+      p_change_reason: reason || null,
+      p_change_note: note || '',
+      p_effective_at: effectiveAt || new Date().toISOString(),
+      p_source: source,
+      p_related_property_id: relatedPropertyId || null,
+      p_related_client_id: relatedClientId || null,
+    });
+    if (changeError) {
+      if (missingBrokerageContinuum(changeError)) setContinuumMigrationNeeded(true);
+      return {
+        error: missingBrokerageContinuum(changeError)
+          ? 'Run sql/brokerage_continuum_migration.sql in Supabase, then refresh.'
+          : changeError.message,
+      };
+    }
+    const saved = dbToCoreClient(data.core_client);
+    const history = dbToBrokerageContinuumHistory(data.history);
+    setCoreClients(previous => previous.map(item => item.id === saved.id ? saved : item));
+    setContinuumHistory(previous => [history, ...previous]);
+    return { ok: true, coreClient: saved, history };
+  }, []);
+
+  const historyForCoreClient = useCallback(coreClientId => continuumHistory
+    .filter(item => item.coreClientId === coreClientId), [continuumHistory]);
+
   return {
     coreClients,
     activeCoreClients: coreClients.filter(item => item.status === 'active'),
     loading,
     migrationNeeded,
+    continuumMigrationNeeded,
+    continuumHistory,
     error,
     reload: loadCoreClients,
     saveCoreClient,
     archiveCoreClient,
+    changeContinuumStage,
+    historyForCoreClient,
   };
 }
-

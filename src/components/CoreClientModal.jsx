@@ -5,6 +5,7 @@ import {
   CORE_SELLING_TIMELINES,
 } from '../data/constants';
 import { Button, ModalLayout } from './ui';
+import { BrokerageContinuumPanel } from './brokerage/BrokerageContinuum';
 
 function Field({ label, children, span = false }) {
   return (
@@ -25,6 +26,10 @@ export default function CoreClientModal({
   onSave,
   onClose,
   onTaskCreate,
+  continuumHistory = [],
+  continuumMigrationNeeded = false,
+  onContinuumChange,
+  pipelineRecords = [],
 }) {
   const contactProperties = properties.filter(property => contact?.ownershipGroupId
     ? property.ownershipGroupId === contact.ownershipGroupId
@@ -53,8 +58,7 @@ export default function CoreClientModal({
     setForm(previous => ({ ...previous, [field]: value }));
   }
 
-  async function submit(event) {
-    event.preventDefault();
+  async function submit() {
     if (saving) return;
     setSaving(true);
     setError('');
@@ -87,7 +91,7 @@ export default function CoreClientModal({
 
   return (
     <ModalLayout onClose={() => !saving && onClose()} size="xl" className="overflow-hidden">
-      <form onSubmit={submit}>
+      <div>
         <div className="border-b border-slate-800 px-6 py-5">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-400">Core Client</p>
           <h2 className="mt-1 text-xl font-bold text-white">{contact.ownerName || contact.facilityName || 'Owner relationship'}</h2>
@@ -105,6 +109,22 @@ export default function CoreClientModal({
           <Field label="Assigned user">
             <input className={inputClass} value={form.assignedUser} onChange={event => update('assignedUser', event.target.value)} />
           </Field>
+          {profile && onContinuumChange ? (
+            <BrokerageContinuumPanel
+              profile={profile}
+              properties={contactProperties}
+              pipelineRecords={pipelineRecords}
+              history={continuumHistory}
+              migrationNeeded={continuumMigrationNeeded}
+              onChange={onContinuumChange}
+            />
+          ) : (
+            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 sm:col-span-2">
+              <p className="text-xs font-bold uppercase tracking-[.14em] text-slate-500">Brokerage Continuum</p>
+              <p className="mt-2 text-sm font-bold text-white">1. Research</p>
+              <p className="mt-1 text-sm text-slate-400">New Core Clients begin in Research. Once saved, stage changes are controlled and added to permanent history.</p>
+            </div>
+          )}
           <Field label="Motivation strength">
             <select className={inputClass} value={form.motivationStrength} onChange={event => update('motivationStrength', event.target.value)}>
               {CORE_MOTIVATION_LEVELS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -142,9 +162,9 @@ export default function CoreClientModal({
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-800 px-6 py-4">
           <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button type="submit" disabled={saving}>{saving ? 'Saving…' : profile ? 'Save Core Client' : 'Add to Core Clients'}</Button>
+          <Button type="button" onClick={submit} disabled={saving}>{saving ? 'Saving…' : profile ? 'Save Core Client' : 'Add to Core Clients'}</Button>
         </div>
-      </form>
+      </div>
     </ModalLayout>
   );
 }

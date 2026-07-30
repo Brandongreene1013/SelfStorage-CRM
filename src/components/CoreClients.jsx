@@ -5,9 +5,18 @@ import {
 } from '../data/constants';
 import { coreClientAttention } from '../lib/relationshipWorkspace';
 import { shiftDay } from '../lib/activityLog';
+import {
+  brokerageContinuumOrder,
+  brokerageContinuumSearchMatches,
+} from '../lib/brokerageContinuum';
 import ActionCenterModal from './ActionCenterModal';
 import CoreClientModal from './CoreClientModal';
 import { EmptyState, PageHeader, SearchToolbar, StatusBadge } from './ui';
+import {
+  BrokerageContinuumBadge,
+  BrokerageContinuumFilter,
+  BrokerageContinuumSummary,
+} from './brokerage/BrokerageContinuum';
 
 const VIEW_OPTIONS = [
   ['all', 'All Active'],
@@ -42,7 +51,6 @@ export default function CoreClients({
   onLogContactAction,
   onDeleteContactAction,
   onAddToPipeline,
-  onOpenContact,
 }) {
   const [search, setSearch] = useState('');
   const [view, setView] = useState('all');
@@ -50,6 +58,7 @@ export default function CoreClients({
   const [activity, setActivity] = useState(null);
   const [filterMotivation, setFilterMotivation] = useState('all');
   const [filterTimeline, setFilterTimeline] = useState('all');
+  const [filterContinuum, setFilterContinuum] = useState([]);
   const today = new Date().toISOString().slice(0, 10);
   const recentCutoff = shiftDay(today, -30);
 
@@ -61,7 +70,6 @@ export default function CoreClients({
     const pipeline = clients.filter(client => client.contactId === contact.id);
     return { profile, contact, property, attention, pipeline };
   }).filter(Boolean), [clients, contacts, coreApi.activeCoreClients, properties, taskApi.tasks, today]);
-
   const filtered = rows.filter(row => {
     const { profile, contact, property, attention } = row;
     const q = search.trim().toLowerCase();
@@ -72,9 +80,11 @@ export default function CoreClients({
       property?.facilityName,
       property?.address,
       profile.sellingMotivation,
-    ].some(value => String(value || '').toLowerCase().includes(q))) return false;
+    ].some(value => String(value || '').toLowerCase().includes(q))
+      && !brokerageContinuumSearchMatches(profile.brokerageContinuumStage, q)) return false;
     if (filterMotivation !== 'all' && profile.motivationStrength !== filterMotivation) return false;
     if (filterTimeline !== 'all' && profile.sellingTimeline !== filterTimeline) return false;
+    if (filterContinuum.length && !filterContinuum.includes(profile.brokerageContinuumStage)) return false;
     if (view === 'today' && !attention.dueToday) return false;
     if (view === 'overdue' && !(attention.overdue || attention.cadenceOverdue)) return false;
     if (view === 'no_contact_30' && !(attention.daysSinceContact === null || attention.daysSinceContact >= 30)) return false;
@@ -87,8 +97,10 @@ export default function CoreClients({
   }).sort((a, b) => {
     const score = row => (row.attention.overdue ? 4 : 0)
       + (row.attention.cadenceOverdue ? 2 : 0)
+      + (row.attention.continuumStalled ? 2 : 0)
       + (['strong', 'immediate'].includes(row.profile.motivationStrength) ? 1 : 0);
-    return score(b) - score(a);
+    return score(b) - score(a)
+      || brokerageContinuumOrder(a.profile.brokerageContinuumStage) - brokerageContinuumOrder(b.profile.brokerageContinuumStage);
   });
 
   if (coreApi.migrationNeeded) {
@@ -113,10 +125,16 @@ export default function CoreClients({
         badge={`${rows.length} active relationships`}
       />
       <div className="mt-5 space-y-4">
+        {coreApi.continuumMigrationNeeded && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            Brokerage Continuum is showing safe Research defaults. Run <code className="font-bold">sql/brokerage_continuum_migration.sql</code> in Supabase to enable controlled stages and permanent history.
+          </div>
+        )}
+        <BrokerageContinuumSummary profiles={coreApi.activeCoreClients} />
         <SearchToolbar
           search={search}
           onSearchChange={setSearch}
-          placeholder="Search owner, property, entity, address, or motivation…"
+          placeholder="Search owner, property, motivation, or brokerage continuum…"
           trailing={(
             <div className="flex flex-wrap gap-2">
               <select value={filterMotivation} onChange={event => setFilterMotivation(event.target.value)} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300">
@@ -127,6 +145,7 @@ export default function CoreClients({
                 <option value="all">All timelines</option>
                 {CORE_SELLING_TIMELINES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
+              <BrokerageContinuumFilter selected={filterContinuum} onChange={setFilterContinuum} />
             </div>
           )}
         >
@@ -143,10 +162,11 @@ export default function CoreClients({
           <EmptyState title="No Core Clients match this view" message="Adjust the saved view or add an existing Master Database contact to Core Clients." />
         ) : (
           <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/60">
-            <table className="min-w-[1180px] w-full text-left">
+            <table className="min-w-[1320px] w-full text-left">
               <thead className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Owner / Property</th>
+                  <th className="px-4 py-3">Brokerage Continuum</th>
                   <th className="px-4 py-3">Motivation</th>
                   <th className="px-4 py-3">Timeline</th>
                   <th className="px-4 py-3">Last meaningful contact</th>
@@ -161,9 +181,16 @@ export default function CoreClients({
                   return (
                     <tr key={profile.id} className={`${attention.neglected ? 'bg-red-500/[0.04]' : ''} hover:bg-white/[0.025]`}>
                       <td className="px-4 py-3">
-                        <button className="font-semibold text-white hover:text-amber-300" onClick={() => onOpenContact(contact)}>{contact.ownerName || 'Unknown owner'}</button>
+                        <button className="font-semibold text-white hover:text-amber-300" onClick={() => setEditing(row)}>{contact.ownerName || 'Unknown owner'}</button>
                         <p className="mt-0.5 max-w-64 truncate text-xs text-slate-500">{property?.facilityName || contact.facilityName || 'No primary property'}{property?.city || property?.state ? ` · ${[property.city, property.state].filter(Boolean).join(', ')}` : ''}</p>
                         {pipeline.length > 0 && <StatusBadge variant="green" className="mt-1">{pipeline.length} Pipeline {pipeline.length === 1 ? 'opportunity' : 'opportunities'}</StatusBadge>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <BrokerageContinuumBadge
+                          stage={profile.brokerageContinuumStage}
+                          enteredAt={profile.brokerageContinuumStageEnteredAt}
+                        />
+                        {attention.continuumStalled && <p className="mt-1 text-xs font-bold text-amber-400">Stage needs attention</p>}
                       </td>
                       <td className="px-4 py-3">
                         <StatusBadge variant={motivationVariant(profile.motivationStrength)}>{CORE_MOTIVATION_LEVELS.find(option => option.value === profile.motivationStrength)?.label}</StatusBadge>
@@ -209,6 +236,10 @@ export default function CoreClients({
           properties={properties}
           onSave={coreApi.saveCoreClient}
           onTaskCreate={taskApi.createTask}
+          pipelineRecords={editing.pipeline}
+          continuumHistory={coreApi.historyForCoreClient(editing.profile.id)}
+          continuumMigrationNeeded={coreApi.continuumMigrationNeeded}
+          onContinuumChange={coreApi.changeContinuumStage}
           onClose={() => setEditing(null)}
         />
       )}

@@ -464,7 +464,6 @@ export default function App() {
             onLogContactAction={handleLogContactAction}
             onDeleteContactAction={db.deleteContactAction}
             onAddToPipeline={setPipelineTarget}
-            onOpenContact={handleOpenContact}
           />
         )}
 
@@ -549,6 +548,12 @@ export default function App() {
           properties={ownershipApi.properties}
           onSave={coreApi.saveCoreClient}
           onTaskCreate={taskApi.createTask}
+          pipelineRecords={clients.filter(client => client.contactId === coreClientTarget.id)}
+          continuumHistory={coreApi.historyForCoreClient(
+            coreApi.coreClients.find(item => item.contactId === coreClientTarget.id)?.id,
+          )}
+          continuumMigrationNeeded={coreApi.continuumMigrationNeeded}
+          onContinuumChange={coreApi.changeContinuumStage}
           onClose={() => setCoreClientTarget(null)}
         />
       )}

@@ -14,6 +14,7 @@ import { mergeDashboardMeetings } from '../lib/calendarEvents';
 import { coreClientAttention, pipelineAttention } from '../lib/relationshipWorkspace';
 import { SectionCard, MetricCardGrid, LoadingSkeleton, EmptyState, ModalLayout } from './ui';
 import { TaskRow, TaskModal, getNextOpenTask, buildCallbackTaskQueue } from './tasks';
+import { BrokerageContinuumBadge } from './brokerage/BrokerageContinuum';
 // Lazy-loaded so the market-intelligence terminal (its own chunk) never bloats
 // the Dashboard's initial paint.
 const IntelligenceTerminal = lazy(() => import('./intelligence/IntelligenceTerminal'));
@@ -30,7 +31,8 @@ function RelationshipAttention({ coreClients = [], contacts, clients, tasks, onO
     .filter(row => row.attention.neglected || row.attention.noNextAction
       || ['strong', 'immediate'].includes(row.profile.motivationStrength))
     .sort((a, b) => Number(b.attention.overdue) - Number(a.attention.overdue)
-      || Number(b.attention.cadenceOverdue) - Number(a.attention.cadenceOverdue))
+      || Number(b.attention.cadenceOverdue) - Number(a.attention.cadenceOverdue)
+      || Number(b.attention.continuumStalled) - Number(a.attention.continuumStalled))
     .slice(0, 6);
   const pipelineRows = clients.map(client => ({ client, attention: pipelineAttention(client, tasks, today) }))
     .filter(row => Number(row.client.stageId) < 10
@@ -50,11 +52,14 @@ function RelationshipAttention({ coreClients = [], contacts, clients, tasks, onO
               <button key={profile.id} onClick={() => onOpenContact?.(contact)} className="flex w-full items-center gap-3 py-2.5 text-left hover:bg-white/[0.02]">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-white">{contact.ownerName || contact.facilityName || 'Unknown owner'}</p>
-                  <p className="truncate text-xs text-slate-500">{profile.sellingMotivation || 'No motivation detail recorded'}</p>
+                  <div className="mt-1 flex min-w-0 items-center gap-2">
+                    <BrokerageContinuumBadge stage={profile.brokerageContinuumStage} enteredAt={profile.brokerageContinuumStageEnteredAt} />
+                    <p className="truncate text-xs text-slate-500">{profile.sellingMotivation || 'No motivation detail recorded'}</p>
+                  </div>
                 </div>
                 <div className="text-right">
                   <p className={`text-xs font-bold ${attention.overdue || attention.cadenceOverdue ? 'text-red-400' : 'text-amber-300'}`}>
-                    {attention.overdue ? 'Follow-up overdue' : attention.cadenceOverdue ? `Cadence missed · ${attention.daysSinceContact}d` : attention.noNextAction ? 'No next action' : 'Strong motivation'}
+                    {attention.overdue ? 'Follow-up overdue' : attention.cadenceOverdue ? `Cadence missed · ${attention.daysSinceContact}d` : attention.continuumStalled ? `Stage stalled · ${attention.continuumDaysInStage}d` : attention.noNextAction ? 'No next action' : 'Strong motivation'}
                   </p>
                   <p className="text-[11px] text-slate-600">{attention.dueDate || 'No due date'}</p>
                 </div>

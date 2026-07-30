@@ -1,3 +1,5 @@
+import { continuumDaysInStage, isContinuumStalled } from './brokerageContinuum.js';
+
 const MEANINGFUL_ACTIVITY_TYPES = new Set([
   'call',
   'conversation',
@@ -74,6 +76,8 @@ export function coreClientAttention(profile, contact, tasks = [], today = new Da
   const overdue = Boolean(dueDate && dueDate < today);
   const dueToday = dueDate === today;
   const cadenceOverdue = Boolean(cadence && daysSinceContact !== null && daysSinceContact > cadence);
+  const continuumDays = continuumDaysInStage(profile?.brokerageContinuumStageEnteredAt, now);
+  const continuumStalled = isContinuumStalled(profile, tasks, today);
   return {
     lastContactAt,
     daysSinceContact,
@@ -83,8 +87,10 @@ export function coreClientAttention(profile, contact, tasks = [], today = new Da
     overdue,
     dueToday,
     cadenceOverdue,
+    continuumDaysInStage: continuumDays,
+    continuumStalled,
     noNextAction: !nextTask && !profile?.nextAction,
-    neglected: overdue || cadenceOverdue || (!lastContactAt && !nextTask),
+    neglected: overdue || cadenceOverdue || continuumStalled || (!lastContactAt && !nextTask),
   };
 }
 

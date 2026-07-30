@@ -28,11 +28,15 @@ const profile = {
   followUpFrequencyDays: 3,
   nextAction: '',
   nextActionDueDate: '',
+  brokerageContinuumStage: 'cold_call',
+  brokerageContinuumStageEnteredAt: '2026-07-01T12:00:00Z',
 };
 const coreAttention = coreClientAttention(profile, contact, [], '2026-07-29');
 assert.equal(coreAttention.daysSinceContact, 5);
 assert.equal(coreAttention.cadenceOverdue, true);
 assert.equal(coreAttention.noNextAction, true);
+assert.equal(coreAttention.continuumDaysInStage, 28);
+assert.equal(coreAttention.continuumStalled, true);
 assert.equal(coreAttention.neglected, true);
 
 const client = {
@@ -54,4 +58,3 @@ assert.equal(pipelineStatus.daysInStage, 19);
 assert.equal(pipelineStatus.noNextAction, true);
 
 console.log('relationship workspace tests passed');
-

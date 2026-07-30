@@ -29,6 +29,7 @@ import {
   matchesLeadSource,
 } from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
+import { BrokerageContinuumBadge } from './brokerage/BrokerageContinuum';
 import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, taskEditDefaults, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
 import { createActivityEventId, buildActivityAnalytics, easternToday } from '../lib/activityAnalytics';
@@ -1200,6 +1201,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
               )}
               <SourceBadge source={source} />
               {coreClient?.status === 'active' && <StatusBadge variant="amber" pill={false} className="font-bold">Core Client</StatusBadge>}
+              {coreClient?.status === 'active' && <BrokerageContinuumBadge stage={coreClient.brokerageContinuumStage} enteredAt={coreClient.brokerageContinuumStageEnteredAt} />}
               {pipelineRecords.length > 0 && <StatusBadge variant="green" pill={false} className="font-bold">{pipelineRecords.length} Pipeline</StatusBadge>}
             </div>
             {/* Facility Name — editable, primary field */}
