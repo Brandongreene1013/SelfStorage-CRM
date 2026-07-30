@@ -903,6 +903,11 @@ function dbToList(row) {
     duplicateSkippedCount: row.duplicate_skipped_count ?? 0,
     mergedDuplicateCount: row.merged_duplicate_count ?? 0,
     additionalPhoneCount: row.additional_phone_count ?? 0,
+    folderId: row.folder_id ?? null,
+    workspaceKey: row.database_workspace_key ?? 'default',
+    isArchived: Boolean(row.is_archived),
+    createdAt: row.created_at ?? null,
+    updatedAt: row.updated_at ?? row.created_at ?? null,
     contactCount: 0, // computed from contacts array
   };
 }
@@ -1186,6 +1191,7 @@ export function useDatabase() {
       merged_duplicate_count: appendResult.merged,
       additional_phone_count: importRows.importedAdditionalPhones + appendResult.appendedPhones,
     };
+    if (options.folderId) listPayload.folder_id = options.folderId;
     const { data: listRow, error: listErr } = await insertListWithFallback(listPayload);
     if (listErr) return { count: 0 };
 
@@ -1324,10 +1330,12 @@ export function useDatabase() {
   // Sprint 13 — the legacy removeDuplicates auto-deleter (score-and-bulk-delete)
   // was removed. The Duplicate Review Center is the one duplicate workflow.
 
-  const createList = useCallback(async (name, source) => {
+  const createList = useCallback(async (name, source, folderId = null) => {
+    const payload = { name, source: source ?? '' };
+    if (folderId) payload.folder_id = folderId;
     const { data: row, error } = await supabase
       .from('lists')
-      .insert([{ name, source: source ?? '' }])
+      .insert([payload])
       .select()
       .single();
     if (!error && row) {
@@ -1335,6 +1343,20 @@ export function useDatabase() {
       setLists(prev => [...prev, list]);
       return list;
     }
+    return null;
+  }, []);
+
+  const applyListFolderChanges = useCallback((listIds, folderId) => {
+    const ids = new Set(listIds ?? []);
+    setLists(previous => previous.map(list => ids.has(list.id)
+      ? { ...list, folderId: folderId ?? null, updatedAt: new Date().toISOString() }
+      : list));
+  }, []);
+
+  const applyListArchiveChange = useCallback((listId, archived) => {
+    setLists(previous => previous.map(list => list.id === listId
+      ? { ...list, isArchived: Boolean(archived), updatedAt: new Date().toISOString() }
+      : list));
   }, []);
 
   const addContactsToList = useCallback(async (contactIds, listId) => {
@@ -1958,6 +1980,8 @@ export function useDatabase() {
     removeContactsFromList,
     removeContactsFromMaster,
     createList,
+    applyListFolderChanges,
+    applyListArchiveChange,
     addContact,
     updateContactStatus,
     updateContactCallback,

@@ -37,6 +37,9 @@ import { EVENT_META, eventTimeLabel } from '../lib/activityLog';
 import { sortDatabaseContacts } from '../lib/databaseSort';
 import { contactInList, originatingListIds } from '../lib/listMemberships';
 import { callModeContactIndex, callModeTarget, createCallModeSession, removeCallModeSessionContact, resolveCallModeContact } from '../lib/callModeSession';
+import { useDatabaseExplorer } from '../hooks/useDatabaseExplorer';
+import DatabaseExplorer from './databaseExplorer/DatabaseExplorer';
+import { DATABASE_ROOT_ID, explorerFolderOptions, folderBreadcrumbs } from '../lib/databaseExplorer';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -2010,7 +2013,7 @@ function AddContactModal({ listName, onSave, onClose }) {
 }
 
 // ─── List Sidebar Item (with inline rename + delete) ─────────────────────────
-function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelete }) {
+export function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, onDelete }) {
   const [renaming, setRenaming]       = useState(false);
   const [draft, setDraft]             = useState(l.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -2491,20 +2494,35 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     updateContactNotes, updateContact, deleteList, renameList, deleteContact,
     addToMasterDB, logContactAction: persistContactAction, deleteContactAction, deleteContactCallHistory,
     duplicateDismissals, dismissedDuplicateKeys, dismissalStorage, dismissDuplicateGroup, restoreDuplicateGroup,
+    applyListFolderChanges, applyListArchiveChange,
   } = db;
   const logContactAction = contactActionLogger || persistContactAction;
   const activeCoreContactIds = useMemo(() => new Set((coreApi?.coreClients ?? [])
     .filter(profile => profile.status === 'active')
     .map(profile => profile.contactId)), [coreApi?.coreClients]);
   const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
+  const [activeExplorerDrag, setActiveExplorerDrag] = useState(null);
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   async function handleDragEnd({ active, over }) {
     setActiveDrag(null);
+    setActiveExplorerDrag(null);
     if (!over) return;
+    const dragData = active.data.current;
+    const target = String(over.id);
+    if (dragData?.type === 'database-folder' || dragData?.type === 'database-list') {
+      const destinationId = target === 'db-root'
+        ? DATABASE_ROOT_ID
+        : target.startsWith('db-folder:') ? target.slice('db-folder:'.length) : null;
+      if (!destinationId) return;
+      const result = dragData.type === 'database-folder'
+        ? await databaseExplorer.moveFolder(dragData.folderId, destinationId)
+        : await databaseExplorer.moveLists(dragData.selectedListIds ?? [dragData.listId], destinationId);
+      if (result?.error) alert(result.error);
+      return;
+    }
     const contact = contacts.find(c => c.id === active.id);
     if (!contact) return;
-    const target = String(over.id);
     if (target === 'clients') {
       onContactToClients?.(contact);
     } else if (target.startsWith('list:')) {
@@ -2516,7 +2534,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     }
   }
 
-  const [subView, setSubView]       = useState('contacts');
+  const initialDatabaseParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const [subView, setSubView]       = useState(() => initialDatabaseParams.has('dbList') ? 'contacts' : 'explorer');
   const [showImport, setShowImport]     = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
@@ -2527,7 +2546,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [bulkTargetListId, setBulkTargetListId] = useState('');
   const [bulkStatus, setBulkStatus] = useState('');
   // Default to no list selected — clean empty state on open
-  const [activeListId, setActiveListId] = useState(null);
+  const [activeListId, setActiveListId] = useState(() => initialDatabaseParams.get('dbList'));
+  const [selectedFolderId, setSelectedFolderId] = useState(() => initialDatabaseParams.get('dbFolder') || DATABASE_ROOT_ID);
   const [statusFilter, setStatusFilter] = useState('all');
   const [relationshipFilter, setRelationshipFilter] = useState('all');
   const [leadTempFilter, setLeadTempFilter] = useState('all');
@@ -2540,6 +2560,38 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [sortMode, setSortMode] = useState('default');
   const [search, setSearch]         = useState('');
   const [contactPage, setContactPage] = useState(1);
+  const recordCountByList = useMemo(() => new Map(lists.map(list => [
+    list.id,
+    contacts.filter(contact => contactInList(contact, list.id)).length,
+  ])), [contacts, lists]);
+  const databaseExplorer = useDatabaseExplorer({
+    lists,
+    onListsMoved: applyListFolderChanges,
+    onListArchived: applyListArchiveChange,
+  });
+  const folderOptions = useMemo(
+    () => explorerFolderOptions(databaseExplorer.activeFolders),
+    [databaseExplorer.activeFolders],
+  );
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (subView === 'explorer' && selectedFolderId !== DATABASE_ROOT_ID) url.searchParams.set('dbFolder', selectedFolderId);
+    else url.searchParams.delete('dbFolder');
+    if (subView === 'contacts' && activeListId && !['all', masterListId, CORE_CLIENTS_LIST_ID].includes(activeListId)) {
+      url.searchParams.set('dbList', activeListId);
+    } else {
+      url.searchParams.delete('dbList');
+    }
+    window.history.replaceState({}, '', url);
+  }, [activeListId, masterListId, selectedFolderId, subView]);
+
+  useEffect(() => {
+    if (databaseExplorer.loading || selectedFolderId === DATABASE_ROOT_ID) return;
+    if (!databaseExplorer.activeFolders.some(folder => folder.id === selectedFolderId)) {
+      setSelectedFolderId(DATABASE_ROOT_ID);
+    }
+  }, [databaseExplorer.activeFolders, databaseExplorer.loading, selectedFolderId]);
 
   async function handleDeleteList(listId) {
     if (!listId || listId === masterListId) return;
@@ -2602,7 +2654,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       setBulkStatus('Run sql/contact_list_memberships_migration.sql in Supabase, then refresh before creating a targeted call list.');
       return;
     }
-    const list = await createList(name, 'Targeted Call List');
+    const destinationFolderId = selectedFolderId === DATABASE_ROOT_ID ? null : selectedFolderId;
+    const list = await createList(name, 'Targeted Call List', destinationFolderId);
     if (!list) {
       setBulkStatus('Could not create the list. Please try again.');
       return;
@@ -3232,13 +3285,18 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   }
 
   async function handleImport(name, source, rawText, options) {
-    const result = await importList(name, source, rawText, options);
+    const result = await importList(name, source, rawText, {
+      ...options,
+      folderId: options?.folderId || (selectedFolderId === DATABASE_ROOT_ID ? null : selectedFolderId),
+    });
     setSubView('contacts');
     if (result?.list?.id) setActiveListId(result.list.id);
     return result;
   }
 
   function openImportedList(listId) {
+    const list = lists.find(item => item.id === listId);
+    setSelectedFolderId(list?.folderId || DATABASE_ROOT_ID);
     setActiveListId(listId);
     setSubView('contacts');
     setShowImport(false);
@@ -3256,9 +3314,18 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   return (
     <DndContext
       sensors={dndSensors}
-      onDragStart={({ active }) => setActiveDrag(contacts.find(c => c.id === active.id) ?? null)}
+      onDragStart={({ active }) => {
+        const data = active.data.current;
+        if (data?.type === 'database-folder' || data?.type === 'database-list') {
+          setActiveExplorerDrag(data);
+          setActiveDrag(null);
+        } else {
+          setActiveDrag(contacts.find(c => c.id === active.id) ?? null);
+          setActiveExplorerDrag(null);
+        }
+      }}
       onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveDrag(null)}
+      onDragCancel={() => { setActiveDrag(null); setActiveExplorerDrag(null); }}
     >
     {/* Stacks at narrow widths (installed PWA) — a fixed side-by-side layout
         squeezed the content pane to ~230px and clipped everything inside. */}
@@ -3284,8 +3351,24 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 py-2.5 border-b border-slate-800">
-            Lists
+            Database
           </p>
+
+          <button
+            onClick={() => { setActiveListId(null); setSubView('explorer'); }}
+            className={`w-full border-b border-slate-800/50 px-3 py-2.5 text-left text-sm transition-all ${
+              subView === 'explorer'
+                ? 'border-l-2 border-amber-500 bg-amber-500/10 text-amber-300'
+                : 'border-l-2 border-transparent text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <span className="flex items-center justify-between font-bold">
+              <span>▣ Folder Explorer</span>
+              <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-xs text-slate-500">
+                {lists.filter(list => list.id !== masterListId && !list.isArchived).length}
+              </span>
+            </span>
+          </button>
 
           {/* Master Database — pinned at top */}
           {masterListId && (
@@ -3340,25 +3423,13 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             <span className="text-xs bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-md">{contacts.length}</span>
           </button>
 
-          {lists.length === 0 && (
-            <p className="text-xs text-slate-600 italic px-3 py-3">No lists yet</p>
-          )}
-
-          {[...lists].reverse().filter(l => l.id !== masterListId).map(l => (
-            <ListSidebarItem
-              key={l.id}
-              list={l}
-              count={contacts.filter(c => contactInList(c, l.id)).length}
-              isActive={activeListId === l.id && subView === 'contacts'}
-              onSelect={() => { setActiveListId(l.id); setSubView('contacts'); }}
-              onRename={(name) => renameList(l.id, name)}
-              onDelete={handleDeleteList}
-            />
-          ))}
+          <div className="border-t border-slate-800/50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">
+            User-created lists now live in Folder Explorer.
+          </div>
         </div>
 
         {importHistory.length > 0 && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+          <div className={`${subView === 'explorer' ? 'hidden md:block' : ''} bg-slate-900 border border-slate-800 rounded-xl overflow-hidden`}>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 py-2.5 border-b border-slate-800">
               Import History
             </p>
@@ -3407,7 +3478,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         )}
 
         {/* Other views */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <div className={`${subView === 'explorer' ? 'hidden md:block' : ''} bg-slate-900 border border-slate-800 rounded-xl overflow-hidden`}>
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 py-2.5 border-b border-slate-800">
             Views
           </p>
@@ -3441,14 +3512,14 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         {/* Drag-to-Clients drop target */}
         <DropTarget
           id="clients"
-          className="border border-dashed border-slate-700 rounded-xl px-3 py-3 text-center transition-all"
+          className={`${subView === 'explorer' ? 'hidden md:block' : ''} border border-dashed border-slate-700 rounded-xl px-3 py-3 text-center transition-all`}
           activeClassName="border-blue-500/60 bg-blue-500/10"
         >
           <p className="text-xs font-semibold text-slate-500">Drop here to move to <span className="text-blue-400">Clients / Pipeline</span></p>
         </DropTarget>
 
         {/* Delete list button — not for Master Database */}
-        {activeListId !== 'all' && activeListId !== masterListId && activeListId !== CORE_CLIENTS_LIST_ID && (
+        {activeListId && activeListId !== 'all' && activeListId !== masterListId && activeListId !== CORE_CLIENTS_LIST_ID && (
           <button
             onClick={() => handleDeleteList(activeListId)}
             className="w-full text-xs font-semibold text-red-500 hover:text-red-400 bg-red-900/10 hover:bg-red-900/20 border border-red-900/30 rounded-xl px-3 py-2 transition-all"
@@ -3460,7 +3531,39 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
       {/* ── RIGHT: Main Content ── */}
       <div className="flex-1 min-w-0 space-y-4">
-        {activeListId === null && subView !== 'callQueue' && subView !== 'duplicates' && subView !== 'ownership' && (
+        {subView === 'explorer' && (
+          <DatabaseExplorer
+            folders={databaseExplorer.activeFolders}
+            lists={lists}
+            recordCountByList={recordCountByList}
+            selectedFolderId={selectedFolderId}
+            onSelectFolder={folderId => {
+              setSelectedFolderId(folderId);
+              setActiveListId(null);
+              setSubView('explorer');
+            }}
+            onOpenList={listId => {
+              const list = lists.find(item => item.id === listId);
+              setSelectedFolderId(list?.folderId || DATABASE_ROOT_ID);
+              setActiveListId(listId);
+              setSubView('contacts');
+            }}
+            createFolder={databaseExplorer.createFolder}
+            renameFolder={databaseExplorer.renameFolder}
+            moveFolder={databaseExplorer.moveFolder}
+            moveLists={databaseExplorer.moveLists}
+            deleteFolder={databaseExplorer.deleteFolder}
+            archiveList={databaseExplorer.archiveList}
+            renameList={renameList}
+            deleteList={handleDeleteList}
+            migrationNeeded={databaseExplorer.migrationNeeded}
+            loading={databaseExplorer.loading}
+            pendingKey={databaseExplorer.pendingKey}
+            error={databaseExplorer.error}
+          />
+        )}
+
+        {activeListId === null && subView !== 'explorer' && subView !== 'callQueue' && subView !== 'duplicates' && subView !== 'ownership' && (
           <EmptyState
             icon="📋"
             title="No list selected"
@@ -3565,6 +3668,31 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         )}
 
         {activeListId !== null && subView !== 'callQueue' && subView !== 'duplicates' && subView !== 'ownership' && (<>
+        {subView === 'contacts' && activeListId !== 'all' && activeListId !== masterListId && activeListId !== CORE_CLIENTS_LIST_ID && (
+          <nav aria-label="List location" className="mb-3 flex flex-wrap items-center gap-1 text-xs text-slate-500">
+            <button
+              type="button"
+              onClick={() => { setSelectedFolderId(DATABASE_ROOT_ID); setActiveListId(null); setSubView('explorer'); }}
+              className="hover:text-amber-300"
+            >
+              Database
+            </button>
+            {folderBreadcrumbs(databaseExplorer.activeFolders, lists.find(list => list.id === activeListId)?.folderId).map(folder => (
+              <span key={folder.id} className="flex items-center gap-1">
+                <span>/</span>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedFolderId(folder.id); setActiveListId(null); setSubView('explorer'); }}
+                  className="hover:text-amber-300"
+                >
+                  {folder.name}
+                </button>
+              </span>
+            ))}
+            <span>/</span>
+            <span className="text-slate-300">{lists.find(list => list.id === activeListId)?.name}</span>
+          </nav>
+        )}
 
         {/* Stats bar */}
         <div className="grid grid-cols-4 gap-3">
@@ -3901,6 +4029,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           onOpenImportedList={openImportedList}
           onStartImportedCallSession={startImportedCallSession}
           onOpenDuplicateReview={() => { setShowImport(false); setSubView('duplicates'); }}
+          folderOptions={folderOptions}
+          initialFolderId={selectedFolderId === DATABASE_ROOT_ID ? '' : selectedFolderId}
         />
       )}
 
@@ -3930,6 +4060,19 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                 </p>
               )}
             </div>
+            {folderOptions.length > 0 && !databaseExplorer.migrationNeeded && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Save in folder</label>
+                <select
+                  value={selectedFolderId}
+                  onChange={event => setSelectedFolderId(event.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value={DATABASE_ROOT_ID}>Database (root)</option>
+                  {folderOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">List Name *</label>
               <input
@@ -3973,6 +4116,16 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     </div>
 
     <DragOverlay>
+      {activeExplorerDrag && (
+        <div className="w-64 rotate-1 rounded-xl border border-amber-500 bg-slate-800 px-3 py-2 shadow-2xl">
+          <p className="truncate text-sm font-bold text-white">
+            {activeExplorerDrag.type === 'database-folder'
+              ? databaseExplorer.activeFolders.find(folder => folder.id === activeExplorerDrag.folderId)?.name
+              : lists.find(list => list.id === activeExplorerDrag.listId)?.name}
+          </p>
+          <p className="mt-0.5 text-xs text-amber-400">Drop into a Database folder</p>
+        </div>
+      )}
       {activeDrag && (
         <div className="bg-slate-800 border border-amber-500 rounded-xl px-3 py-2 shadow-2xl rotate-2 w-56">
           <p className="text-sm font-bold text-white truncate">{activeDrag.ownerName || activeDrag.facilityName || 'Contact'}</p>
