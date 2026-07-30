@@ -60,7 +60,8 @@ export default function ActionCenterModal({
 }) {
   const canLogActivity = Boolean(onLogAction);
   const canScheduleTask = Boolean(onSaveTask);
-  const [logEnabled, setLogEnabled] = useState(canLogActivity && mode !== 'task');
+  const editingTask = Boolean(taskDefaults.id);
+  const [logEnabled, setLogEnabled] = useState(canLogActivity && mode !== 'task' && !editingTask);
   const [taskEnabled, setTaskEnabled] = useState(canScheduleTask && (mode === 'task' || Boolean(taskDefaults.title)));
   const [activitySaved, setActivitySaved] = useState(false);
 
@@ -153,13 +154,13 @@ export default function ActionCenterModal({
       ? 'Save activity & task'
       : needsActivitySave
         ? 'Save activity'
-        : 'Schedule task';
+        : editingTask ? 'Save task' : 'Schedule task';
 
   return (
     <ModalLayout onClose={onClose} size="md" className="max-h-[90vh] flex flex-col overflow-hidden">
       <div className="flex items-start justify-between gap-3 p-4 sm:p-5 border-b border-slate-800 flex-shrink-0">
         <div className="min-w-0">
-          <h2 className="text-lg font-bold text-white">Activity & follow-up</h2>
+          <h2 className="text-lg font-bold text-white">Activity & tasks</h2>
           <p className="text-xs text-slate-500 mt-1 truncate">{name}{subtitle ? ` · ${subtitle}` : ''}</p>
           <p className="text-xs text-slate-400 mt-2">Log what already happened. Schedule what needs to happen next.</p>
         </div>
@@ -195,8 +196,8 @@ export default function ActionCenterModal({
                   : 'border-slate-700 bg-slate-900 hover:border-slate-600'
               }`}
             >
-              <span className={`block text-sm font-bold ${taskEnabled ? 'text-amber-300' : 'text-slate-300'}`}>Schedule task</span>
-              <span className="mt-0.5 block text-xs text-slate-500">A future call, email, meeting, or follow-up with a due date.</span>
+              <span className={`block text-sm font-bold ${taskEnabled ? 'text-amber-300' : 'text-slate-300'}`}>{editingTask ? 'Edit next task' : 'Schedule task'}</span>
+              <span className="mt-0.5 block text-xs text-slate-500">{editingTask ? 'Update the current next action without creating a duplicate.' : 'A future call, email, meeting, or follow-up with a due date.'}</span>
             </button>
           )}
         </div>
@@ -240,7 +241,7 @@ export default function ActionCenterModal({
         {taskEnabled && (
           <section className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 space-y-3">
             <div>
-              <p className="text-sm font-bold text-white">Future task</p>
+              <p className="text-sm font-bold text-white">{editingTask ? 'Next task' : 'Future task'}</p>
               <p className="text-xs text-slate-500">Define the next step and when it is due.</p>
             </div>
             <div>

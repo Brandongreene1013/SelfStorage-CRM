@@ -10,7 +10,7 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   canonicalizeUrl, boundedArray, boundedString, clamp,
-  yieldCurveMetrics, TREASURY_TENORS, FRED_SERIES, isObservationStale,
+  yieldCurveMetrics, TREASURY_TENORS, FRED_SERIES, isObservationStale, freshnessScore,
 } from './_marketIntelligence.js';
 
 const TREASURY_PREFIX = 'ust_';
@@ -121,13 +121,14 @@ export function toStory(row) {
 // ── PURE: assemble the cached dashboard payload from fetched rows ────────────
 export function assembleDashboard({ snapshot, items = [], dataPoints = [], latestRun = null }, { now = Date.now() } = {}) {
   const visible = items.filter(r => !r.is_hidden).map(toStory);
-  const byImportance = [...visible].sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0));
+  const current = visible.filter(story => isCurrentStory(story, now));
+  const rankedCurrent = [...current].sort((a, b) => storyRank(b, now) - storyRank(a, now));
   const categories = {};
-  for (const s of visible) {
+  for (const s of rankedCurrent) {
     if (!s.category) continue;
     (categories[s.category] ??= []).push(s);
   }
-  const generatedAt = snapshot?.generated_at ?? latestRun?.finished_at ?? null;
+  const generatedAt = newestIso(snapshot?.generated_at, latestRun?.finished_at);
   const stale = generatedAt ? ((now - new Date(generatedAt).getTime()) > 26 * 3.6e6) : true;
   return {
     ok: true,
@@ -145,11 +146,33 @@ export function assembleDashboard({ snapshot, items = [], dataPoints = [], lates
       confidence: snapshot.executive_brief?.confidence ?? null,
     } : null,
     marketTape: buildMarketTape(dataPoints, { now }),
-    topStories: balancedTopStories(byImportance, 24),
+    topStories: balancedTopStories(rankedCurrent, 36),
     categories,
     savedStories: visible.filter(s => s.isSaved),
     providerStatus: boundedArray(latestRun?.provider_results, 40),
   };
+}
+
+export function isCurrentStory(story, now = Date.now(), maxAgeDays = 10) {
+  const published = new Date(story?.publishedAt).getTime();
+  if (!Number.isFinite(published)) return false;
+  if (story?.relevanceScore != null && Number(story.relevanceScore) < 10) return false;
+  const age = now - published;
+  return age >= -3.6e6 && age <= maxAgeDays * 8.64e7;
+}
+
+export function storyRank(story, now = Date.now()) {
+  const importance = clamp(story?.importanceScore ?? 0, 0, 100);
+  const currentFreshness = freshnessScore(story?.publishedAt, now);
+  return importance * 0.65 + currentFreshness * 35;
+}
+
+function newestIso(...values) {
+  const valid = values
+    .map(value => ({ value, time: new Date(value).getTime() }))
+    .filter(entry => entry.value && Number.isFinite(entry.time))
+    .sort((a, b) => b.time - a.time);
+  return valid[0]?.value ?? null;
 }
 
 export function balancedTopStories(stories, limit = 24) {
@@ -157,7 +180,7 @@ export function balancedTopStories(stories, limit = 24) {
   const selected = [];
   const selectedIds = new Set();
   for (const category of categoryOrder) {
-    for (const story of stories.filter(item => item.category === category).slice(0, 3)) {
+    for (const story of stories.filter(item => item.category === category).slice(0, 5)) {
       const key = story.id ?? story.url;
       if (!selectedIds.has(key)) {
         selected.push(story);

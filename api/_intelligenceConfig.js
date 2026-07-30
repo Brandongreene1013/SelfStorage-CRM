@@ -15,6 +15,7 @@ export const OFFICIAL_RSS = [
   { key: 'fed_speeches', provider: 'federal_reserve', sourceName: 'Federal Reserve — Speeches',        url: 'https://www.federalreserve.gov/feeds/speeches.xml' },
   { key: 'fed_testimony',provider: 'federal_reserve', sourceName: 'Federal Reserve — Testimony',       url: 'https://www.federalreserve.gov/feeds/testimony.xml' },
   { key: 'fed_banking',  provider: 'federal_reserve', sourceName: 'Federal Reserve — Banking/Regulation', url: 'https://www.federalreserve.gov/feeds/press_bcreg.xml' },
+  { key: 'occ_news', provider: 'official', sourceName: 'Office of the Comptroller of the Currency', url: 'https://www.occ.treas.gov/rss/occ_news.xml', category: 'macro' },
 ];
 
 // ── Industry / trade-press RSS registry (allowlist) ──────────────────────────
@@ -23,6 +24,8 @@ export const OFFICIAL_RSS = [
 // spine even when a broad discovery API is throttled.
 export const INDUSTRY_RSS = [
   { key: 'inside_self_storage', provider: 'industry_rss', sourceName: 'Inside Self-Storage', url: 'https://www.insideselfstorage.com/rss.xml', category: 'self_storage', verified: true },
+  { key: 'modern_storage_news', provider: 'industry_rss', sourceName: 'Modern Storage Media', url: 'https://www.modernstoragemedia.com/news/rss.xml', category: 'self_storage', verified: true },
+  { key: 'modern_storage_features', provider: 'industry_rss', sourceName: 'Modern Storage Media', url: 'https://www.modernstoragemedia.com/msm-exclusives/rss.xml', category: 'self_storage', verified: true },
   { key: 'commercial_observer', provider: 'industry_rss', sourceName: 'Commercial Observer', url: 'https://commercialobserver.com/feed/', category: 'cre', verified: true },
 ];
 
@@ -35,8 +38,14 @@ export const NEWS_QUERY_GROUPS = [
   { key: 'storage_operators', category: 'self_storage', query: 'Public Storage Extra Space Storage CubeSmart SmartStop' },
   { key: 'cre_transactions', category: 'cre', query: 'commercial real estate acquisitions sales cap rates transactions' },
   { key: 'cre_debt', category: 'cre', query: 'CRE refinancing CMBS distress debt maturity' },
+  { key: 'cre_capital_markets', category: 'cre', query: 'commercial real estate capital markets lending transaction volume' },
+  { key: 'reit_capital', category: 'private_equity', query: 'REIT debt equity issuance capital allocation acquisitions' },
   { key: 'private_credit', category: 'private_credit', query: 'private credit real estate lending' },
+  { key: 'credit_markets', category: 'private_credit', query: 'high yield spreads leveraged loans direct lending credit conditions' },
   { key: 'private_equity', category: 'private_equity', query: 'private equity real estate fund acquisitions' },
+  { key: 'rates_inflation', category: 'rates', query: 'Federal Reserve Treasury yields inflation jobs report bond market' },
+  { key: 'financial_system', category: 'macro', query: 'bank lending liquidity financial stability regional banks credit conditions' },
+  { key: 'capital_markets', category: 'macro', query: 'US capital markets debt issuance M&A financing market liquidity' },
 ];
 
 // Kept small and disabled by default. Set ENABLE_GDELT_NEWS=true to include it.
@@ -47,8 +56,8 @@ export function marketNewsQueryGroups(markets = []) {
     const label = String(market?.label ?? market ?? '').trim();
     return {
       key: `active_market_${index + 1}`,
-      category: 'self_storage',
-      query: `"${label}" (development OR business OR economy OR "real estate" OR construction OR zoning)`,
+      category: null,
+      query: `"${label}" ("self storage" OR "commercial real estate" OR development OR construction OR zoning OR investment)`,
       market: label,
     };
   }).filter(group => group.market);

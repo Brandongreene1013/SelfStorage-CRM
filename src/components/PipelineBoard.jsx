@@ -9,14 +9,14 @@ import {
 } from '@dnd-kit/core';
 import { useDroppable } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
-import { PIPELINE_STAGES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
+import { PIPELINE_STAGES, LEAD_TEMPS } from '../data/constants';
 import { formatMoney, formatPercent, projectedCommissionAmount } from '../lib/dealValue';
 import { pipelineAttention } from '../lib/relationshipWorkspace';
-import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
+import EngagementPanel from './EngagementPanel';
 import MoveMenu from './MoveMenu';
 import { StatusBadge } from './ui';
-import { NextActionIndicator, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
+import { getNextOpenTask, legacyActionDefaults, taskEditDefaults } from './tasks';
 
 /* ── Draggable client chip ── */
 function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDatabase, taskApi }) {
@@ -32,14 +32,10 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
 
   const openTasks = taskApi?.getRelatedTasks('client', client.id) ?? [];
   const nextTask = getNextOpenTask(openTasks);
-  const nextTaskType = nextTask ? TASK_TYPE_MAP[nextTask.taskType] : null;
-  const nextTaskDue = dueMeta(nextTask?.dueDate);
-  const actionType = ACTION_TYPES.find(a => a.value === client.nextActionType);
-  const fallbackDue = dueMeta(client.nextActionDate);
   const projectedCommission = projectedCommissionAmount(client.desiredSalePrice, client.projectedCommissionPct);
   const attention = pipelineAttention(client, taskApi?.tasks ?? []);
   const modalDefaults = nextTask
-    ? {}
+    ? taskEditDefaults(nextTask)
     : legacyActionDefaults(client.nextActionType, client.nextActionDate, client.nextActionNote);
 
   return (
@@ -66,20 +62,16 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
                 </span>
               ) : null;
             })()}
-            <NextActionIndicator
-              taskApi={taskApi}
-              relatedType="client"
-              relatedId={client.id}
-              onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
-            />
           </div>
-          <p className="text-sm font-semibold text-white truncate leading-tight">{client.name}</p>
+          <p className="text-sm font-semibold text-white truncate leading-tight">
+            {client.opportunityName || client.facilityName || client.name}
+          </p>
           {client.age && (
             <p className="text-[11px] font-semibold text-slate-500 leading-tight">Age {client.age}</p>
           )}
-          {client.facilityName && (
-            <p className="text-xs text-slate-400 truncate">{client.facilityName}</p>
-          )}
+          <p className="text-xs text-slate-400 truncate">
+            {[client.name, client.opportunityName ? client.facilityName : ''].filter(Boolean).join(' · ')}
+          </p>
           <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] font-semibold text-slate-500">
             <span>{attention.daysInStage ?? 0}d in stage</span>
             <span>·</span>
@@ -105,15 +97,6 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
               )}
             </div>
           )}
-          {client.address && (
-            <p className="text-xs text-slate-500 truncate mt-0.5">📍 {client.address}</p>
-          )}
-          {(client.units || client.sqft) && (
-            <div className="flex gap-2 mt-1">
-              {client.units && <span className="text-xs text-slate-400">{client.units.toLocaleString()} units</span>}
-              {client.sqft && <span className="text-xs text-slate-400">{(client.sqft / 1000).toFixed(0)}k sqft</span>}
-            </div>
-          )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {onMoveToDatabase && (
@@ -129,57 +112,13 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
         </div>
       </div>
 
-      {/* Next action indicator */}
-      {nextTask ? (
-        <div
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
-          className={`mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-all border ${
-            nextTaskDue?.tone === 'red'
-              ? 'bg-red-500/10 border-red-500/30 text-red-400'
-              : nextTaskDue?.tone === 'amber'
-                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                : 'bg-slate-700/50 border-slate-600/50 text-slate-400'
-          }`}
-        >
-          <span>{nextTaskType?.icon ?? '>'}</span>
-          <span className="font-semibold truncate">{nextTask.title}</span>
-          {nextTaskDue && <span className="font-bold ml-auto flex-shrink-0">{nextTaskDue.label}</span>}
-        </div>
-      ) : actionType ? (
-        <div
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
-          className={`mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs cursor-pointer transition-all border ${
-            fallbackDue?.tone === 'red'
-              ? 'bg-red-500/10 border-red-500/30 text-red-400'
-              : fallbackDue?.tone === 'amber'
-                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                : 'bg-slate-700/50 border-slate-600/50 text-slate-400'
-          }`}
-        >
-          <span>{actionType.icon}</span>
-          <span className="font-semibold truncate">{actionType.label}</span>
-          {fallbackDue && <span className="font-bold ml-auto flex-shrink-0">{fallbackDue.label}</span>}
-        </div>
-      ) : null}
-
-      {/* Activity and follow-up entry point */}
-      {onLogAction && (
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <LastActionLine
-            actionLog={client.actionLog}
-            onDeleteLast={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
-          />
-          <button
-            onPointerDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); setShowActionCenter(true); }}
-            className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-0.5 transition-all"
-          >
-            Log / schedule
-          </button>
-        </div>
-      )}
+      <EngagementPanel
+        record={client}
+        taskApi={taskApi}
+        onOpen={() => setShowActionCenter(true)}
+        compact
+        stopPointerDown
+      />
 
       {showActionCenter && (
         <ActionCenterModal
@@ -190,7 +129,9 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
           onDeleteAction={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
           taskContext={{ relatedType: 'client', relatedId: client.id, relatedName: client.name, source: 'pipeline' }}
           taskDefaults={modalDefaults}
-          onSaveTask={taskApi?.createTask}
+          onSaveTask={modalDefaults.id
+            ? (fields) => taskApi?.updateTask(modalDefaults.id, fields)
+            : taskApi?.createTask}
           onClose={() => setShowActionCenter(false)}
         />
       )}

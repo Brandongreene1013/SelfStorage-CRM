@@ -274,7 +274,10 @@ export async function fetchFredSeries(seriesMeta, apiKey, deps = {}) {
 
 export async function fetchRss(feed, deps = {}) {
   try {
-    const { text } = await safeFetch(feed.url, { accept: 'application/xml', ...deps });
+    const { text } = await safeFetch(feed.url, {
+      accept: 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.5',
+      ...deps,
+    });
     const items = parseRssFeed(text, { provider: feed.provider, sourceName: feed.sourceName, category: feed.category ?? null });
     return { status: providerStatus(feed.provider, 'success', { feed: feed.key, items: items.length }), items };
   } catch (e) {

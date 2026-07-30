@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { PIPELINE_STAGES, PROPERTY_TYPES, ACTION_TYPES, LEAD_TEMPS } from '../data/constants';
+import { PIPELINE_STAGES, PROPERTY_TYPES, LEAD_TEMPS } from '../data/constants';
 import { formatMoney, formatPercent, projectedCommissionAmount } from '../lib/dealValue';
-import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
+import EngagementPanel from './EngagementPanel';
 import { AddToMailerButton } from './MailerListPicker';
 import OwnershipLinksPanel from './OwnershipLinksPanel';
 import { StatusBadge } from './ui';
-import { RelatedTasks, getNextOpenTask, dueMeta, legacyActionDefaults, TASK_TYPE_MAP } from './tasks';
+import { getNextOpenTask, legacyActionDefaults, taskEditDefaults } from './tasks';
 
 export default function ClientCard({ client, onEdit, onDelete, onStageChange, onSetAction, onMoveToDatabase, onLogAction, onDeleteAction, compact = false, taskApi, ownershipApi, mailerApi }) {
   const stage = PIPELINE_STAGES.find(s => s.id === client.stageId) ?? PIPELINE_STAGES[0];
@@ -16,13 +16,9 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
 
   const openTasks = taskApi?.getRelatedTasks('client', client.id) ?? [];
   const nextTask = getNextOpenTask(openTasks);
-  const nextTaskType = nextTask ? TASK_TYPE_MAP[nextTask.taskType] : null;
-  const nextTaskDue = dueMeta(nextTask?.dueDate);
-  const actionType = ACTION_TYPES.find(a => a.value === client.nextActionType);
-  const fallbackDue = dueMeta(client.nextActionDate);
   const projectedCommission = projectedCommissionAmount(client.desiredSalePrice, client.projectedCommissionPct);
   const modalDefaults = nextTask
-    ? {}
+    ? taskEditDefaults(nextTask)
     : legacyActionDefaults(client.nextActionType, client.nextActionDate, client.nextActionNote);
 
   return (
@@ -204,101 +200,14 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         <p className="text-xs text-slate-500 italic line-clamp-2">{client.notes}</p>
       )}
 
-      {/* Next Action display / set button */}
-      <div className="mt-3 pt-3 border-t border-slate-700">
-        {nextTask ? (
-          <button
-            onClick={() => setShowActionCenter(true)}
-            className={`w-full rounded-xl px-3 py-2.5 text-left transition-all border ${
-              nextTaskDue?.tone === 'red'
-                ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
-                : nextTaskDue?.tone === 'amber'
-                  ? 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20'
-                  : 'bg-slate-800/60 border-slate-700 hover:border-slate-600'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm flex-shrink-0">{nextTaskType?.icon ?? '>'}</span>
-                <span className={`text-xs font-bold truncate ${
-                  nextTaskDue?.tone === 'red' ? 'text-red-400' : nextTaskDue?.tone === 'amber' ? 'text-amber-400' : 'text-slate-300'
-                }`}>
-                  {nextTask.title}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                {nextTaskDue && (
-                  <span className={`text-xs font-bold ${
-                    nextTaskDue.tone === 'red' ? 'text-red-400' : nextTaskDue.tone === 'amber' ? 'text-amber-400' : 'text-slate-500'
-                  }`}>{nextTaskDue.label}</span>
-                )}
-              </div>
-            </div>
-            {nextTask.description && (
-              <p className="text-xs text-slate-500 mt-1 truncate">{nextTask.description}</p>
-            )}
-          </button>
-        ) : actionType ? (
-          <button
-            onClick={() => setShowActionCenter(true)}
-            className={`w-full rounded-xl px-3 py-2.5 text-left transition-all border ${
-              fallbackDue?.tone === 'red'
-                ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
-                : fallbackDue?.tone === 'amber'
-                  ? 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/20'
-                  : 'bg-slate-800/60 border-slate-700 hover:border-slate-600'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm flex-shrink-0">{actionType.icon}</span>
-                <span className={`text-xs font-bold truncate ${
-                  fallbackDue?.tone === 'red' ? 'text-red-400' : fallbackDue?.tone === 'amber' ? 'text-amber-400' : 'text-slate-300'
-                }`}>
-                  {actionType.label}
-                </span>
-              </div>
-              {fallbackDue && (
-                <span className={`text-xs font-bold flex-shrink-0 ${
-                  fallbackDue.tone === 'red' ? 'text-red-400' : fallbackDue.tone === 'amber' ? 'text-amber-400' : 'text-slate-500'
-                }`}>{fallbackDue.label}</span>
-              )}
-            </div>
-            {client.nextActionNote && (
-              <p className="text-xs text-slate-500 mt-1 truncate">{client.nextActionNote}</p>
-            )}
-          </button>
-        ) : null}
-      </div>
-
-      {/* Activity and follow-up entry point */}
-      {onLogAction && (
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <LastActionLine
-            actionLog={client.actionLog}
-            onDeleteLast={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
-          />
-          <button
-            onClick={() => setShowActionCenter(true)}
-            className="flex-shrink-0 text-xs font-semibold text-slate-400 hover:text-amber-400 border border-slate-700 hover:border-amber-500/40 rounded-lg px-2 py-1 transition-all"
-          >
-            Log / schedule
-          </button>
-        </div>
-      )}
+      <EngagementPanel
+        record={client}
+        taskApi={taskApi}
+        onOpen={() => setShowActionCenter(true)}
+      />
 
       {showDetails && (
         <>
-      {/* Universal tasks tied to this client (Sprint 2) */}
-      <RelatedTasks
-        taskApi={taskApi}
-        relatedType="client"
-        relatedId={client.id}
-        relatedName={client.name}
-        source="client"
-        excludeTaskIds={nextTask ? [nextTask.id] : []}
-      />
-
       {!compact && ownershipApi && (
         <OwnershipLinksPanel
           record={client}
@@ -348,7 +257,9 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         onDeleteAction={onDeleteAction ? (index) => onDeleteAction(client.id, index) : undefined}
         taskContext={{ relatedType: 'client', relatedId: client.id, relatedName: client.name, source: compact ? 'pipeline' : 'client' }}
         taskDefaults={modalDefaults}
-        onSaveTask={taskApi?.createTask}
+        onSaveTask={modalDefaults.id
+          ? (fields) => taskApi?.updateTask(modalDefaults.id, fields)
+          : taskApi?.createTask}
         onClose={() => setShowActionCenter(false)}
       />
     )}

@@ -2,21 +2,24 @@ name: Market Intelligence Daily Brief
 
 on:
   schedule:
-    # GitHub cron is UTC. Calling at both offsets keeps the actual batch at
-    # 6:30 AM America/New_York across daylight and standard time; the API's
-    # Eastern-time gate makes the other invocation a no-op.
+    # Hourly calls let the API's Eastern-time scheduler run intraday news,
+    # rates, and Fed refresh windows. The API is idempotent per ET hour and
+    # remains the source of truth for DST/weekend behavior.
+    - cron: '0 * * * *'
+    # Keep both 6:30 offsets so the daily synthesized brief lands at the
+    # intended time across daylight and standard time.
     - cron: '30 10 * * *'
     - cron: '30 11 * * *'
   workflow_dispatch:
 
 jobs:
   daily-market-brief:
-    name: Build 6:30 AM ET market talking points
+    name: Refresh market intelligence on the Eastern schedule
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
-      - name: Refresh markets, news, active geographies, and daily brief
+      - name: Refresh due markets, news, active geographies, and daily brief
         env:
           MARKET_INTELLIGENCE_SECRET: ${{ secrets.MARKET_INTELLIGENCE_SECRET }}
         run: |
@@ -36,5 +39,5 @@ jobs:
             -X POST \
             -H "content-type: application/json" \
             -H "x-intelligence-secret: ${MARKET_INTELLIGENCE_SECRET}" \
-            -d "{\"mode\":\"${mode}\",\"trigger\":\"github_0630_et\"}" \
+            -d "{\"mode\":\"${mode}\",\"trigger\":\"github_schedule\"}" \
             "https://self-storage-crm.vercel.app/api/market-intelligence"

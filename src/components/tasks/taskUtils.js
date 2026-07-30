@@ -95,3 +95,15 @@ export function legacyActionDefaults(actionType, actionDate, actionNote) {
     description: actionNote || '',
   };
 }
+
+export function taskEditDefaults(task) {
+  if (!task) return {};
+  return {
+    id: task.id,
+    title: task.title || '',
+    taskType: task.taskType || 'follow_up',
+    priority: task.priority || 'normal',
+    dueDate: task.dueDate || undefined,
+    description: task.description || '',
+  };
+}

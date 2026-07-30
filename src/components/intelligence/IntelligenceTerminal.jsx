@@ -80,7 +80,10 @@ export default function IntelligenceTerminal() {
               </div>
 
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">News Radar</p>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">News Radar</p>
+                  <p className="text-[10px] text-slate-600">Fresh 10-day window · refreshed throughout the day</p>
+                </div>
                 <NewsRadar
                   stories={data.topStories ?? []}
                   savedStories={data.savedStories ?? []}

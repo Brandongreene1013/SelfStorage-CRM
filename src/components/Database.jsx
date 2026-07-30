@@ -9,6 +9,7 @@ import { buildRelatedOwnerCandidates, buildSharedContactInfoIndex, normalizeProp
 import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
 import ClientCard from './ClientCard';
+import EngagementPanel from './EngagementPanel';
 import MoveMenu from './MoveMenu';
 import { AddToMailerButton } from './MailerListPicker';
 import MailingAddressList from './MailingAddressList';
@@ -28,7 +29,7 @@ import {
   matchesLeadSource,
 } from '../data/constants';
 import { ModalLayout, StatusBadge, SearchToolbar, EmptyState } from './ui';
-import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
+import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults, taskEditDefaults, buildCallbackTaskQueue, TASK_TYPE_MAP } from './tasks';
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
 import { createActivityEventId, buildActivityAnalytics, easternToday } from '../lib/activityAnalytics';
 import { EVENT_META, eventTimeLabel } from '../lib/activityLog';
@@ -1211,7 +1212,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
             <div className="mt-3 flex flex-wrap gap-2">
               <button type="button" onClick={() => setActivityMode('combined')} disabled={!taskApi?.createTask && !onLogAction}
                 className="min-h-10 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-200 hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40">
-                Log activity / schedule task
+                Activity & tasks
               </button>
               {onAddToCoreClients && (
                 <button type="button" onClick={() => onAddToCoreClients(contact)}
@@ -1501,7 +1502,6 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
 function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, masterListId, lists = [], onMoveToList, onRemoveFromMaster, onToClients, taskApi, coreClient, pipelineRecords = [], selected = false, onToggleSelected }) {
   const [added, setAdded] = useState(false);
   const [activityMode, setActivityMode] = useState(null);
-  const [editingTask, setEditingTask] = useState(null);
   const [masterRemoval, setMasterRemoval] = useState(null);
   const [masterRemovalSaving, setMasterRemovalSaving] = useState(false);
   const [masterRemovalError, setMasterRemovalError] = useState('');
@@ -1510,10 +1510,9 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
 
   const openTasks = taskApi?.getRelatedTasks('contact', contact.id) ?? [];
   const nextTask = getNextOpenTask(openTasks);
-  const nextTaskType = nextTask ? TASK_TYPE_MAP[nextTask.taskType] : null;
-  const nextTaskDue = dueMeta(nextTask?.dueDate);
-  const actionType = ACTION_TYPES.find(a => a.value === contact.nextActionType);
-  const fallbackDue = dueMeta(contact.nextActionDate);
+  const modalDefaults = nextTask
+    ? taskEditDefaults(nextTask)
+    : legacyActionDefaults(contact.nextActionType, contact.nextActionDate, contact.nextActionNote);
   const source = contactSource(contact, lists);
   const rel = relationshipMeta(contact.relationshipType);
   const targetedLists = lists.filter(list => list.id !== masterListId);
@@ -1747,55 +1746,14 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
         <p className="mt-2 text-xs text-slate-600">Last called {contact.lastCalled}</p>
       )}
 
-      {/* Next action */}
-      <div className="mt-2">
-        {nextTask ? (
-          <button
-            onClick={e => { e.stopPropagation(); setEditingTask(nextTask); }}
-            className={`w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-all border ${
-              nextTaskDue?.tone === 'red'
-                ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                : nextTaskDue?.tone === 'amber'
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                  : 'bg-slate-800/60 border-slate-700 text-slate-400'
-            }`}
-          >
-            <span>{nextTaskType?.icon ?? '>'}</span>
-            <span className="font-semibold truncate">{nextTask.title}</span>
-            {nextTaskDue && <span className="font-bold ml-auto flex-shrink-0">{nextTaskDue.label}</span>}
-          </button>
-        ) : actionType ? (
-          <button
-            onClick={e => { e.stopPropagation(); setActivityMode('task'); }}
-            className={`w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-all border ${
-              fallbackDue?.tone === 'red'
-                ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                : fallbackDue?.tone === 'amber'
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                  : 'bg-slate-800/60 border-slate-700 text-slate-400'
-            }`}
-          >
-            <span>{actionType.icon}</span>
-            <span className="font-semibold truncate">{actionType.label}</span>
-            {fallbackDue && <span className="font-bold ml-auto flex-shrink-0">{fallbackDue.label}</span>}
-          </button>
-        ) : null}
-      </div>
-
-      {/* Unified relationship work for Database contacts. */}
       {(onLogAction || taskApi) && (
-        <div className="mt-2 pt-2 border-t border-slate-800 space-y-2">
-          <LastActionLine
-            actionLog={contact.actionLog}
-            onDeleteLast={onDeleteAction ? (index) => onDeleteAction(contact.id, index) : undefined}
-          />
-          <div>
-            <button type="button" onClick={event => { event.stopPropagation(); setActivityMode('combined'); }} disabled={!taskApi?.createTask && !onLogAction}
-              className="min-h-10 w-full text-xs font-bold text-slate-200 bg-slate-800 hover:text-amber-300 border border-slate-700 hover:border-amber-500/40 rounded-lg px-3 py-2 transition-all disabled:opacity-40">
-              Log activity / schedule task
-            </button>
-          </div>
-        </div>
+        <EngagementPanel
+          record={contact}
+          relatedType="contact"
+          taskApi={taskApi}
+          onOpen={() => setActivityMode('combined')}
+          stopPointerDown
+        />
       )}
 
       {activityMode && (
@@ -1807,25 +1765,11 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           onLogAction={onLogAction ? (entry) => onLogAction(contact.id, entry) : undefined}
           onDeleteAction={onDeleteAction ? (index) => onDeleteAction(contact.id, index) : undefined}
           taskContext={{ relatedType: 'contact', relatedId: contact.id, relatedName: contact.ownerName || contact.facilityName || 'Contact', source: 'database' }}
-          onSaveTask={taskApi?.createTask}
+          taskDefaults={modalDefaults}
+          onSaveTask={modalDefaults.id
+            ? (fields) => taskApi?.updateTask(modalDefaults.id, fields)
+            : taskApi?.createTask}
           onClose={() => setActivityMode(null)}
-        />
-      )}
-
-      {editingTask && (
-        <TaskModal
-          context={{ relatedType: 'contact', relatedId: contact.id, relatedName: contact.ownerName || contact.facilityName || 'Contact', source: 'database' }}
-          defaults={{
-            title: editingTask.title,
-            taskType: editingTask.taskType,
-            priority: editingTask.priority,
-            dueDate: editingTask.dueDate ?? undefined,
-            description: editingTask.description,
-          }}
-          heading="Edit Task"
-          saveLabel="Save Changes"
-          onSave={(fields) => taskApi?.updateTask(editingTask.id, fields)}
-          onClose={() => setEditingTask(null)}
         />
       )}
 
@@ -5261,7 +5205,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               <h3 className="text-sm font-bold text-white">Tasks</h3>
               <button type="button" onClick={() => setActivityTarget({ mode: null, contact: { ...current } })} disabled={!!activePostOutcome}
                 className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-200 hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40">
-                Log / schedule
+                Activity & tasks
               </button>
             </div>
             <p className="mb-2 text-xs text-slate-600">{openTasks.length} open</p>
@@ -5273,7 +5217,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
               <h3 className="text-sm font-bold text-white">Activity</h3>
               <button type="button" onClick={() => setActivityTarget({ mode: null, contact: { ...current } })} disabled={!!activePostOutcome}
                 className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-200 hover:border-amber-500/40 hover:text-amber-300 disabled:opacity-40">
-                Log / schedule
+                Activity & tasks
               </button>
             </div>
             {recentActivity.length > 0 ? (

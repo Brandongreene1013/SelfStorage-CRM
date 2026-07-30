@@ -5,6 +5,8 @@ import {
   buildMarketTape,
   toStory,
   assembleDashboard,
+  isCurrentStory,
+  storyRank,
   deriveRunKey,
   upsertItems,
   claimRun,
@@ -54,9 +56,9 @@ import {
 {
   const now = new Date('2026-07-23T12:00:00Z').getTime();
   const rows = [
-    { id: 1, canonical_url: 'https://a.com/1', provider: 'gdelt', source_name: 'GlobeSt', title: 'Storage portfolio trades', category: 'self_storage', importance_score: 90, is_saved: true, is_hidden: false, tags: ['portfolio'], provider_payload: { secret: 'x' } },
-    { id: 2, canonical_url: 'https://a.com/2', provider: 'gdelt', source_name: 'AP', title: 'Fed holds', category: 'rates', importance_score: 70, is_hidden: false, tags: [] },
-    { id: 3, canonical_url: 'https://a.com/3', provider: 'gdelt', title: 'Hidden', category: 'macro', importance_score: 99, is_hidden: true },
+    { id: 1, canonical_url: 'https://a.com/1', provider: 'gdelt', source_name: 'GlobeSt', title: 'Storage portfolio trades', published_at: '2026-07-23T10:00:00Z', category: 'self_storage', importance_score: 90, is_saved: true, is_hidden: false, tags: ['portfolio'], provider_payload: { secret: 'x' } },
+    { id: 2, canonical_url: 'https://a.com/2', provider: 'gdelt', source_name: 'AP', title: 'Fed holds', published_at: '2026-07-22T18:00:00Z', category: 'rates', importance_score: 70, is_hidden: false, tags: [] },
+    { id: 3, canonical_url: 'https://a.com/3', provider: 'gdelt', title: 'Hidden', published_at: '2026-07-23T11:00:00Z', category: 'macro', importance_score: 99, is_hidden: true },
   ];
   const story = toStory(rows[0]);
   assert.equal(story.source, 'GlobeSt');
@@ -87,6 +89,7 @@ import {
         canonical_url: `https://fed.example/${index}`,
         provider: 'federal_reserve',
         title: `Fed story ${index}`,
+        published_at: '2026-07-22T12:00:00Z',
         category: 'rates',
         importance_score: 100 - index,
         is_hidden: false,
@@ -96,6 +99,7 @@ import {
         canonical_url: 'https://pe.example/deal',
         provider: 'google_news',
         title: 'Private equity real estate fund closes',
+        published_at: '2026-07-22T13:00:00Z',
         category: 'private_equity',
         importance_score: 50,
         is_hidden: false,
@@ -105,6 +109,7 @@ import {
         canonical_url: 'https://local.example/sherman',
         provider: 'google_news',
         title: 'Sherman infrastructure project advances',
+        published_at: '2026-07-22T14:00:00Z',
         category: 'cre',
         importance_score: 1,
         tags: ['market:Sherman, TX'],
@@ -116,6 +121,14 @@ import {
   }, { now });
   assert.ok(crowded.topStories.some(item => item.category === 'private_equity'), 'category balancing prevents rates from crowding out PE');
   assert.ok(crowded.topStories.some(item => item.tags.includes('market:Sherman, TX')), 'active-market evidence reaches synthesis despite a low national score');
+
+  assert.equal(isCurrentStory({ publishedAt: '2026-07-01T12:00:00Z' }, now), false, 'old stories expire from the live radar');
+  assert.equal(isCurrentStory({ publishedAt: '2026-07-23T11:00:00Z', relevanceScore: 0 }, now), false, 'fresh discovery noise does not enter the live radar');
+  assert.ok(
+    storyRank({ publishedAt: '2026-07-23T11:00:00Z', importanceScore: 50 }, now)
+      > storyRank({ publishedAt: '2026-07-15T11:00:00Z', importanceScore: 50 }, now),
+    'equally important stories are re-ranked using current freshness',
+  );
 
   // Stale when brief is old / missing.
   const staleDash = assembleDashboard({ snapshot: null, items: rows, dataPoints: [], latestRun: null }, { now });

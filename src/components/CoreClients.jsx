@@ -183,7 +183,7 @@ export default function CoreClients({
                       <td className="px-4 py-3 text-sm text-slate-400">{profile.assignedUser}</td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1.5">
-                          <button onClick={() => setActivity(row)} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-bold text-slate-300 hover:border-amber-500/40 hover:text-amber-300">Log / task</button>
+                          <button onClick={() => setActivity(row)} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-bold text-slate-300 hover:border-amber-500/40 hover:text-amber-300">Activity & tasks</button>
                           <button onClick={() => setEditing(row)} className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-bold text-slate-300 hover:text-white">Edit</button>
                           <button onClick={() => onAddToPipeline(contact)} className="rounded-lg bg-emerald-500/15 px-2.5 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/25">Pipeline</button>
                           <button onClick={() => {

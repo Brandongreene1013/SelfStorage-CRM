@@ -9,6 +9,7 @@ const FILTERS = [
   ['rates', 'Rates'],
   ['private_credit', 'Credit'],
   ['private_equity', 'PE'],
+  ['macro', 'Macro'],
   ['saved', 'Saved'],
 ];
 
@@ -50,7 +51,7 @@ export default function NewsRadar({ stories = [], savedStories = [], onOpen, onT
           {filter === 'saved' ? 'No saved stories yet — tap the star on any story.' : 'No stories in this category yet.'}
         </p>
       ) : (
-        <div className="max-h-[30rem] overflow-y-auto scrollbar-thin divide-y divide-slate-800/50">
+        <div className="max-h-[36rem] overflow-y-auto scrollbar-thin divide-y divide-slate-800/50">
           {shown.map(story => (
             <NewsRow key={story.id ?? story.url} story={story} onOpen={onOpen} onToggleSave={onToggleSave} />
           ))}
