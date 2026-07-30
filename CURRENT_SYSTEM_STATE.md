@@ -90,17 +90,20 @@ Unrelated stabilization work must not alter:
 
 ## Current verification baseline
 
-At `33bf531`:
+At the stabilization branch head:
 
 - `npm run lint` passes.
 - `npm test` passes all 24 suites.
 - `npm run build` passes.
-- The primary bundle is approximately 960 KB minified / 256 KB gzip before
-  stabilization lazy-loading.
+- The initial bundle is approximately 539 KB minified / 150 KB gzip after
+  lazy-loading Dashboard, Database, Pipeline, and Core Clients (down from
+  approximately 960 KB / 256 KB gzip).
 
 ## Known remaining architecture debt
 
-1. Pipeline stage mutation and its audit insert are not yet transactional.
+1. Pipeline stage mutation and its audit insert use a compatibility path until
+   `sql/pipeline_stage_rpc_migration.sql` is manually applied; the proposed RPC
+   is transactional.
 2. Activity history remains embedded JSON rather than an append-only activity
    table.
 3. Legacy next-action columns remain in the schema for fallback compatibility.
@@ -109,4 +112,3 @@ At `33bf531`:
    must explicitly refresh affected stores.
 6. Optional Market Intelligence persistence and the full Salesforce screenshot
    import schema are not installed in production.
-

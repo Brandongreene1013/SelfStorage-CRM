@@ -9,6 +9,7 @@ import {
   dbToPipelineOpportunity,
   withCanonicalContact,
 } from '../src/lib/pipelineOpportunity.js';
+import { normalizeProbeStatus } from '../src/lib/systemHealth.js';
 
 assert.equal(isMissingColumnError({
   code: 'PGRST204',
@@ -29,6 +30,10 @@ assert.equal(classifySchemaProbe({
   code: 'PGRST205',
   message: "Could not find the table 'public.market_stories'",
 }), 'migration_needed');
+assert.equal(normalizeProbeStatus(
+  { serverOnly: true },
+  { code: '42501', message: 'permission denied' },
+), 'ready');
 
 const opportunity = dbToPipelineOpportunity({
   id: 'opp-1',
@@ -58,4 +63,3 @@ assert.equal(opportunity.name, 'Stale Name');
 assert.equal(withCanonicalContact(opportunity, { id: 'different' }), opportunity);
 
 console.log('stabilization tests passed');
-

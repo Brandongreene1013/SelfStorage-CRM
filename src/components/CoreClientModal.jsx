@@ -49,8 +49,8 @@ export default function CoreClientModal({
     priceExpectations: profile?.priceExpectations ?? '',
     saleBarriers: profile?.saleBarriers ?? '',
     followUpFrequencyDays: profile?.followUpFrequencyDays ? String(profile.followUpFrequencyDays) : '',
-    nextAction: profile?.nextAction ?? '',
-    nextActionDueDate: profile?.nextActionDueDate ?? '',
+    nextAction: '',
+    nextActionDueDate: '',
     assignedUser: profile?.assignedUser ?? 'Brandon Greene',
     notes: profile?.notes ?? '',
     status: 'active',
@@ -64,9 +64,19 @@ export default function CoreClientModal({
 
   async function submit() {
     if (saving) return;
+    if (Boolean(form.nextAction) !== Boolean(form.nextActionDueDate)) {
+      setError('Enter both a follow-up task and its due date, or leave both blank.');
+      return;
+    }
     setSaving(true);
     setError('');
-    const result = await onSave(form);
+    const result = await onSave({
+      ...form,
+      // Preserve compatibility fallback fields without creating a second
+      // follow-up source. All new follow-ups are universal tasks.
+      nextAction: profile?.nextAction ?? '',
+      nextActionDueDate: profile?.nextActionDueDate ?? '',
+    });
     if (result?.error) {
       setError(result.error);
       setSaving(false);
@@ -161,10 +171,10 @@ export default function CoreClientModal({
           <Field label="Barriers preventing a sale" span>
             <textarea className={inputClass} rows={2} value={form.saleBarriers} onChange={event => update('saleBarriers', event.target.value)} placeholder="Expansion, occupancy, timing, family, pricing…" />
           </Field>
-          <Field label="Next action">
+          <Field label="Create follow-up task">
             <input className={inputClass} value={form.nextAction} onChange={event => update('nextAction', event.target.value)} placeholder="Call, send report, prepare BOV…" />
           </Field>
-          <Field label="Next-action due date">
+          <Field label="Task due date">
             <input type="date" className={inputClass} value={form.nextActionDueDate} onChange={event => update('nextActionDueDate', event.target.value)} />
           </Field>
           <Field label="Relationship notes" span>

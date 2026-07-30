@@ -25,6 +25,13 @@ function missingPipelineHistory(error) {
   return isMissingTableError(error, 'pipeline_stage_history');
 }
 
+function missingPipelineStageRpc(error) {
+  const message = supabaseErrorText(error);
+  return error?.code === 'PGRST202'
+    || (error?.code === '42883' && message.includes('change_pipeline_stage'))
+    || /change_pipeline_stage.*schema cache/i.test(message);
+}
+
 function hasLeadSourceInput(data) {
   return Boolean(String(data.leadSource || '').trim());
 }
@@ -53,6 +60,7 @@ function buildDealValueLogEntry(data) {
 export function useCRM() {
   const [clients, setClients] = useState([]);
   const [dealValueMigrationNeeded, setDealValueMigrationNeeded] = useState(false);
+  const [pipelineStageRpcStatus, setPipelineStageRpcStatus] = useState('unknown');
 
   const loadClients = useCallback(async () => {
     const { data, error } = await selectAllRows(() => supabase
@@ -318,15 +326,34 @@ export function useCRM() {
 
   const deleteClient = useCallback(async (id) => {
     const { error } = await supabase.from('clients').delete().eq('id', id);
-    if (!error) {
-      setClients(prev => prev.filter(c => c.id !== id));
-    }
+    if (error) return { error: error.message };
+    setClients(prev => prev.filter(c => c.id !== id));
+    return { ok: true };
   }, []);
 
   const moveClientToStage = useCallback(async (id, stageId) => {
     const client = clients.find(item => item.id === id);
     if (!client) return { error: 'Pipeline opportunity not found. Refresh and try again.' };
     if (Number(client.stageId) === Number(stageId)) return { ok: true, client };
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc('change_pipeline_stage', {
+      p_client_id: id,
+      p_new_stage_id: Number(stageId),
+      p_changed_by: 'Brandon Greene',
+      p_note: `Pipeline moved from stage ${client.stageId} to stage ${stageId}.`,
+    });
+    if (!rpcError && rpcData?.client) {
+      setPipelineStageRpcStatus('ready');
+      const saved = dbToPipelineOpportunity(rpcData.client);
+      setClients(prev => prev.map(item => item.id === id ? saved : item));
+      return { ok: true, client: saved, atomic: true };
+    }
+    if (rpcError && !missingPipelineStageRpc(rpcError)) {
+      return { error: rpcError.message };
+    }
+    setPipelineStageRpcStatus('missing');
+
+    // Compatibility path until sql/pipeline_stage_rpc_migration.sql is run.
     const changedAt = new Date().toISOString();
     const historyEntry = {
       eventId: createActivityEventId(),
@@ -417,8 +444,10 @@ export function useCRM() {
     const db = { action_log: nextLog, updated_at: new Date().toISOString() };
     if (email !== undefined && email !== null) db.email = email;
     const { error } = await supabase.from('clients').update(db).eq('id', id);
-    if (!error) setClients(prev => prev.map(c => c.id === id
+    if (error) return { error: error.message };
+    setClients(prev => prev.map(c => c.id === id
       ? { ...c, actionLog: nextLog, ...(email !== undefined && email !== null ? { email } : {}) } : c));
+    return { ok: true };
   }, [clients]);
 
   // Append a logged action to a client's activity log
@@ -446,5 +475,5 @@ export function useCRM() {
     return { ok: true };
   }, [clients]);
 
-  return { clients, dealValueMigrationNeeded, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog };
+  return { clients, dealValueMigrationNeeded, pipelineStageRpcStatus, reload: loadClients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog };
 }

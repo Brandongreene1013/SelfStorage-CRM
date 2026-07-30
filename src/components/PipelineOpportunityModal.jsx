@@ -11,6 +11,7 @@ export default function PipelineOpportunityModal({
   clients = [],
   onSave,
   onTaskCreate,
+  onRollback,
   onClose,
 }) {
   const availableProperties = properties.filter(property => contact?.ownershipGroupId
@@ -50,6 +51,10 @@ export default function PipelineOpportunityModal({
       setError(`This owner and property are already in Pipeline as "${duplicate.opportunityName || duplicate.facilityName || duplicate.name}".`);
       return;
     }
+    if (Boolean(form.nextAction) !== Boolean(form.nextActionDueDate)) {
+      setError('Enter both a follow-up task and its due date, or leave both blank.');
+      return;
+    }
     setSaving(true);
     setError('');
     const propertyName = selectedProperty?.facilityName || contact.facilityName || '';
@@ -73,9 +78,6 @@ export default function PipelineOpportunityModal({
       assignedUser: form.assignedUser,
       desiredSalePrice: form.desiredSalePrice || null,
       ownerPricingExpectation: form.ownerPricingExpectation || null,
-      nextActionType: form.nextAction ? 'call' : '',
-      nextActionDate: form.nextActionDueDate,
-      nextActionNote: form.nextAction,
       actionLog: [{
         eventId: crypto.randomUUID(),
         type: 'pipeline_stage_changed',
@@ -107,7 +109,12 @@ export default function PipelineOpportunityModal({
         source: 'pipeline',
       });
       if (taskResult?.error) {
-        setError(`Opportunity saved, but the next task failed: ${taskResult.error}`);
+        const rollbackResult = onRollback
+          ? await onRollback(result.client.id)
+          : { error: 'rollback_unavailable' };
+        setError(rollbackResult?.error
+          ? `Opportunity saved, but the follow-up task failed: ${taskResult.error}. Remove the incomplete opportunity or add its task manually.`
+          : `Nothing was created because the follow-up task failed: ${taskResult.error}. Please try again.`);
         setSaving(false);
         return;
       }
@@ -150,11 +157,11 @@ export default function PipelineOpportunityModal({
             <input type="number" min="0" className={inputClass} value={form.ownerPricingExpectation} onChange={event => update('ownerPricingExpectation', event.target.value)} />
           </label>
           <label>
-            <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Next action</span>
+            <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Create follow-up task</span>
             <input className={inputClass} value={form.nextAction} onChange={event => update('nextAction', event.target.value)} />
           </label>
           <label>
-            <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Next-action due date</span>
+            <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Task due date</span>
             <input type="date" className={inputClass} value={form.nextActionDueDate} onChange={event => update('nextActionDueDate', event.target.value)} />
           </label>
           <label className="sm:col-span-2">

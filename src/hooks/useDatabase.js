@@ -1710,8 +1710,10 @@ export function useDatabase() {
     const db = { action_log: nextLog, updated_at: new Date().toISOString() };
     if (email !== undefined && email !== null) db.email = email;
     const { error } = await supabase.from('contacts').update(db).eq('id', contactId);
-    if (!error) setContacts(prev => prev.map(c => c.id === contactId
+    if (error) return { error: error.message };
+    setContacts(prev => prev.map(c => c.id === contactId
       ? { ...c, actionLog: nextLog, ...(email !== undefined && email !== null ? { email } : {}) } : c));
+    return { ok: true };
   }, [contacts]);
 
   // Append a logged action to a contact's activity log
