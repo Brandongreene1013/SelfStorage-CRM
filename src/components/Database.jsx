@@ -54,6 +54,8 @@ const STATUS_LABELS = {
   callback: 'Call Back',
 };
 
+const CORE_CLIENTS_LIST_ID = 'core-clients';
+
 const STATUS_COLORS = {
   fresh:          'bg-slate-700 text-slate-300',
   no_answer:      'bg-yellow-600/20 text-yellow-400 border border-yellow-600/40',
@@ -2491,6 +2493,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     duplicateDismissals, dismissedDuplicateKeys, dismissalStorage, dismissDuplicateGroup, restoreDuplicateGroup,
   } = db;
   const logContactAction = contactActionLogger || persistContactAction;
+  const activeCoreContactIds = useMemo(() => new Set((coreApi?.coreClients ?? [])
+    .filter(profile => profile.status === 'active')
+    .map(profile => profile.contactId)), [coreApi?.coreClients]);
   const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -2579,7 +2584,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
   async function removeSelectedFromActiveList() {
     const ids = [...selectedContactIds];
-    if (!activeListId || activeListId === masterListId || activeListId === 'all' || ids.length === 0) return;
+    if (!activeListId || activeListId === masterListId || activeListId === 'all'
+      || activeListId === CORE_CLIENTS_LIST_ID || ids.length === 0) return;
     const result = await removeContactsFromList(ids, activeListId);
     if (result?.error) {
       setBulkStatus(result.error);
@@ -2846,7 +2852,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const filtered = useMemo(() => {
     if (activeListId === null) return [];
     const result = contacts.filter(c => {
-      if (activeListId !== 'all' && !contactInList(c, activeListId)) return false;
+      if (activeListId === CORE_CLIENTS_LIST_ID && !activeCoreContactIds.has(c.id)) return false;
+      if (activeListId !== 'all' && activeListId !== CORE_CLIENTS_LIST_ID && !contactInList(c, activeListId)) return false;
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
       if (relationshipFilter !== 'all' && (c.relationshipType ?? DEFAULT_RELATIONSHIP_TYPE) !== relationshipFilter) return false;
       if (leadTempFilter === 'none' && c.leadTemp) return false;
@@ -2855,7 +2862,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       if (callbackFilter === 'none' && callbackIds.any.has(c.id)) return false;
       if (stateFilter !== 'all' && String(c.state || '').trim().toUpperCase() !== stateFilter) return false;
       if (!matchesLeadSourceFilter(c, lists, sourceFilter)) return false;
-      const isCoreClient = coreApi?.coreClients.some(item => item.contactId === c.id && item.status === 'active');
+      const isCoreClient = activeCoreContactIds.has(c.id);
       if (coreFilter === 'yes' && !isCoreClient) return false;
       if (coreFilter === 'no' && isCoreClient) return false;
       const contactPipeline = clients.filter(client => client.contactId === c.id);
@@ -2911,7 +2918,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     dataFilter,
     coreFilter,
     pipelineStageFilter,
-    coreApi,
+    activeCoreContactIds,
     clients,
     lists,
     search,
@@ -2972,6 +2979,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
 
   const activeListLabel = activeListId === null ? 'Active List'
     : activeListId === masterListId ? 'Master Database'
+    : activeListId === CORE_CLIENTS_LIST_ID ? 'Core Clients'
     : activeListId === 'all' ? 'All Contacts'
     : (lists.find(l => l.id === activeListId)?.name ?? 'Active List');
 
@@ -3074,9 +3082,16 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     let queue;
     let label = s.label ?? 'Call Mode';
     if (s.queueKey === 'activeList') {
-      if (!s.listId || !lists.some(l => l.id === s.listId)) return null;
-      queue = contacts.filter(c => contactInList(c, s.listId) && ['fresh', 'callback', 'no_answer', 'voicemail'].includes(c.status));
-      label = lists.find(l => l.id === s.listId)?.name ?? label;
+      if (!s.listId || (s.listId !== CORE_CLIENTS_LIST_ID && !lists.some(l => l.id === s.listId))) return null;
+      queue = contacts.filter(c => {
+        const inSavedList = s.listId === CORE_CLIENTS_LIST_ID
+          ? activeCoreContactIds.has(c.id)
+          : contactInList(c, s.listId);
+        return inSavedList && ['fresh', 'callback', 'no_answer', 'voicemail'].includes(c.status);
+      });
+      label = s.listId === CORE_CLIENTS_LIST_ID
+        ? 'Core Clients'
+        : lists.find(l => l.id === s.listId)?.name ?? label;
     } else {
       queue = QUEUE_DEFS.find(q => q.key === s.queueKey)?.queue ?? [];
     }
@@ -3085,7 +3100,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     if (resumeIndex < 0) resumeIndex = Math.min(s.index ?? 0, queue.length - 1);
     if (resumeIndex <= 0) return null;
     return { ...s, resumeIndex, currentTotal: queue.length, label };
-  }, [savedCallSession, contacts, lists, QUEUE_DEFS]);
+  }, [savedCallSession, contacts, lists, QUEUE_DEFS, activeCoreContactIds]);
 
   function resumeSavedSession() {
     if (!resumeInfo) return;
@@ -3292,6 +3307,26 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             </DropTarget>
           )}
 
+          {/* Core Clients — a live view over canonical Master Database contacts */}
+          <button
+            onClick={() => {
+              setActiveListId(CORE_CLIENTS_LIST_ID);
+              setSubView('contacts');
+              setCoreFilter('all');
+              setContactPage(1);
+            }}
+            className={`w-full text-left px-3 py-2.5 flex items-center justify-between transition-all text-sm border-b border-slate-800/50 ${
+              activeListId === CORE_CLIENTS_LIST_ID && subView === 'contacts'
+                ? 'bg-amber-500/10 text-amber-300 border-l-2 border-amber-400'
+                : 'text-amber-300/70 hover:text-amber-300 hover:bg-slate-800 border-l-2 border-transparent'
+            }`}
+          >
+            <span className="font-bold flex items-center gap-1.5">◆ Core Clients</span>
+            <span className="text-xs bg-amber-500/10 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded-md">
+              {activeCoreContactIds.size}
+            </span>
+          </button>
+
           {/* All contacts */}
           <button
             onClick={() => { setActiveListId('all'); setSubView('contacts'); }}
@@ -3413,7 +3448,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         </DropTarget>
 
         {/* Delete list button — not for Master Database */}
-        {activeListId !== 'all' && activeListId !== masterListId && (
+        {activeListId !== 'all' && activeListId !== masterListId && activeListId !== CORE_CLIENTS_LIST_ID && (
           <button
             onClick={() => handleDeleteList(activeListId)}
             className="w-full text-xs font-semibold text-red-500 hover:text-red-400 bg-red-900/10 hover:bg-red-900/20 border border-red-900/30 rounded-xl px-3 py-2 transition-all"
@@ -3491,8 +3526,12 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               onUpdateContact={updateContact}
               onDeleteContact={deleteContact}
               onRemoveFromList={removeContactsFromList}
-              sourceListId={callQueueSource === 'activeList' && activeListId !== masterListId ? activeListId : null}
-              sourceListName={callQueueSource === 'activeList' && activeListId !== masterListId
+              sourceListId={callQueueSource === 'activeList'
+                && activeListId !== masterListId
+                && activeListId !== CORE_CLIENTS_LIST_ID ? activeListId : null}
+              sourceListName={callQueueSource === 'activeList'
+                && activeListId !== masterListId
+                && activeListId !== CORE_CLIENTS_LIST_ID
                 ? lists.find(list => list.id === activeListId)?.name
                 : null}
               onLogAction={logContactAction}
@@ -3634,7 +3673,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                   </button>
                 </>
               )}
-              {activeListId !== 'all' && (
+              {activeListId !== 'all' && activeListId !== CORE_CLIENTS_LIST_ID && (
                 <button
                   onClick={() => setShowBulkImport(true)}
                   className="bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 text-emerald-400 font-bold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5"
@@ -3642,7 +3681,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                   Bulk Upload
                 </button>
               )}
-              {activeListId !== 'all' && (
+              {activeListId !== 'all' && activeListId !== CORE_CLIENTS_LIST_ID && (
                 <button
                   onClick={() => setShowAddContact(true)}
                   className={`${activeListId === masterListId ? '' : 'ml-auto'} bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold px-3 py-2 rounded-lg text-xs transition-all flex items-center gap-1.5`}
@@ -3689,7 +3728,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                   >
                     + New list
                   </button>
-                  {activeListId && activeListId !== masterListId && activeListId !== 'all' && (
+                  {activeListId && activeListId !== masterListId
+                    && activeListId !== 'all' && activeListId !== CORE_CLIENTS_LIST_ID && (
                     <button
                       type="button"
                       onClick={removeSelectedFromActiveList}
@@ -3768,7 +3808,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     onSetAction={(id, fields) => updateContact(id, fields)}
                     onLogAction={logContactAction}
                     onDeleteAction={deleteContactAction}
-                    isMasterDB={masterView}
+                    isMasterDB={masterView || (activeListId === CORE_CLIENTS_LIST_ID && contactInList(c, masterListId))}
                     masterListId={masterListId}
                     lists={lists}
                     onMoveToList={moveContactToList}
@@ -3864,7 +3904,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
         />
       )}
 
-      {showBulkImport && activeListId && activeListId !== 'all' && (
+      {showBulkImport && activeListId && activeListId !== 'all' && activeListId !== CORE_CLIENTS_LIST_ID && (
         <ImportListModal
           fixedListName={activeListId === masterListId
             ? 'Master Database'
@@ -3923,7 +3963,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       )}
 
       {/* ── Add Contact modal ── */}
-      {showAddContact && activeListId !== 'all' && (
+      {showAddContact && activeListId !== 'all' && activeListId !== CORE_CLIENTS_LIST_ID && (
         <AddContactModal
           listName={lists.find(l => l.id === activeListId)?.name ?? ''}
           onSave={(fields) => addContact(activeListId, fields)}
