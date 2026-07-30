@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { selectAllRows } from '../lib/selectAllRows';
+import { isMissingColumnError, isMissingTableError } from '../lib/supabaseErrors';
 
 // Mailer Lists: named lists of contacts/clients for physical mailings.
 // Members store the referenced person plus the exact selected mailing address,
@@ -9,24 +10,13 @@ import { selectAllRows } from '../lib/selectAllRows';
 // until that runs, `tablesMissing` is true and the UI shows a run-the-migration
 // notice instead of silently failing.
 
-function isMissingTableError(error) {
-  if (!error) return false;
-  const msg = error.message ?? '';
-  return error.code === '42P01' || error.code === 'PGRST205'
-    || /relation .*mailer_list.* does not exist|could not find the table/i.test(msg);
-}
-
 function isMissingMailerSchemaError(error) {
-  if (!error) return false;
-  const msg = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`;
-  return error.code === 'PGRST204' || error.code === '42703'
-    || /mailing_address|address_label/i.test(msg);
+  return isMissingColumnError(error, 'mailing_address')
+    || isMissingColumnError(error, 'address_label');
 }
 
 function isMissingSentTrackingError(error) {
-  if (!error) return false;
-  const msg = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`;
-  return error.code === 'PGRST204' || error.code === '42703' || /sent_at/i.test(msg);
+  return isMissingColumnError(error, 'sent_at');
 }
 
 function dbToList(row) {

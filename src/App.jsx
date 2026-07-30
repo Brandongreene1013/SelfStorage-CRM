@@ -24,6 +24,7 @@ import { SearchToolbar, FilterPills, PageHeader, Button } from './components/ui'
 import { downloadCrmBackup } from './lib/crmBackupExport';
 import { buildCommissionSummary, formatMoney } from './lib/dealValue';
 import { isMeaningfulOwnerActivity } from './lib/relationshipWorkspace';
+import { withCanonicalContact } from './lib/pipelineOpportunity';
 import './index.css';
 
 const VIEWS = ['Dashboard', 'Pipeline', 'Core Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
@@ -97,15 +98,23 @@ export default function App() {
   const [backupStatus, setBackupStatus] = useState('');
   const mailerApi = useMailerLists(); // mailer lists — shared so the ✉️ buttons and the Mailers tab stay in sync
 
+  const pipelineOpportunities = useMemo(() => {
+    const contactsById = new Map(db.contacts.map(contact => [contact.id, contact]));
+    return clients.map(opportunity => withCanonicalContact(
+      opportunity,
+      contactsById.get(opportunity.contactId),
+    ));
+  }, [clients, db.contacts]);
+
   const [view, setView] = useState('Dashboard');
   const [coreClientTarget, setCoreClientTarget] = useState(null);
   const [pipelineTarget, setPipelineTarget] = useState(null);
 
   // ── Email "needs review" matches: build the flagged list + confirm/reassign/dismiss ──
   const reviewRecords = useMemo(() => [
-    ...clients.map(c => ({ table: 'clients', id: c.id, name: c.name, facility: c.facilityName, email: c.email, actionLog: c.actionLog ?? [] })),
+    ...pipelineOpportunities.map(c => ({ table: 'clients', id: c.id, name: c.name, facility: c.facilityName, email: c.email, actionLog: c.actionLog ?? [] })),
     ...db.contacts.map(c => ({ table: 'contacts', id: c.id, name: c.ownerName, facility: c.facilityName, email: c.email, actionLog: c.actionLog ?? [] })),
-  ], [clients, db.contacts]);
+  ], [pipelineOpportunities, db.contacts]);
   const reviewItems = reviewRecords.flatMap(r =>
     (r.actionLog || []).filter(e => e.needsReview).map(entry => ({ host: r, entry })));
 
@@ -278,13 +287,14 @@ export default function App() {
   }
 
   async function handleSaveEdit(data) {
-    const result = await updateClient(editingClient.id, data);
+    const linkedContact = editingClient.contactId
+      ? db.contacts.find(contact => contact.id === editingClient.contactId)
+      : null;
+    const payload = linkedContact
+      ? withCanonicalContact({ ...data, contactId: editingClient.contactId }, linkedContact)
+      : data;
+    const result = await updateClient(editingClient.id, payload);
     if (result?.ok) {
-      const contactId = result.client?.contactId ?? editingClient.contactId;
-      if (contactId) {
-        const contactResult = await db.updateContact(contactId, contactFieldsFromClient(result.client ?? data));
-        if (contactResult?.error) return contactResult;
-      }
       setEditingClient(null);
     }
     return result;
@@ -301,7 +311,7 @@ export default function App() {
   }
 
 
-  const visibleClients = clients.filter(c => {
+  const visibleClients = pipelineOpportunities.filter(c => {
     if (filter !== 'All' && c.type !== filter) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -388,7 +398,7 @@ export default function App() {
           trailing={
             <div className="ml-auto flex flex-col items-end gap-2">
               <span className="text-xs text-slate-500 hidden sm:block">
-                {visibleClients.length} / {clients.length} opportunities
+                {visibleClients.length} / {pipelineOpportunities.length} opportunities
               </span>
               <PipelineValueHeader clients={visibleClients} />
             </div>
@@ -410,7 +420,7 @@ export default function App() {
         <ErrorBoundary key={view} label={view}>
         {view === 'Dashboard' && (
           <Dashboard
-            clients={clients}
+            clients={pipelineOpportunities}
             contacts={db.contacts}
             meetings={meetings}
             calendarEvents={calendarEvents}
@@ -459,7 +469,7 @@ export default function App() {
             coreApi={coreApi}
             contacts={db.contacts}
             properties={ownershipApi.properties}
-            clients={clients}
+            clients={pipelineOpportunities}
             taskApi={taskApi}
             onLogContactAction={handleLogContactAction}
             onDeleteContactAction={db.deleteContactAction}
@@ -471,7 +481,7 @@ export default function App() {
           <Database
             db={db}
             onContactToClients={handleContactToClients}
-            clients={clients}
+            clients={pipelineOpportunities}
             clientHandlers={{
               onEdit: handleEdit,
               onDelete: handleDelete,
@@ -498,7 +508,7 @@ export default function App() {
           {view === 'Mailers' && (
             <div>
               <PageHeader title="Mailer Lists" badge="Who's getting mail, and where" />
-              <MailerLists mailerApi={mailerApi} contacts={db.contacts} clients={clients} />
+              <MailerLists mailerApi={mailerApi} contacts={db.contacts} clients={pipelineOpportunities} />
             </div>
           )}
 
@@ -508,7 +518,7 @@ export default function App() {
             <Calendar
               meetings={meetings}
               calendarEvents={calendarEvents}
-              clients={clients}
+              clients={pipelineOpportunities}
               onAdd={addMeeting}
               onUpdate={updateMeeting}
               onDelete={deleteMeeting}
@@ -548,7 +558,7 @@ export default function App() {
           properties={ownershipApi.properties}
           onSave={coreApi.saveCoreClient}
           onTaskCreate={taskApi.createTask}
-          pipelineRecords={clients.filter(client => client.contactId === coreClientTarget.id)}
+          pipelineRecords={pipelineOpportunities.filter(client => client.contactId === coreClientTarget.id)}
           continuumHistory={coreApi.historyForCoreClient(
             coreApi.coreClients.find(item => item.contactId === coreClientTarget.id)?.id,
           )}
@@ -564,7 +574,7 @@ export default function App() {
         <PipelineOpportunityModal
           contact={pipelineTarget}
           properties={ownershipApi.properties}
-          clients={clients}
+          clients={pipelineOpportunities}
           onSave={addClient}
           onTaskCreate={taskApi.createTask}
           onClose={() => setPipelineTarget(null)}

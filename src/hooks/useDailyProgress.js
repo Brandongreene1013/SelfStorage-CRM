@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { selectAllRows } from '../lib/selectAllRows';
+import { isMissingColumnError } from '../lib/supabaseErrors';
 
 export const PROGRESS_FIELDS = [
   { key: 'calls',               label: 'Total Calls Made',          shortLabel: 'Calls',        accent: 'text-blue-400',    bg: 'bg-blue-500/10',    border: 'border-blue-500/30'    },
@@ -50,11 +51,14 @@ export function useDailyProgress() {
   const [migrationNeeded, setMigrationNeeded] = useState(false);
 
   function isMissingScorecardColumn(error) {
-    if (!error) return false;
-    const msg = error.message ?? '';
-    return error.code === '42703'
-      || error.code === 'PGRST204'
-      || /voicemails|additions_to_database|bov_proposals|owners_identified|unique_owners_worked|total_owner_actions/i.test(msg);
+    return [
+      'voicemails',
+      'additions_to_database',
+      'bov_proposals',
+      'owners_identified',
+      'unique_owners_worked',
+      'total_owner_actions',
+    ].some(column => isMissingColumnError(error, column));
   }
 
   const loadAll = useCallback(async () => {

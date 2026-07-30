@@ -5,17 +5,12 @@ import { normalizeMailingAddresses } from '../lib/mailingAddresses';
 import { formatMoney, formatPercent, numberOrNull, projectedCommissionAmount } from '../lib/dealValue';
 import { buildCaptureLogEntries, createActivityEventId } from '../lib/activityAnalytics';
 import { canonicalLeadSource } from '../data/constants';
-
-function isMissingColumnError(error, columnName) {
-  if (!error) return false;
-  const text = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`;
-  return text.includes(columnName);
-}
+import { dbToPipelineOpportunity } from '../lib/pipelineOpportunity';
+import { isMissingColumnError, isMissingTableError, supabaseErrorText } from '../lib/supabaseErrors';
 
 function isMissingExactColumnError(error, columnName) {
-  if (!error) return false;
-  const text = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`;
-  return text.includes(`'${columnName}'`) || text.includes(`"${columnName}"`) || text.includes(`.${columnName}`) || text.includes(`column ${columnName}`);
+  return isMissingColumnError(error, columnName)
+    && new RegExp(`(?:['".]|column\\s+)${columnName}(?:['"\\s]|$)`, 'i').test(supabaseErrorText(error));
 }
 
 function hasDealValueInput(data) {
@@ -27,8 +22,7 @@ function hasAgeInput(data) {
 }
 
 function missingPipelineHistory(error) {
-  return error?.code === 'PGRST205'
-    || String(error?.message || '').includes('pipeline_stage_history');
+  return isMissingTableError(error, 'pipeline_stage_history');
 }
 
 function hasLeadSourceInput(data) {
@@ -56,50 +50,6 @@ function buildDealValueLogEntry(data) {
   };
 }
 
-// Map DB snake_case -> app camelCase
-function dbToClient(row) {
-  return {
-    id: row.id,
-    contactId: row.contact_id ?? null,
-    name: row.name,
-    type: row.type,
-    propertyType: row.property_type,
-    facilityName: row.facility_name,
-    address: row.address,
-    mailingAddress: row.mailing_address ?? '',
-    mailingAddresses: normalizeMailingAddresses(row.mailing_addresses),
-    phone: row.phone,
-    email: row.email,
-    leadSource: canonicalLeadSource(row.lead_source),
-    age: row.age ?? null,
-    units: row.units,
-    sqft: row.sqft,
-    desiredSalePrice: row.desired_sale_price ?? null,
-    projectedCommissionPct: row.projected_commission_pct ?? null,
-    notes: row.notes,
-    stageId: row.stage_id,
-    storageClass: row.storage_class,
-    documents: row.documents ?? [],
-    nextActionType: row.next_action_type ?? '',
-    nextActionDate: row.next_action_date ?? '',
-    nextActionNote: row.next_action_note ?? '',
-    leadTemp: row.lead_temp ?? '',
-    actionLog: row.action_log ?? [],
-    ownershipGroupId: row.ownership_group_id ?? null,
-    propertyId: row.property_id ?? null,
-    opportunityName: row.opportunity_name ?? '',
-    assignedUser: row.assigned_user ?? 'Brandon Greene',
-    ownerPricingExpectation: row.owner_pricing_expectation ?? null,
-    importantNotes: row.important_notes ?? '',
-    stageEnteredAt: row.stage_entered_at ?? null,
-    archivedAt: row.archived_at ?? null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-const mapClientRow = dbToClient;
-
 export function useCRM() {
   const [clients, setClients] = useState([]);
   const [dealValueMigrationNeeded, setDealValueMigrationNeeded] = useState(false);
@@ -111,7 +61,7 @@ export function useCRM() {
       .order('created_at', { ascending: true })
       .order('id', { ascending: true }));
     if (!error && data) {
-      setClients(data.map(mapClientRow));
+      setClients(data.map(dbToPipelineOpportunity));
     }
     const { error: dealValueError } = await supabase
       .from('clients')
@@ -125,47 +75,6 @@ export function useCRM() {
   }, [loadClients]);
 
   // Map DB snake_case → app camelCase
-  function dbToClient(row) {
-    return {
-      id: row.id,
-      contactId: row.contact_id ?? null,
-      name: row.name,
-      type: row.type,
-      propertyType: row.property_type,
-      facilityName: row.facility_name,
-      address: row.address,
-      mailingAddress: row.mailing_address ?? '',
-      mailingAddresses: normalizeMailingAddresses(row.mailing_addresses),
-      phone: row.phone,
-      email: row.email,
-      leadSource: canonicalLeadSource(row.lead_source),
-      age: row.age ?? null,
-      units: row.units,
-      sqft: row.sqft,
-      desiredSalePrice: row.desired_sale_price ?? null,
-      projectedCommissionPct: row.projected_commission_pct ?? null,
-      notes: row.notes,
-      stageId: row.stage_id,
-      storageClass: row.storage_class,
-      documents: row.documents ?? [],
-      nextActionType: row.next_action_type ?? '',
-      nextActionDate: row.next_action_date ?? '',
-      nextActionNote: row.next_action_note ?? '',
-      leadTemp: row.lead_temp ?? '',
-      actionLog: row.action_log ?? [],
-      ownershipGroupId: row.ownership_group_id ?? null,
-      propertyId: row.property_id ?? null,
-      opportunityName: row.opportunity_name ?? '',
-      assignedUser: row.assigned_user ?? 'Brandon Greene',
-      ownerPricingExpectation: row.owner_pricing_expectation ?? null,
-      importantNotes: row.important_notes ?? '',
-      stageEnteredAt: row.stage_entered_at ?? null,
-      archivedAt: row.archived_at ?? null,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    };
-  }
-
   // Map app camelCase → DB snake_case
   function clientToDb(data) {
     const db = {
@@ -299,7 +208,7 @@ export function useCRM() {
       ({ data: row, error } = await supabase.from('clients').insert([dbRow]).select().single());
     }
     if (!error && row) {
-      const client = dbToClient(row);
+      const client = dbToPipelineOpportunity(row);
       setClients(prev => [...prev, client]);
       if (data.opportunityName !== undefined || data.propertyId !== undefined) {
         const historyResult = await supabase.from('pipeline_stage_history').insert([{
@@ -400,7 +309,7 @@ export function useCRM() {
       ({ data: row, error } = await supabase.from('clients').update(dbRow).eq('id', id).select().single());
     }
     if (!error && row) {
-      const client = dbToClient(row);
+      const client = dbToPipelineOpportunity(row);
       setClients(prev => prev.map(c => c.id === id ? client : c));
       return { ok: true, client };
     }
