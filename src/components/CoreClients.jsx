@@ -103,6 +103,16 @@ export default function CoreClients({
       || brokerageContinuumOrder(a.profile.brokerageContinuumStage) - brokerageContinuumOrder(b.profile.brokerageContinuumStage);
   });
 
+  async function changeEditingContinuum(payload) {
+    const result = await coreApi.changeContinuumStage(payload);
+    if (result?.coreClient) {
+      setEditing(previous => previous?.profile.id === result.coreClient.id
+        ? { ...previous, profile: result.coreClient }
+        : previous);
+    }
+    return result;
+  }
+
   if (coreApi.migrationNeeded) {
     return (
       <div>
@@ -239,7 +249,7 @@ export default function CoreClients({
           pipelineRecords={editing.pipeline}
           continuumHistory={coreApi.historyForCoreClient(editing.profile.id)}
           continuumMigrationNeeded={coreApi.continuumMigrationNeeded}
-          onContinuumChange={coreApi.changeContinuumStage}
+          onContinuumChange={changeEditingContinuum}
           onClose={() => setEditing(null)}
         />
       )}

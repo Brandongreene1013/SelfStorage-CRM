@@ -4,6 +4,7 @@ import {
   brokerageContinuumDirection,
   brokerageContinuumSearchMatches,
   continuumDaysInStage,
+  continuumDropRequiresReview,
   continuumTransitionRequirements,
   isBrokerageContinuumStage,
   isContinuumStalled,
@@ -28,6 +29,10 @@ assert.equal(brokerageContinuumDirection('post_close', 'exclusive_listing'), 'ba
 assert.equal(continuumTransitionRequirements('cold_call', 'exclusive_listing').reasonRequired, true);
 assert.equal(continuumTransitionRequirements('contract', 'due_diligence').reasonRequired, false);
 assert.equal(continuumTransitionRequirements('contract', 'market_sell', 'contract_terminated').noteRequired, true);
+assert.equal(continuumDropRequiresReview('research', 'cold_call'), false);
+assert.equal(continuumDropRequiresReview('research', 'first_appointment'), false);
+assert.equal(continuumDropRequiresReview('research', 'exclusive_listing'), true);
+assert.equal(continuumDropRequiresReview('due_diligence', 'market_sell'), true);
 assert.equal(brokerageContinuumSearchMatches('first_appointment', 'first appt'), true);
 assert.equal(brokerageContinuumSearchMatches('due_diligence', 'dd'), true);
 assert.equal(continuumDaysInStage('2026-07-20T12:00:00Z', new Date('2026-07-30T12:00:00Z')), 10);

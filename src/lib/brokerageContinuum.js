@@ -103,6 +103,11 @@ export function continuumTransitionRequirements(previousStage, newStage, reason 
   };
 }
 
+export function continuumDropRequiresReview(previousStage, newStage) {
+  if (previousStage === newStage) return false;
+  return continuumTransitionRequirements(previousStage, newStage).reasonRequired;
+}
+
 export function brokerageContinuumSearchMatches(stage, query) {
   const normalizedQuery = String(query || '').trim().toLowerCase();
   if (!normalizedQuery) return true;

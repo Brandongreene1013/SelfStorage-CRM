@@ -1,11 +1,22 @@
 import { useMemo, useState } from 'react';
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCenter,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
   BROKERAGE_CONTINUUM_GROUPS,
   BROKERAGE_CONTINUUM_REASONS,
   BROKERAGE_CONTINUUM_STAGES,
   brokerageContinuumDirection,
   brokerageContinuumStage,
   continuumDaysInStage,
+  continuumDropRequiresReview,
   continuumTransitionRequirements,
   suggestedContinuumStageFromPipeline,
 } from '../../lib/brokerageContinuum';
@@ -47,27 +58,94 @@ export function BrokerageContinuumBadge({ stage, enteredAt, showDays = true, cla
   );
 }
 
-export function BrokerageContinuumStepper({ stage }) {
-  const current = brokerageContinuumStage(stage);
+function ContinuumStageTarget({ item, current, disabled }) {
+  const active = item.value === current.value;
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `continuum-stage:${item.value}`,
+    disabled,
+  });
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    transform,
+    isDragging,
+  } = useDraggable({
+    id: active ? `continuum-current:${current.value}` : `continuum-inactive:${item.value}`,
+    data: { stage: current.value },
+    disabled: disabled || !active,
+  });
+  const setRefs = node => {
+    setDropRef(node);
+    if (active) setDragRef(node);
+  };
+  const style = active && transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 20 }
+    : undefined;
   return (
-    <div className="overflow-x-auto pb-2">
-      <div className="flex min-w-[930px] items-start gap-1">
-        {BROKERAGE_CONTINUUM_STAGES.map(item => {
-          const active = item.value === current.value;
-          return (
-            <div key={item.value} className="flex min-w-0 flex-1 items-start">
-              <div className="min-w-0 flex-1 text-center">
-                <div className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-black ${active ? 'border-amber-400 bg-amber-400 text-slate-950 shadow-[0_0_18px_rgba(251,191,36,.25)]' : 'border-slate-700 bg-slate-900 text-slate-500'}`}>
-                  {item.order}
-                </div>
-                <p className={`mt-1.5 truncate text-[10px] font-bold ${active ? 'text-amber-300' : 'text-slate-600'}`}>{item.shortLabel}</p>
-              </div>
-              {item.order < BROKERAGE_CONTINUUM_STAGES.length && <div className="mt-3.5 h-px w-2 bg-slate-700" />}
-            </div>
-          );
-        })}
+    <div
+      ref={setRefs}
+      style={style}
+      {...(active ? listeners : {})}
+      {...(active ? attributes : {})}
+      className={`min-w-0 flex-1 rounded-lg px-1 py-1.5 text-center transition-all ${
+        isOver && !active
+          ? 'bg-amber-500/15 ring-1 ring-amber-400/60'
+          : active
+            ? `cursor-grab bg-slate-900/80 active:cursor-grabbing ${isDragging ? 'opacity-35' : ''}`
+            : 'bg-transparent'
+      }`}
+    >
+      <div className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-black ${
+        active
+          ? 'border-amber-400 bg-amber-400 text-slate-950 shadow-[0_0_18px_rgba(251,191,36,.25)]'
+          : isOver
+            ? 'border-amber-400 bg-amber-500/20 text-amber-200'
+            : 'border-slate-700 bg-slate-900 text-slate-500'
+      }`}>
+        {item.order}
       </div>
+      <p className={`mt-1.5 truncate text-[10px] font-bold ${active ? 'text-amber-300' : isOver ? 'text-amber-200' : 'text-slate-600'}`}>{item.shortLabel}</p>
+      {isOver && !active && <p className="text-[9px] font-bold text-amber-300">Drop</p>}
     </div>
+  );
+}
+
+export function BrokerageContinuumStepper({ stage, onStageDrop, disabled = false }) {
+  const current = brokerageContinuumStage(stage);
+  const [dragging, setDragging] = useState(false);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  function handleDragEnd({ over }) {
+    setDragging(false);
+    if (!over || disabled) return;
+    const targetStage = String(over.id).replace('continuum-stage:', '');
+    if (targetStage !== current.value) onStageDrop?.(targetStage);
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={() => setDragging(true)}
+      onDragCancel={() => setDragging(false)}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="overflow-x-auto pb-2">
+        <div className="flex min-w-[930px] items-stretch gap-1">
+          {BROKERAGE_CONTINUUM_STAGES.map(item => (
+            <ContinuumStageTarget key={item.value} item={item} current={current} disabled={disabled} />
+          ))}
+        </div>
+      </div>
+      <DragOverlay>
+        {dragging && (
+          <div className="rounded-full border border-amber-300 bg-amber-400 px-3 py-2 text-xs font-black text-slate-950 shadow-2xl">
+            {current.label}
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
@@ -280,11 +358,35 @@ export function BrokerageContinuumPanel({
   onChange,
 }) {
   const [changing, setChanging] = useState(null);
+  const [dragSaving, setDragSaving] = useState(false);
+  const [dragError, setDragError] = useState('');
   const current = brokerageContinuumStage(profile.brokerageContinuumStage);
   const days = continuumDaysInStage(profile.brokerageContinuumStageEnteredAt);
   const highestPipeline = [...pipelineRecords].sort((a, b) => Number(b.stageId) - Number(a.stageId))[0];
   const suggested = highestPipeline ? suggestedContinuumStageFromPipeline(highestPipeline.stageId) : null;
   const suggestionDiffers = suggested && suggested !== current.value;
+
+  async function handleStageDrop(newStage) {
+    setDragError('');
+    if (continuumDropRequiresReview(current.value, newStage)) {
+      setChanging(newStage);
+      return;
+    }
+    setDragSaving(true);
+    const result = await onChange({
+      coreClientId: profile.id,
+      newStage,
+      changedBy: profile.assignedUser,
+      reason: 'stage_progression',
+      note: '',
+      effectiveAt: new Date().toISOString(),
+      source: 'manual',
+      relatedPropertyId: profile.primaryPropertyId,
+    });
+    if (result?.error) setDragError(result.error);
+    setDragSaving(false);
+  }
+
   return (
     <section className="rounded-xl border border-slate-700/80 bg-slate-950/60 p-4 sm:col-span-2">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -296,9 +398,20 @@ export function BrokerageContinuumPanel({
           </div>
           <p className="mt-2 text-sm text-slate-400">{current.objective}</p>
         </div>
-        <Button type="button" variant="secondary" onClick={() => setChanging(current.value)} disabled={migrationNeeded}>Change stage</Button>
+        <Button type="button" variant="secondary" onClick={() => setChanging(current.value)} disabled={migrationNeeded || dragSaving}>Change stage</Button>
       </div>
-      <div className="mt-4"><BrokerageContinuumStepper stage={current.value} /></div>
+      <div className="mt-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-semibold text-slate-500">{dragSaving ? 'Recording stage change…' : 'Drag the highlighted stage to move this relationship'}</p>
+          {!migrationNeeded && <span className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Drag to update</span>}
+        </div>
+        <BrokerageContinuumStepper
+          stage={current.value}
+          onStageDrop={handleStageDrop}
+          disabled={migrationNeeded || dragSaving}
+        />
+      </div>
+      {dragError && <p role="alert" className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{dragError}</p>}
       {migrationNeeded && <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">Run <code>sql/brokerage_continuum_migration.sql</code> in Supabase to enable controlled stage changes and history.</p>}
       {!migrationNeeded && suggestionDiffers && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-500/25 bg-sky-500/10 px-3 py-2">
