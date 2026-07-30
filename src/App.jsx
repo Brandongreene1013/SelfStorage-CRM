@@ -11,7 +11,6 @@ const MailerLists = lazy(() => import('./components/MailerLists'));
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
 import PipelineWorkspace from './components/PipelineWorkspace';
-import ClientCard from './components/ClientCard';
 import Dashboard from './components/Dashboard';
 import CoreClients from './components/CoreClients';
 import CoreClientModal from './components/CoreClientModal';
@@ -20,14 +19,14 @@ const Calendar = lazy(() => import('./components/Calendar'));
 import Database from './components/Database';
 const Analyst = lazy(() => import('./components/Analyst'));
 import ErrorBoundary from './components/ErrorBoundary';
-import { PIPELINE_STAGES, canonicalLeadSource } from './data/constants';
-import { SearchToolbar, FilterPills, EmptyState, PageHeader, Button } from './components/ui';
+import { canonicalLeadSource } from './data/constants';
+import { SearchToolbar, FilterPills, PageHeader, Button } from './components/ui';
 import { downloadCrmBackup } from './lib/crmBackupExport';
 import { buildCommissionSummary, formatMoney } from './lib/dealValue';
 import { isMeaningfulOwnerActivity } from './lib/relationshipWorkspace';
 import './index.css';
 
-const VIEWS = ['Dashboard', 'Pipeline', 'Core Clients', 'Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
+const VIEWS = ['Dashboard', 'Pipeline', 'Core Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
 const FILTERS = ['All', 'Buyer', 'Seller'];
 
 function contactFieldsFromClient(client) {
@@ -212,7 +211,6 @@ export default function App() {
   const [dbEntryRequest, setDbEntryRequest] = useState(null);
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
-  const [stageFilter, setStageFilter] = useState(0);
 
   const handleStartCallMode = useCallback((queueSource) => {
     // Opens Database's Call Mode queue picker (Sprint 6) rather than jumping
@@ -305,7 +303,6 @@ export default function App() {
 
   const visibleClients = clients.filter(c => {
     if (filter !== 'All' && c.type !== filter) return false;
-    if (stageFilter !== 0 && c.stageId !== stageFilter) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -382,33 +379,19 @@ export default function App() {
         </div>
       </header>
 
-      {/* Filter bar — only for Pipeline / Clients */}
-      {(view === 'Pipeline' || view === 'Clients') && (
+      {/* Pipeline search and relationship-type filters */}
+      {view === 'Pipeline' && (
         <SearchToolbar
           search={search}
           onSearchChange={setSearch}
           placeholder="Search name, facility, address..."
           trailing={
-            <>
-              {view === 'Clients' && (
-                <select
-                  value={stageFilter}
-                  onChange={e => setStageFilter(Number(e.target.value))}
-                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:border-amber-500"
-                >
-                  <option value={0}>All Stages</option>
-                  {PIPELINE_STAGES.map(s => (
-                    <option key={s.id} value={s.id}>{s.id}. {s.label}</option>
-                  ))}
-                </select>
-              )}
-              <div className="ml-auto flex flex-col items-end gap-2">
-                <span className="text-xs text-slate-500 hidden sm:block">
-                  {visibleClients.length} / {clients.length} clients
-                </span>
-                {view === 'Pipeline' && <PipelineValueHeader clients={visibleClients} />}
-              </div>
-            </>
+            <div className="ml-auto flex flex-col items-end gap-2">
+              <span className="text-xs text-slate-500 hidden sm:block">
+                {visibleClients.length} / {clients.length} opportunities
+              </span>
+              <PipelineValueHeader clients={visibleClients} />
+            </div>
           }
         >
           <FilterPills
@@ -483,44 +466,6 @@ export default function App() {
             onAddToPipeline={setPipelineTarget}
             onOpenContact={handleOpenContact}
           />
-        )}
-
-        {view === 'Clients' && (
-          <div>
-            <PageHeader title="All Clients" />
-            {visibleClients.length === 0 ? (
-              <EmptyState
-                message="No clients match your filters."
-                action={
-                  <button
-                    onClick={() => setShowAddModal(true)}
-                    className="mt-4 text-amber-500 hover:text-amber-400 text-sm font-semibold"
-                  >
-                    + Add your first client
-                  </button>
-                }
-              />
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {visibleClients.map(c => (
-                  <ClientCard
-                    key={c.id}
-                    client={c}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                    onStageChange={moveClientToStage}
-                    onSetAction={setClientAction}
-                    onMoveToDatabase={handleClientToDatabase}
-                    onLogAction={logClientAction}
-                    onDeleteAction={deleteClientAction}
-                    taskApi={taskApi}
-                    ownershipApi={ownershipApi}
-                    mailerApi={mailerApi}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
         )}
 
         {view === 'Database' && (
