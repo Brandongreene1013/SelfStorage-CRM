@@ -9,6 +9,16 @@ const ACTIVITY_LABELS = {
   dial: 'Outbound dial',
 };
 
+const CALL_OUTCOME_LABELS = {
+  fresh: 'Fresh',
+  no_answer: 'No Answer',
+  voicemail: 'Left Voicemail',
+  conversation: 'Conversation',
+  appointment: 'Appointment Set',
+  not_interested: 'Not Interested',
+  callback: 'Call Back',
+};
+
 function actionTypeLabel(type) {
   return ACTIVITY_LABELS[type] || String(type || 'Activity').replaceAll('_', ' ');
 }
@@ -34,6 +44,20 @@ function ActivityRow({ entry }) {
         <span className="text-[11px] font-medium text-slate-600">{shortDate(entry.date || entry.at)}</span>
       </div>
       {entry.note && <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{entry.note}</p>}
+    </div>
+  );
+}
+
+function CallHistoryRow({ call }) {
+  return (
+    <div className="rounded-lg border border-slate-700/80 bg-slate-900/70 px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-bold text-blue-300">{CALL_OUTCOME_LABELS[call.outcome] || actionTypeLabel(call.outcome)}</p>
+        <span className="text-[11px] font-medium text-slate-600">{shortDate(call.date)}</span>
+      </div>
+      {call.notes
+        ? <p className="mt-1 text-sm leading-relaxed text-slate-300">{call.notes}</p>
+        : <p className="mt-1 text-xs italic text-slate-600">No note recorded for this call.</p>}
     </div>
   );
 }
@@ -77,6 +101,8 @@ export default function CoreClientRelationshipRecord({
   const [showActionCenter, setShowActionCenter] = useState(false);
   const activities = useMemo(() => [...(contact.actionLog ?? [])]
     .sort((a, b) => timestamp(b.date || b.at) - timestamp(a.date || a.at)), [contact.actionLog]);
+  const callHistory = useMemo(() => [...(contact.callHistory ?? [])]
+    .sort((a, b) => timestamp(b.date) - timestamp(a.date)), [contact.callHistory]);
   const relatedTasks = taskApi?.getRelatedTasks('contact', contact.id, { includeCompleted: true }) ?? [];
   const openTasks = relatedTasks
     .filter(task => task.status === 'open')
@@ -85,9 +111,11 @@ export default function CoreClientRelationshipRecord({
     .filter(task => task.status === 'completed')
     .sort((a, b) => timestamp(b.completedAt || b.updatedAt) - timestamp(a.completedAt || a.updatedAt));
   const visibleActivities = expanded ? activities : activities.slice(0, 4);
+  const visibleCalls = expanded ? callHistory : callHistory.slice(0, 5);
   const visibleOpenTasks = expanded ? openTasks : openTasks.slice(0, 3);
   const visibleCompletedTasks = expanded ? completedTasks : completedTasks.slice(0, 3);
-  const hiddenCount = Math.max(0, activities.length - visibleActivities.length)
+  const hiddenCount = Math.max(0, callHistory.length - visibleCalls.length)
+    + Math.max(0, activities.length - visibleActivities.length)
     + Math.max(0, openTasks.length - visibleOpenTasks.length)
     + Math.max(0, completedTasks.length - visibleCompletedTasks.length);
 
@@ -97,7 +125,7 @@ export default function CoreClientRelationshipRecord({
         <div>
           <p className="text-xs font-bold uppercase tracking-[.14em] text-slate-500">Relationship record</p>
           <p className="mt-1 text-sm text-slate-400">
-            {activities.length} logged {activities.length === 1 ? 'action' : 'actions'} · {openTasks.length} open · {completedTasks.length} completed
+            {callHistory.length} past {callHistory.length === 1 ? 'call' : 'calls'} · {activities.length} logged {activities.length === 1 ? 'action' : 'actions'} · {openTasks.length} open · {completedTasks.length} completed
           </p>
         </div>
         <button
@@ -107,6 +135,28 @@ export default function CoreClientRelationshipRecord({
         >
           Log activity / add task
         </button>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-blue-500/20 bg-blue-500/[0.04] p-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-blue-300/80">Call notes & history</p>
+          <span className="text-[11px] font-semibold text-slate-600">{callHistory.length} calls</span>
+        </div>
+        {contact.notes && (
+          <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2.5">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-amber-400/80">Saved contact notes</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{contact.notes}</p>
+          </div>
+        )}
+        {visibleCalls.length ? (
+          <div className="mt-3 grid gap-2 lg:grid-cols-2">
+            {visibleCalls.map((call, index) => <CallHistoryRow key={`${call.date}-${call.outcome}-${index}`} call={call} />)}
+          </div>
+        ) : (
+          <p className="mt-3 rounded-lg border border-dashed border-slate-800 px-3 py-4 text-center text-xs italic text-slate-600">
+            No historical calls recorded yet.
+          </p>
+        )}
       </div>
 
       <div className="mt-4 grid gap-5 lg:grid-cols-2">
