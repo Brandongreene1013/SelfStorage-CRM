@@ -5,11 +5,15 @@ This file is the map for future Codex/Claude sessions. Read `AGENTS.md`, `CODEX_
 ## Current Production Status
 - Production branch: `claude/storage-investment-crm-vV018`
 - Live URL: https://self-storage-crm.vercel.app/
-- Latest documented production commit before Sprint 26 work: `04e4f5d` — Redesign dashboard command center
+- Current production baseline: `33bf531` — Add sortable Core Clients columns
+- Read `CURRENT_SYSTEM_STATE.md` first for the current navigation, entity
+  boundaries, live migration readiness, and protected areas. This index remains
+  the chronological history and some older entries intentionally describe
+  retired UI.
 - Current local verification on 2026-07-14:
   - `npm run build` passes.
   - `npm run lint` passes.
-  - Production read-only smoke check across Dashboard, Pipeline, Clients, Database, Mailers, Analyst, Calendar passed without captured console errors.
+  - Production read-only smoke check across Dashboard, Pipeline, Core Clients, Database, Mailers, Analyst, Calendar passed without captured console errors.
 
 ## Handoff Files In Order
 - `SPRINT_1_UI_SYSTEM_HANDOFF.md` — Professional UI primitives and modal/card/empty-state consistency.

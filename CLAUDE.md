@@ -16,7 +16,10 @@ Custom CRM + deal-analysis tool for **Brandon Greene**, a self-storage investmen
 - Tailwind dark theme: slate-900/950 backgrounds, amber/yellow accents.
 
 ## Main views (nav tabs)
-Dashboard · Pipeline (kanban) · Clients · Database (cold-calling engine w/ Master Database list) · **Analyst** (AI underwriting) · Calendar (Outlook sync).
+Dashboard · Pipeline (opportunity workspace) · Core Clients (priority owner relationships + Brokerage Continuum) · Database (cold-calling engine w/ Master Database and virtual Core Clients lists) · Mailers · **Analyst** (AI underwriting) · Calendar (Outlook sync).
+
+See `CURRENT_SYSTEM_STATE.md` for the verified entity boundaries and migration
+readiness. The former top-level Clients view is retired.
 
 ## The Analyst (AI underwriting) — key feature
 - `api/analyst.js`: Claude **Opus 4.8** (`claude-opus-4-8`) via raw `fetch`. `export const maxDuration = 60`.

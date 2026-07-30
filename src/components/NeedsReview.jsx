@@ -25,6 +25,25 @@ function ReviewRow({ item, records, onConfirm, onReassign, onDismiss }) {
   const { host, entry } = item;
   const [reassigning, setReassigning] = useState(false);
   const [q, setQ] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function run(action) {
+    if (saving) return { error: 'save_in_progress' };
+    setSaving(true);
+    setError('');
+    try {
+      const result = await action();
+      if (result?.error) setError(result.error);
+      return result;
+    } catch (failure) {
+      const result = { error: failure?.message || 'Could not save this review decision.' };
+      setError(result.error);
+      return result;
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const matches = q.trim()
     ? records.filter(r => `${host.table}:${host.id}` !== `${r.table}:${r.id}` &&
@@ -42,17 +61,19 @@ function ReviewRow({ item, records, onConfirm, onReassign, onDismiss }) {
         {entry.confidence != null && <span className="text-slate-600"> · {Math.round(entry.confidence * 100)}%</span>}
       </p>
 
+      {error && <p role="alert" className="mt-2 text-xs text-red-300">{error}</p>}
+
       {!reassigning ? (
         <div className="flex gap-2 mt-2">
-          <button onClick={() => onConfirm(item)}
+          <button disabled={saving} onClick={() => run(() => onConfirm(item))}
             className="text-xs font-bold text-emerald-400 bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-600/30 rounded-lg px-3 py-1 transition-all">
             ✓ Confirm
           </button>
-          <button onClick={() => setReassigning(true)}
+          <button disabled={saving} onClick={() => setReassigning(true)}
             className="text-xs font-bold text-slate-300 bg-slate-700/60 hover:bg-slate-700 border border-slate-600 rounded-lg px-3 py-1 transition-all">
             ⤳ Reassign
           </button>
-          <button onClick={() => onDismiss(item)}
+          <button disabled={saving} onClick={() => run(() => onDismiss(item))}
             className="text-xs font-semibold text-slate-500 hover:text-red-400 ml-auto transition-all">
             Dismiss
           </button>
@@ -66,7 +87,13 @@ function ReviewRow({ item, records, onConfirm, onReassign, onDismiss }) {
           />
           <div className="mt-1 space-y-1 max-h-40 overflow-auto">
             {matches.map(r => (
-              <button key={`${r.table}:${r.id}`} onClick={() => { onReassign(item, r); setReassigning(false); setQ(''); }}
+              <button key={`${r.table}:${r.id}`} disabled={saving} onClick={async () => {
+                const result = await run(() => onReassign(item, r));
+                if (!result?.error) {
+                  setReassigning(false);
+                  setQ('');
+                }
+              }}
                 className="w-full text-left text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700/50 transition-all">
                 <span className="text-slate-200 font-semibold">{r.name || 'Unknown'}</span>
                 {r.facility ? <span className="text-slate-500"> · {r.facility}</span> : null}

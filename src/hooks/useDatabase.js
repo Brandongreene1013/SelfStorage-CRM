@@ -10,6 +10,7 @@ import {
   hasMeaningfulOwnerName,
   withOwnerIdentificationMilestone,
 } from '../lib/activityAnalytics';
+import { isMissingColumnError, isMissingTableError as isSupabaseMissingTableError } from '../lib/supabaseErrors';
 import { DEFAULT_RELATIONSHIP_TYPE, RELATIONSHIP_TYPES, canonicalLeadSource } from '../data/constants';
 
 const US_STATES = {
@@ -25,14 +26,6 @@ const US_STATES = {
 };
 
 export { US_STATES };
-
-function isMissingColumnError(error, columnName) {
-  if (!error) return false;
-  const msg = error.message ?? '';
-  return error.code === '42703'
-    || error.code === 'PGRST204'
-    || new RegExp(`column .*${columnName}.* does not exist|could not find .*${columnName}.* column`, 'i').test(msg);
-}
 
 function numberOrNull(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -923,10 +916,7 @@ const MASTER_DB_NAME = 'Master Database';
 const DISMISSALS_LOCAL_KEY = 'storageHero.duplicateDismissals';
 
 function isMissingTableError(error) {
-  if (!error) return false;
-  const msg = error.message ?? '';
-  return error.code === '42P01' || error.code === 'PGRST205'
-    || /relation .*duplicate_dismissals.* does not exist|could not find the table/i.test(msg);
+  return isSupabaseMissingTableError(error, 'duplicate_dismissals');
 }
 
 function readLocalDismissals() {
@@ -1720,8 +1710,10 @@ export function useDatabase() {
     const db = { action_log: nextLog, updated_at: new Date().toISOString() };
     if (email !== undefined && email !== null) db.email = email;
     const { error } = await supabase.from('contacts').update(db).eq('id', contactId);
-    if (!error) setContacts(prev => prev.map(c => c.id === contactId
+    if (error) return { error: error.message };
+    setContacts(prev => prev.map(c => c.id === contactId
       ? { ...c, actionLog: nextLog, ...(email !== undefined && email !== null ? { email } : {}) } : c));
+    return { ok: true };
   }, [contacts]);
 
   // Append a logged action to a contact's activity log

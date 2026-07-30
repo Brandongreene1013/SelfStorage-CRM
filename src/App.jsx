@@ -10,13 +10,14 @@ import { useCoreClients } from './hooks/useCoreClients';
 const MailerLists = lazy(() => import('./components/MailerLists'));
 import ClientModal from './components/ClientModal';
 import DeleteConfirmModal from './components/DeleteConfirmModal';
-import PipelineWorkspace from './components/PipelineWorkspace';
-import Dashboard from './components/Dashboard';
-import CoreClients from './components/CoreClients';
+const PipelineWorkspace = lazy(() => import('./components/PipelineWorkspace'));
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const CoreClients = lazy(() => import('./components/CoreClients'));
 import CoreClientModal from './components/CoreClientModal';
 import PipelineOpportunityModal from './components/PipelineOpportunityModal';
+import SystemHealthModal from './components/SystemHealthModal';
 const Calendar = lazy(() => import('./components/Calendar'));
-import Database from './components/Database';
+const Database = lazy(() => import('./components/Database'));
 const Analyst = lazy(() => import('./components/Analyst'));
 import ErrorBoundary from './components/ErrorBoundary';
 import { canonicalLeadSource } from './data/constants';
@@ -24,6 +25,7 @@ import { SearchToolbar, FilterPills, PageHeader, Button } from './components/ui'
 import { downloadCrmBackup } from './lib/crmBackupExport';
 import { buildCommissionSummary, formatMoney } from './lib/dealValue';
 import { isMeaningfulOwnerActivity } from './lib/relationshipWorkspace';
+import { withCanonicalContact } from './lib/pipelineOpportunity';
 import './index.css';
 
 const VIEWS = ['Dashboard', 'Pipeline', 'Core Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
@@ -87,7 +89,7 @@ function PipelineValueHeader({ clients }) {
 }
 
 export default function App() {
-  const { clients, dealValueMigrationNeeded, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog } = useCRM();
+  const { clients, dealValueMigrationNeeded, pipelineStageRpcStatus, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog } = useCRM();
   const db = useDatabase(); // shared Database state (lifted so contacts can move to/from Clients)
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { calendarEvents } = useCalendarEvents();
@@ -95,7 +97,16 @@ export default function App() {
   const ownershipApi = useOwnership();
   const coreApi = useCoreClients();
   const [backupStatus, setBackupStatus] = useState('');
+  const [showSystemHealth, setShowSystemHealth] = useState(false);
   const mailerApi = useMailerLists(); // mailer lists — shared so the ✉️ buttons and the Mailers tab stay in sync
+
+  const pipelineOpportunities = useMemo(() => {
+    const contactsById = new Map(db.contacts.map(contact => [contact.id, contact]));
+    return clients.map(opportunity => withCanonicalContact(
+      opportunity,
+      contactsById.get(opportunity.contactId),
+    ));
+  }, [clients, db.contacts]);
 
   const [view, setView] = useState('Dashboard');
   const [coreClientTarget, setCoreClientTarget] = useState(null);
@@ -103,9 +114,9 @@ export default function App() {
 
   // ── Email "needs review" matches: build the flagged list + confirm/reassign/dismiss ──
   const reviewRecords = useMemo(() => [
-    ...clients.map(c => ({ table: 'clients', id: c.id, name: c.name, facility: c.facilityName, email: c.email, actionLog: c.actionLog ?? [] })),
+    ...pipelineOpportunities.map(c => ({ table: 'clients', id: c.id, name: c.name, facility: c.facilityName, email: c.email, actionLog: c.actionLog ?? [] })),
     ...db.contacts.map(c => ({ table: 'contacts', id: c.id, name: c.ownerName, facility: c.facilityName, email: c.email, actionLog: c.actionLog ?? [] })),
-  ], [clients, db.contacts]);
+  ], [pipelineOpportunities, db.contacts]);
   const reviewItems = reviewRecords.flatMap(r =>
     (r.actionLog || []).filter(e => e.needsReview).map(entry => ({ host: r, entry })));
 
@@ -113,32 +124,50 @@ export default function App() {
     table === 'clients' ? mutateClientLog(id, payload) : db.mutateContactLog(id, payload),
     [mutateClientLog, db]);
 
-  const handleReviewConfirm = useCallback(({ host, entry }) => {
+  const handleReviewConfirm = useCallback(async ({ host, entry }) => {
     const rec = reviewRecords.find(r => r.table === host.table && r.id === host.id);
-    if (!rec) return;
+    if (!rec) return { error: 'The activity record changed. Refresh and try again.' };
     const log = (rec.actionLog || []).map(e => e.messageId === entry.messageId ? { ...e, needsReview: false } : e);
     const email = (!rec.email || !rec.email.trim()) && entry.email ? entry.email : undefined;
-    mutateLog(host.table, host.id, { log, email });
+    return mutateLog(host.table, host.id, { log, email });
   }, [reviewRecords, mutateLog]);
 
-  const handleReviewDismiss = useCallback(({ host, entry }) => {
+  const handleReviewDismiss = useCallback(async ({ host, entry }) => {
     const rec = reviewRecords.find(r => r.table === host.table && r.id === host.id);
-    if (!rec) return;
+    if (!rec) return { error: 'The activity record changed. Refresh and try again.' };
     const log = (rec.actionLog || []).filter(e => e.messageId !== entry.messageId);
-    mutateLog(host.table, host.id, { log });
+    return mutateLog(host.table, host.id, { log });
   }, [reviewRecords, mutateLog]);
 
-  const handleReviewReassign = useCallback(({ host, entry }, target) => {
+  const handleReviewReassign = useCallback(async ({ host, entry }, target) => {
     const src = reviewRecords.find(r => r.table === host.table && r.id === host.id);
     const dst = reviewRecords.find(r => r.table === target.table && r.id === target.id);
-    if (!src || !dst) return;
-    // remove from source
-    mutateLog(host.table, host.id, { log: (src.actionLog || []).filter(e => e.messageId !== entry.messageId) });
-    // add to target (cleared flag) + backfill address if target has none
+    if (!src || !dst) return { error: 'The source or destination changed. Refresh and try again.' };
+    if (src.table === dst.table && src.id === dst.id) {
+      return handleReviewConfirm({ host, entry });
+    }
+
+    // Add first so the activity cannot be lost if the second write fails.
     const cleaned = { ...entry, needsReview: false };
     const email = (!dst.email || !dst.email.trim()) && entry.email ? entry.email : undefined;
-    mutateLog(target.table, target.id, { log: [...(dst.actionLog || []), cleaned], email });
-  }, [reviewRecords, mutateLog]);
+    const destinationResult = await mutateLog(target.table, target.id, {
+      log: [...(dst.actionLog || []), cleaned],
+      email,
+    });
+    if (destinationResult?.error) return destinationResult;
+
+    const sourceResult = await mutateLog(host.table, host.id, {
+      log: (src.actionLog || []).filter(e => e.messageId !== entry.messageId),
+    });
+    if (!sourceResult?.error) return { ok: true };
+
+    const rollbackResult = await mutateLog(target.table, target.id, { log: dst.actionLog || [] });
+    return {
+      error: rollbackResult?.error
+        ? `Reassignment partially failed and needs review: ${sourceResult.error}`
+        : `Reassignment was rolled back because the source could not be updated: ${sourceResult.error}`,
+    };
+  }, [reviewRecords, mutateLog, handleReviewConfirm]);
 
   // ── Move a Database contact → Clients/Pipeline (drag onto the Clients target) ──
   const handleContactToClients = useCallback((contact) => {
@@ -278,13 +307,14 @@ export default function App() {
   }
 
   async function handleSaveEdit(data) {
-    const result = await updateClient(editingClient.id, data);
+    const linkedContact = editingClient.contactId
+      ? db.contacts.find(contact => contact.id === editingClient.contactId)
+      : null;
+    const payload = linkedContact
+      ? withCanonicalContact({ ...data, contactId: editingClient.contactId }, linkedContact)
+      : data;
+    const result = await updateClient(editingClient.id, payload);
     if (result?.ok) {
-      const contactId = result.client?.contactId ?? editingClient.contactId;
-      if (contactId) {
-        const contactResult = await db.updateContact(contactId, contactFieldsFromClient(result.client ?? data));
-        if (contactResult?.error) return contactResult;
-      }
       setEditingClient(null);
     }
     return result;
@@ -301,7 +331,7 @@ export default function App() {
   }
 
 
-  const visibleClients = clients.filter(c => {
+  const visibleClients = pipelineOpportunities.filter(c => {
     if (filter !== 'All' && c.type !== filter) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -365,6 +395,14 @@ export default function App() {
           <Button
             variant="secondary"
             size="sm"
+            onClick={() => setShowSystemHealth(true)}
+            title="Read-only schema and migration diagnostics"
+          >
+            Health
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={handleDownloadBackup}
             disabled={backupStatus === 'exporting'}
             title="Download a JSON safety export of CRM tables"
@@ -388,7 +426,7 @@ export default function App() {
           trailing={
             <div className="ml-auto flex flex-col items-end gap-2">
               <span className="text-xs text-slate-500 hidden sm:block">
-                {visibleClients.length} / {clients.length} opportunities
+                {visibleClients.length} / {pipelineOpportunities.length} opportunities
               </span>
               <PipelineValueHeader clients={visibleClients} />
             </div>
@@ -408,9 +446,10 @@ export default function App() {
         {/* Per-view safety net: key={view} remounts (and clears) the boundary
             on tab switch, so a crash in one view never blocks the others. */}
         <ErrorBoundary key={view} label={view}>
+        <Suspense fallback={<div className="py-12 text-center text-sm text-slate-500">Loading workspace…</div>}>
         {view === 'Dashboard' && (
           <Dashboard
-            clients={clients}
+            clients={pipelineOpportunities}
             contacts={db.contacts}
             meetings={meetings}
             calendarEvents={calendarEvents}
@@ -459,7 +498,7 @@ export default function App() {
             coreApi={coreApi}
             contacts={db.contacts}
             properties={ownershipApi.properties}
-            clients={clients}
+            clients={pipelineOpportunities}
             taskApi={taskApi}
             onLogContactAction={handleLogContactAction}
             onDeleteContactAction={db.deleteContactAction}
@@ -471,7 +510,7 @@ export default function App() {
           <Database
             db={db}
             onContactToClients={handleContactToClients}
-            clients={clients}
+            clients={pipelineOpportunities}
             clientHandlers={{
               onEdit: handleEdit,
               onDelete: handleDelete,
@@ -494,11 +533,10 @@ export default function App() {
           />
         )}
 
-        <Suspense fallback={<div className="text-slate-500 text-sm py-12 text-center">Loading…</div>}>
           {view === 'Mailers' && (
             <div>
               <PageHeader title="Mailer Lists" badge="Who's getting mail, and where" />
-              <MailerLists mailerApi={mailerApi} contacts={db.contacts} clients={clients} />
+              <MailerLists mailerApi={mailerApi} contacts={db.contacts} clients={pipelineOpportunities} />
             </div>
           )}
 
@@ -508,7 +546,7 @@ export default function App() {
             <Calendar
               meetings={meetings}
               calendarEvents={calendarEvents}
-              clients={clients}
+              clients={pipelineOpportunities}
               onAdd={addMeeting}
               onUpdate={updateMeeting}
               onDelete={deleteMeeting}
@@ -548,7 +586,7 @@ export default function App() {
           properties={ownershipApi.properties}
           onSave={coreApi.saveCoreClient}
           onTaskCreate={taskApi.createTask}
-          pipelineRecords={clients.filter(client => client.contactId === coreClientTarget.id)}
+          pipelineRecords={pipelineOpportunities.filter(client => client.contactId === coreClientTarget.id)}
           continuumHistory={coreApi.historyForCoreClient(
             coreApi.coreClients.find(item => item.contactId === coreClientTarget.id)?.id,
           )}
@@ -564,10 +602,25 @@ export default function App() {
         <PipelineOpportunityModal
           contact={pipelineTarget}
           properties={ownershipApi.properties}
-          clients={clients}
+          clients={pipelineOpportunities}
           onSave={addClient}
           onTaskCreate={taskApi.createTask}
+          onRollback={deleteClient}
           onClose={() => setPipelineTarget(null)}
+        />
+      )}
+      {showSystemHealth && (
+        <SystemHealthModal
+          signals={{
+            taskMigrationNeeded: taskApi.migrationNeeded,
+            coreMigrationNeeded: coreApi.migrationNeeded,
+            continuumMigrationNeeded: coreApi.continuumMigrationNeeded,
+            dealValueMigrationNeeded,
+            analyticsMigrationNeeded: db.analyticsMigrationNeeded,
+            mailerMigrationNeeded: mailerApi.tablesMissing || mailerApi.sentTrackingMissing,
+            pipelineStageRpcStatus,
+          }}
+          onClose={() => setShowSystemHealth(false)}
         />
       )}
     </div>

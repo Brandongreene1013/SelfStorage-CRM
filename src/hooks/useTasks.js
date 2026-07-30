@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { selectAllRows } from '../lib/selectAllRows';
+import { isMissingColumnError } from '../lib/supabaseErrors';
 
 // Universal Task / Next-Action engine (Sprint 2). Single `tasks` table,
 // shared by the Dashboard, Clients, Database, and Pipeline. See
@@ -14,12 +15,6 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 // symptom of the SQL migration not having been run yet. PostgREST returns its
 // own PGRST204 ("schema cache") code for this rather than the raw Postgres
 // 42703, so both are checked (verified against the actual error shape live).
-function isMissingColumnError(error) {
-  if (!error) return false;
-  if (error.code === '42703' || error.code === 'PGRST204') return true;
-  return /column .* does not exist|could not find .* column/i.test(error.message ?? '');
-}
-
 function isAnalyticsTaskMigrationError(error, taskType) {
   return taskType === 'tractiq_report'
     && error?.code === '23514'
@@ -51,15 +46,29 @@ export function useTasks() {
   const [loading, setLoading] = useState(true);
   const [migrationNeeded, setMigrationNeeded] = useState(false);
 
+  const loadTasks = useCallback(async () => {
+    const { data, error } = await selectAllRows(() => supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true }));
+    if (!error && data) {
+      setTasks(data.map(dbToTask));
+      setMigrationNeeded(false);
+    } else if (isMissingColumnError(error)) {
+      setMigrationNeeded(true);
+    }
+    setLoading(false);
+    return error ? { error: error.message } : { ok: true };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    selectAllRows(() => supabase.from('tasks').select('*').order('created_at', { ascending: false }).order('id', { ascending: true })).then(({ data, error }) => {
+    loadTasks().then(() => {
       if (cancelled) return;
-      if (!error && data) setTasks(data.map(dbToTask));
-      setLoading(false);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [loadTasks]);
 
   const createTask = useCallback(async (fields) => {
     const row = {
@@ -155,6 +164,7 @@ export function useTasks() {
 
   return {
     tasks, loading, migrationNeeded,
+    reload: loadTasks,
     createTask, updateTask, completeTask, reopenTask, dismissTask, deleteTask,
     getRelatedTasks, groups,
   };
