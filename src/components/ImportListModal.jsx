@@ -64,6 +64,8 @@ export default function ImportListModal({
   onStartImportedCallSession,
   onOpenDuplicateReview,
   reuseExistingMatches = false,
+  folderOptions = [],
+  initialFolderId = '',
 }) {
   const intoFixed = !!fixedListName;
   const [name, setName] = useState('');
@@ -83,6 +85,7 @@ export default function ImportListModal({
   const [worksheetOptions, setWorksheetOptions] = useState([]);
   const [selectedWorksheet, setSelectedWorksheet] = useState('');
   const [detectedFormat, setDetectedFormat] = useState('');
+  const [folderId, setFolderId] = useState(initialFolderId || '');
   const fileInputRef = useRef(null);
 
   const effectiveSource = useMemo(() => {
@@ -223,6 +226,7 @@ export default function ImportListModal({
         summary: preview.summary,
         fileName,
         source: effectiveSource,
+        folderId: folderId || null,
       });
       if (result?.error) throw new Error(result.error);
       setImportResult({ ...result, listName: intoFixed ? fixedListName : name.trim(), source: effectiveSource });
@@ -256,6 +260,23 @@ export default function ImportListModal({
                 placeholder="e.g. Florida Market - CoStar March 2026"
                 className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
               />
+            </div>
+          )}
+          {!intoFixed && folderOptions.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                Save in folder
+              </label>
+              <select
+                value={folderId}
+                onChange={event => setFolderId(event.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
+              >
+                <option value="">Database (root)</option>
+                {folderOptions.map(option => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
             </div>
           )}
           <div className={intoFixed ? 'md:col-span-2' : ''}>

@@ -108,7 +108,10 @@ export default function App() {
     ));
   }, [clients, db.contacts]);
 
-  const [view, setView] = useState('Dashboard');
+  const [view, setView] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has('dbFolder') || params.has('dbList') ? 'Database' : 'Dashboard';
+  });
   const [coreClientTarget, setCoreClientTarget] = useState(null);
   const [pipelineTarget, setPipelineTarget] = useState(null);
 
