@@ -189,6 +189,10 @@ export function BrokerageContinuumSummary({ profiles }) {
   ])), [profiles]);
   return (
     <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="min-w-[132px] rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+        <p className="text-lg font-bold text-amber-300">{profiles.length}</p>
+        <p className="truncate text-[10px] font-bold uppercase tracking-wide text-amber-400/75">Total Contacts</p>
+      </div>
       {BROKERAGE_CONTINUUM_STAGES.map(stage => (
         <div key={stage.value} className="min-w-[104px] rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2">
           <p className="text-lg font-bold text-white">{counts[stage.value]}</p>
