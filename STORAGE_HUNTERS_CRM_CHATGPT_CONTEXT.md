@@ -60,7 +60,7 @@ entry matter more than configurability for hypothetical users.
 - Live application: https://self-storage-crm.vercel.app/
 - GitHub repository: https://github.com/Brandongreene1013/SelfStorage-CRM
 - Production branch: `claude/storage-investment-crm-vV018`
-- Current production code commit: `1797019`
+- Current production code commit: `33bf531`
 
 The rename from Storage Hero to Storage Hunters CRM is intentionally
 incomplete. It should eventually be handled as a deliberate branding pass,
@@ -97,7 +97,7 @@ The production app has seven primary views:
 
 1. Dashboard
 2. Pipeline
-3. Clients
+3. Core Clients
 4. Database
 5. Mailers
 6. Analyst

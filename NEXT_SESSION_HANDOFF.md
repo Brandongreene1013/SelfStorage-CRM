@@ -13,7 +13,10 @@ Production/default branch:
 `claude/storage-investment-crm-vV018`
 
 Latest production commit as of the last synced production check:
-see `git log` — the analytics integrity sprint (shared activity analytics engine, `owner_identified_at` migration, CI workflow) shipped 2026-07-23
+`33bf531` — Add sortable Core Clients columns (2026-07-30).
+
+Read `CURRENT_SYSTEM_STATE.md` for the verified post-Core-Clients navigation,
+entity boundaries, schema readiness, and protected areas.
 
 ## Read First
 Before code changes, read:
@@ -40,7 +43,7 @@ Local:
 
 Production read-only smoke check:
 - Live URL loads.
-- Dashboard, Pipeline, Clients, Database, Mailers, Analyst, and Calendar all mount.
+- Dashboard, Pipeline, Core Clients, Database, Mailers, Analyst, and Calendar all mount.
 - No captured console errors during the tab smoke check.
 - Observed live shell:
   - Pipeline: `12 / 12` clients.
