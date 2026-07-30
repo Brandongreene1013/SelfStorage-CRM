@@ -543,7 +543,7 @@ export default function App() {
       )}
       {coreClientTarget && (
         <CoreClientModal
-          contact={coreClientTarget}
+          contact={db.contacts.find(contact => contact.id === coreClientTarget.id) ?? coreClientTarget}
           profile={coreApi.coreClients.find(item => item.contactId === coreClientTarget.id)}
           properties={ownershipApi.properties}
           onSave={coreApi.saveCoreClient}
@@ -554,6 +554,9 @@ export default function App() {
           )}
           continuumMigrationNeeded={coreApi.continuumMigrationNeeded}
           onContinuumChange={coreApi.changeContinuumStage}
+          taskApi={taskApi}
+          onLogAction={entry => handleLogContactAction(coreClientTarget.id, entry)}
+          onDeleteAction={index => db.deleteContactAction(coreClientTarget.id, index)}
           onClose={() => setCoreClientTarget(null)}
         />
       )}

@@ -113,6 +113,33 @@ export default function CoreClients({
     return result;
   }
 
+  async function logEditingAction(entry) {
+    if (!editing) return { error: 'Core Client is not open.' };
+    const result = await onLogContactAction(editing.contact.id, entry);
+    if (!result?.error) {
+      setEditing(previous => previous ? {
+        ...previous,
+        contact: { ...previous.contact, actionLog: [...(previous.contact.actionLog ?? []), entry] },
+      } : previous);
+    }
+    return result;
+  }
+
+  async function deleteEditingAction(index) {
+    if (!editing) return { error: 'Core Client is not open.' };
+    const result = await onDeleteContactAction(editing.contact.id, index);
+    if (!result?.error) {
+      setEditing(previous => previous ? {
+        ...previous,
+        contact: {
+          ...previous.contact,
+          actionLog: (previous.contact.actionLog ?? []).filter((_, actionIndex) => actionIndex !== index),
+        },
+      } : previous);
+    }
+    return result;
+  }
+
   if (coreApi.migrationNeeded) {
     return (
       <div>
@@ -250,6 +277,9 @@ export default function CoreClients({
           continuumHistory={coreApi.historyForCoreClient(editing.profile.id)}
           continuumMigrationNeeded={coreApi.continuumMigrationNeeded}
           onContinuumChange={changeEditingContinuum}
+          taskApi={taskApi}
+          onLogAction={logEditingAction}
+          onDeleteAction={deleteEditingAction}
           onClose={() => setEditing(null)}
         />
       )}

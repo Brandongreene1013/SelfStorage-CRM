@@ -6,6 +6,7 @@ import {
 } from '../data/constants';
 import { Button, ModalLayout } from './ui';
 import { BrokerageContinuumPanel } from './brokerage/BrokerageContinuum';
+import CoreClientRelationshipRecord from './CoreClientRelationshipRecord';
 
 function Field({ label, children, span = false }) {
   return (
@@ -30,6 +31,9 @@ export default function CoreClientModal({
   continuumMigrationNeeded = false,
   onContinuumChange,
   pipelineRecords = [],
+  taskApi,
+  onLogAction,
+  onDeleteAction,
 }) {
   const contactProperties = properties.filter(property => contact?.ownershipGroupId
     ? property.ownershipGroupId === contact.ownershipGroupId
@@ -124,6 +128,14 @@ export default function CoreClientModal({
               <p className="mt-2 text-sm font-bold text-white">1. Research</p>
               <p className="mt-1 text-sm text-slate-400">New Core Clients begin in Research. Once saved, stage changes are controlled and added to permanent history.</p>
             </div>
+          )}
+          {profile && taskApi && (
+            <CoreClientRelationshipRecord
+              contact={contact}
+              taskApi={taskApi}
+              onLogAction={onLogAction}
+              onDeleteAction={onDeleteAction}
+            />
           )}
           <Field label="Motivation strength">
             <select className={inputClass} value={form.motivationStrength} onChange={event => update('motivationStrength', event.target.value)}>
