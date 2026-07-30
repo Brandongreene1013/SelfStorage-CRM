@@ -42,6 +42,75 @@ function motivationVariant(value) {
   return 'slate';
 }
 
+const MOTIVATION_SORT_ORDER = Object.fromEntries(
+  CORE_MOTIVATION_LEVELS.map((option, index) => [option.value, index]),
+);
+const TIMELINE_SORT_ORDER = {
+  '0_3_months': 1,
+  '3_6_months': 2,
+  '6_12_months': 3,
+  '12_24_months': 4,
+  more_than_24_months: 5,
+  unknown: 6,
+};
+
+function attentionScore(row) {
+  return (row.attention.overdue ? 4 : 0)
+    + (row.attention.cadenceOverdue ? 2 : 0)
+    + (row.attention.continuumStalled ? 2 : 0)
+    + (['strong', 'immediate'].includes(row.profile.motivationStrength) ? 1 : 0);
+}
+
+function sortValue(row, key) {
+  if (key === 'owner') return row.contact.ownerName || row.contact.ownerEntity || row.contact.facilityName || '';
+  if (key === 'continuum') return brokerageContinuumOrder(row.profile.brokerageContinuumStage);
+  if (key === 'motivation') return MOTIVATION_SORT_ORDER[row.profile.motivationStrength] ?? -1;
+  if (key === 'timeline') return TIMELINE_SORT_ORDER[row.profile.sellingTimeline] ?? 999;
+  if (key === 'lastContact') return row.attention.lastContactAt ? Date.parse(row.attention.lastContactAt) : null;
+  if (key === 'nextAction') return row.attention.dueDate ? Date.parse(`${row.attention.dueDate}T12:00:00`) : null;
+  if (key === 'assigned') return row.profile.assignedUser || '';
+  return attentionScore(row);
+}
+
+function compareRows(a, b, key, direction) {
+  const left = sortValue(a, key);
+  const right = sortValue(b, key);
+  if (left === null && right !== null) return 1;
+  if (left !== null && right === null) return -1;
+  if (left === null && right === null) return 0;
+
+  const comparison = typeof left === 'number' && typeof right === 'number'
+    ? left - right
+    : String(left).localeCompare(String(right), undefined, { sensitivity: 'base' });
+  return direction === 'asc' ? comparison : -comparison;
+}
+
+function SortableHeader({ label, sortKey, sortConfig, onSort, className = '' }) {
+  const active = sortConfig.key === sortKey;
+  const nextDirection = active && sortConfig.direction === 'asc' ? 'descending' : 'ascending';
+  return (
+    <th
+      className={`px-4 py-3 ${className}`}
+      aria-sort={active ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="group inline-flex items-center gap-1.5 rounded text-left transition-colors hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/70"
+        title={`Sort ${label} ${nextDirection}`}
+      >
+        <span>{label}</span>
+        <span
+          aria-hidden="true"
+          className={`text-[13px] leading-none transition-colors ${active ? 'text-amber-400' : 'text-slate-700 group-hover:text-slate-400'}`}
+        >
+          {active ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 export default function CoreClients({
   coreApi,
   contacts,
@@ -59,6 +128,7 @@ export default function CoreClients({
   const [filterMotivation, setFilterMotivation] = useState('all');
   const [filterTimeline, setFilterTimeline] = useState('all');
   const [filterContinuum, setFilterContinuum] = useState([]);
+  const [sortConfig, setSortConfig] = useState({ key: 'priority', direction: 'desc' });
   const today = new Date().toISOString().slice(0, 10);
   const recentCutoff = shiftDay(today, -30);
 
@@ -94,14 +164,16 @@ export default function CoreClients({
     if (view === 'no_next' && !attention.noNextAction) return false;
     if (view === 'recent' && String(profile.createdAt || '').slice(0, 10) < recentCutoff) return false;
     return true;
-  }).sort((a, b) => {
-    const score = row => (row.attention.overdue ? 4 : 0)
-      + (row.attention.cadenceOverdue ? 2 : 0)
-      + (row.attention.continuumStalled ? 2 : 0)
-      + (['strong', 'immediate'].includes(row.profile.motivationStrength) ? 1 : 0);
-    return score(b) - score(a)
-      || brokerageContinuumOrder(a.profile.brokerageContinuumStage) - brokerageContinuumOrder(b.profile.brokerageContinuumStage);
-  });
+  }).sort((a, b) => compareRows(a, b, sortConfig.key, sortConfig.direction)
+    || brokerageContinuumOrder(a.profile.brokerageContinuumStage) - brokerageContinuumOrder(b.profile.brokerageContinuumStage)
+    || String(a.contact.ownerName || '').localeCompare(String(b.contact.ownerName || '')));
+
+  function changeSort(key) {
+    setSortConfig(previous => ({
+      key,
+      direction: previous.key === key && previous.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  }
 
   async function changeEditingContinuum(payload) {
     const result = await coreApi.changeContinuumStage(payload);
@@ -202,13 +274,13 @@ export default function CoreClients({
             <table className="min-w-[1320px] w-full text-left">
               <thead className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Owner / Property</th>
-                  <th className="px-4 py-3">Brokerage Continuum</th>
-                  <th className="px-4 py-3">Motivation</th>
-                  <th className="px-4 py-3">Timeline</th>
-                  <th className="px-4 py-3">Last meaningful contact</th>
-                  <th className="px-4 py-3">Next action</th>
-                  <th className="px-4 py-3">Assigned</th>
+                  <SortableHeader label="Owner / Property" sortKey="owner" sortConfig={sortConfig} onSort={changeSort} />
+                  <SortableHeader label="Brokerage Continuum" sortKey="continuum" sortConfig={sortConfig} onSort={changeSort} />
+                  <SortableHeader label="Motivation" sortKey="motivation" sortConfig={sortConfig} onSort={changeSort} />
+                  <SortableHeader label="Timeline" sortKey="timeline" sortConfig={sortConfig} onSort={changeSort} />
+                  <SortableHeader label="Last meaningful contact" sortKey="lastContact" sortConfig={sortConfig} onSort={changeSort} />
+                  <SortableHeader label="Next action" sortKey="nextAction" sortConfig={sortConfig} onSort={changeSort} />
+                  <SortableHeader label="Assigned" sortKey="assigned" sortConfig={sortConfig} onSort={changeSort} />
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
