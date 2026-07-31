@@ -42,6 +42,7 @@ import DatabaseExplorer from './databaseExplorer/DatabaseExplorer';
 import PeopleDropNavigator from './databaseExplorer/PeopleDropNavigator';
 import { DATABASE_ROOT_ID, explorerFolderOptions, folderBreadcrumbs } from '../lib/databaseExplorer';
 import { PERSON_DRAG_TYPE, parsePersonDropTarget, resolvePersonDragIds } from '../lib/databasePersonDrag';
+import { useCrmBackHandler } from '../navigation/useCrmNavigation';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -3354,6 +3355,38 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     rememberCallPosition(`activeList:${listId}`, 0);
     setShowImport(false);
   }
+
+  const databaseCanGoBack = subView !== 'explorer' || selectedFolderId !== DATABASE_ROOT_ID;
+  const databaseBackLabel = subView === 'callQueue'
+    ? 'Back to contact list'
+    : subView === 'contacts'
+      ? 'Back to Database Explorer'
+      : selectedFolderId !== DATABASE_ROOT_ID
+        ? 'Back to parent folder'
+        : 'Back';
+  const handleDatabaseBack = useCallback(() => {
+    setSelectedContactIds(new Set());
+    setBulkStatus('');
+    if (subView === 'explorer' && selectedFolderId !== DATABASE_ROOT_ID) {
+      const currentFolder = databaseExplorer.activeFolders.find(folder => folder.id === selectedFolderId);
+      setSelectedFolderId(currentFolder?.parentId || DATABASE_ROOT_ID);
+      setActiveListId(null);
+      return;
+    }
+    if (subView === 'callQueue' && activeListId) {
+      setSubView('contacts');
+      setCallQueueSource(null);
+      return;
+    }
+    setActiveListId(null);
+    setSubView('explorer');
+  }, [activeListId, databaseExplorer.activeFolders, selectedFolderId, subView]);
+  useCrmBackHandler({
+    active: databaseCanGoBack,
+    onBack: handleDatabaseBack,
+    label: databaseBackLabel,
+    priority: 100,
+  });
 
   return (
     <DndContext

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { EmptyState } from './ui';
 import { allMailingAddressOptions } from '../lib/mailingAddresses';
+import { useCrmBackHandler } from '../navigation/useCrmNavigation';
 
 // Mailer Lists view — the "Mailers" nav tab. Left: the lists themselves
 // (create / rename / delete). Right: who's on the selected list with their
@@ -124,6 +125,29 @@ export default function MailerLists({ mailerApi, contacts = [], clients = [] }) 
   const [peopleSearch, setPeopleSearch] = useState('');
 
   const activeList = mailerApi.mailerLists.find(l => l.id === activeListId) ?? null;
+  const mailerCanGoBack = showAddPeople || showNewList || Boolean(activeListId);
+  useCrmBackHandler({
+    active: mailerCanGoBack,
+    onBack: () => {
+      if (showAddPeople) {
+        setShowAddPeople(false);
+        setPeopleSearch('');
+      } else if (showNewList) {
+        setShowNewList(false);
+        setNewListName('');
+      } else {
+        setActiveListId(null);
+        setSearch('');
+        setStatusFilter('all');
+      }
+    },
+    label: showAddPeople
+      ? 'Close recipient search'
+      : showNewList
+        ? 'Close new list'
+        : 'Back to Mailer Lists',
+    priority: 100,
+  });
 
   // Resolve member references against the live contact/client records
   const rows = activeList

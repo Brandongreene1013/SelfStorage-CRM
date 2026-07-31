@@ -3,6 +3,7 @@ import { downloadFilledModel } from '../lib/excelModel';
 import { downloadCrmSpreadsheet } from '../lib/crmSpreadsheet';
 import { clipboardImageFiles, getSalesforceImportConfig } from '../lib/salesforceImportClient';
 import SalesforceScreenshotImport from './analyst/SalesforceScreenshotImport';
+import { useCrmBackHandler } from '../navigation/useCrmNavigation';
 
 // Lightweight markdown-ish renderer: **bold**, line breaks, bullet dashes.
 function RichText({ text }) {
@@ -121,6 +122,15 @@ export default function Analyst({ onOpenImportedFacility }) {
   const [pendingSalesforceImages, setPendingSalesforceImages] = useState([]);
   const scrollRef = useRef(null);
   const fileRef = useRef(null);
+  useCrmBackHandler({
+    active: mode === 'salesforce',
+    onBack: () => {
+      setPendingSalesforceImages([]);
+      setMode('analyst');
+    },
+    label: 'Back to Analyst',
+    priority: 100,
+  });
 
   useEffect(() => {
     const localPreview = import.meta.env.DEV
