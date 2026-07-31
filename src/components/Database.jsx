@@ -39,7 +39,9 @@ import { contactInList, originatingListIds } from '../lib/listMemberships';
 import { callModeContactIndex, callModeTarget, createCallModeSession, removeCallModeSessionContact, resolveCallModeContact } from '../lib/callModeSession';
 import { useDatabaseExplorer } from '../hooks/useDatabaseExplorer';
 import DatabaseExplorer from './databaseExplorer/DatabaseExplorer';
+import PeopleDropNavigator from './databaseExplorer/PeopleDropNavigator';
 import { DATABASE_ROOT_ID, explorerFolderOptions, folderBreadcrumbs } from '../lib/databaseExplorer';
+import { PERSON_DRAG_TYPE, parsePersonDropTarget, resolvePersonDragIds } from '../lib/databasePersonDrag';
 
 // Generic droppable wrapper for sidebar targets (lists + the Clients target)
 function DropTarget({ id, className = '', activeClassName = '', children }) {
@@ -1506,14 +1508,23 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
 }
 
 // ─── Property Card ────────────────────────────────────────────────────────────
-function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, masterListId, lists = [], onMoveToList, onRemoveFromMaster, onToClients, taskApi, coreClient, pipelineRecords = [], selected = false, onToggleSelected }) {
+function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAction, onDeleteAction, isMasterDB, masterListId, lists = [], onMoveToList, onRemoveFromMaster, onToClients, taskApi, coreClient, pipelineRecords = [], selected = false, selectedContactIds = [], onToggleSelected }) {
   const [added, setAdded] = useState(false);
   const [activityMode, setActivityMode] = useState(null);
   const [masterRemoval, setMasterRemoval] = useState(null);
   const [masterRemovalSaving, setMasterRemovalSaving] = useState(false);
   const [masterRemovalError, setMasterRemovalError] = useState('');
 
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: contact.id, data: { contact } });
+  const dragContactIds = resolvePersonDragIds(contact.id, selectedContactIds, selected);
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: contact.id,
+    data: {
+      type: PERSON_DRAG_TYPE,
+      contact,
+      contactId: contact.id,
+      contactIds: dragContactIds,
+    },
+  });
 
   const openTasks = taskApi?.getRelatedTasks('contact', contact.id) ?? [];
   const nextTask = getNextOpenTask(openTasks);
@@ -2500,7 +2511,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const activeCoreContactIds = useMemo(() => new Set((coreApi?.coreClients ?? [])
     .filter(profile => profile.status === 'active')
     .map(profile => profile.contactId)), [coreApi?.coreClients]);
-  const [activeDrag, setActiveDrag] = useState(null); // contact being dragged
+  const [activeDrag, setActiveDrag] = useState(null);
   const [activeExplorerDrag, setActiveExplorerDrag] = useState(null);
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -2521,16 +2532,49 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       if (result?.error) alert(result.error);
       return;
     }
-    const contact = contacts.find(c => c.id === active.id);
+    const contact = contacts.find(c => c.id === (dragData?.contactId ?? active.id));
     if (!contact) return;
-    if (target === 'clients') {
-      onContactToClients?.(contact);
-    } else if (target.startsWith('list:')) {
-      const listId = target.slice(5);
-      if (!contactInList(contact, listId)) {
-        const result = await moveContactToList(contact.id, listId);
-        if (result?.error) alert(result.error);
+    const personTarget = parsePersonDropTarget(target);
+    if (!personTarget) return;
+    const contactIds = [...new Set(
+      (dragData?.contactIds ?? [contact.id]).filter(id => contacts.some(item => item.id === id))
+    )];
+
+    if (personTarget.type === 'core-clients' || personTarget.type === 'pipeline') {
+      if (contactIds.length > 1) {
+        setBulkStatus(`Drop one person at a time into ${personTarget.type === 'core-clients' ? 'Core Clients' : 'Pipeline'} so you can review their setup details.`);
+        return;
       }
+      if (personTarget.type === 'core-clients') onAddToCoreClients?.(contact);
+      else onContactToClients?.(contact);
+      return;
+    }
+
+    if (personTarget.type === 'list') {
+      const listId = personTarget.listId;
+      const list = lists.find(item => item.id === listId);
+      if (!list) return;
+      let result;
+      if (listId === masterListId) {
+        const needingPromotion = contactIds.filter(id => contacts.find(item => item.id === id)?.listId !== masterListId);
+        for (const id of needingPromotion) {
+          result = await moveContactToList(id, listId);
+          if (result?.error) break;
+        }
+        if (!result) result = { ok: true };
+      } else {
+        result = await addContactsToList(contactIds, listId);
+      }
+      if (result?.error) {
+        setBulkStatus(result.error);
+        return;
+      }
+      setBulkStatus(
+        listId === masterListId
+          ? `${contactIds.length} ${contactIds.length === 1 ? 'person is' : 'people are'} available in Master Database.`
+          : `${contactIds.length} ${contactIds.length === 1 ? 'person' : 'people'} added to ${list.name}. Master records and activity history were kept intact.`
+      );
+      setSelectedContactIds(new Set());
     }
   }
 
@@ -3320,7 +3364,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           setActiveExplorerDrag(data);
           setActiveDrag(null);
         } else {
-          setActiveDrag(contacts.find(c => c.id === active.id) ?? null);
+          const contact = contacts.find(c => c.id === (data?.contactId ?? active.id)) ?? null;
+          setActiveDrag(contact ? { contact, contactIds: data?.contactIds ?? [contact.id] } : null);
           setActiveExplorerDrag(null);
         }
       }}
@@ -3390,25 +3435,27 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             </DropTarget>
           )}
 
-          {/* Core Clients — a live view over canonical Master Database contacts */}
-          <button
-            onClick={() => {
-              setActiveListId(CORE_CLIENTS_LIST_ID);
-              setSubView('contacts');
-              setCoreFilter('all');
-              setContactPage(1);
-            }}
-            className={`w-full text-left px-3 py-2.5 flex items-center justify-between transition-all text-sm border-b border-slate-800/50 ${
-              activeListId === CORE_CLIENTS_LIST_ID && subView === 'contacts'
-                ? 'bg-amber-500/10 text-amber-300 border-l-2 border-amber-400'
-                : 'text-amber-300/70 hover:text-amber-300 hover:bg-slate-800 border-l-2 border-transparent'
-            }`}
-          >
-            <span className="font-bold flex items-center gap-1.5">◆ Core Clients</span>
-            <span className="text-xs bg-amber-500/10 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded-md">
-              {activeCoreContactIds.size}
-            </span>
-          </button>
+          {/* Core Clients — a live view and a person drop destination */}
+          <DropTarget id="person-core-clients-sidebar" activeClassName="ring-1 ring-inset ring-amber-500/60 bg-amber-500/15">
+            <button
+              onClick={() => {
+                setActiveListId(CORE_CLIENTS_LIST_ID);
+                setSubView('contacts');
+                setCoreFilter('all');
+                setContactPage(1);
+              }}
+              className={`w-full text-left px-3 py-2.5 flex items-center justify-between transition-all text-sm border-b border-slate-800/50 ${
+                activeListId === CORE_CLIENTS_LIST_ID && subView === 'contacts'
+                  ? 'bg-amber-500/10 text-amber-300 border-l-2 border-amber-400'
+                  : 'text-amber-300/70 hover:text-amber-300 hover:bg-slate-800 border-l-2 border-transparent'
+              }`}
+            >
+              <span className="font-bold flex items-center gap-1.5">◆ Core Clients</span>
+              <span className="text-xs bg-amber-500/10 text-amber-300 border border-amber-500/25 px-1.5 py-0.5 rounded-md">
+                {activeCoreContactIds.size}
+              </span>
+            </button>
+          </DropTarget>
 
           {/* All contacts */}
           <button
@@ -3427,6 +3474,21 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             User-created lists now live in Folder Explorer.
           </div>
         </div>
+
+        {subView === 'contacts' && (
+          <PeopleDropNavigator
+            folders={databaseExplorer.activeFolders}
+            lists={lists}
+            masterListId={masterListId}
+            onOpenList={listId => {
+              const list = lists.find(item => item.id === listId);
+              setSelectedFolderId(list?.folderId || DATABASE_ROOT_ID);
+              setActiveListId(listId);
+              setSubView('contacts');
+              setContactPage(1);
+            }}
+          />
+        )}
 
         {importHistory.length > 0 && (
           <div className={`${subView === 'explorer' ? 'hidden md:block' : ''} bg-slate-900 border border-slate-800 rounded-xl overflow-hidden`}>
@@ -3945,6 +4007,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                     coreClient={coreApi?.coreClients.find(item => item.contactId === c.id)}
                     pipelineRecords={clients.filter(client => client.contactId === c.id)}
                     selected={selectedContactIds.has(c.id)}
+                    selectedContactIds={selectedContactIds}
                     onToggleSelected={toggleContactSelection}
                   />
                   </div>
@@ -4128,9 +4191,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       )}
       {activeDrag && (
         <div className="bg-slate-800 border border-amber-500 rounded-xl px-3 py-2 shadow-2xl rotate-2 w-56">
-          <p className="text-sm font-bold text-white truncate">{activeDrag.ownerName || activeDrag.facilityName || 'Contact'}</p>
-          {activeDrag.facilityName && <p className="text-xs text-amber-400 truncate">{activeDrag.facilityName}</p>}
-          <p className="text-xs text-slate-500 mt-0.5">Drop on a list or Clients</p>
+          <p className="text-sm font-bold text-white truncate">
+            {activeDrag.contactIds.length > 1
+              ? `${activeDrag.contactIds.length} selected people`
+              : activeDrag.contact.ownerName || activeDrag.contact.facilityName || 'Contact'}
+          </p>
+          {activeDrag.contactIds.length === 1 && activeDrag.contact.facilityName && (
+            <p className="text-xs text-amber-400 truncate">{activeDrag.contact.facilityName}</p>
+          )}
+          <p className="text-xs text-slate-500 mt-0.5">Drop on a list, Core Clients, or Pipeline</p>
         </div>
       )}
     </DragOverlay>

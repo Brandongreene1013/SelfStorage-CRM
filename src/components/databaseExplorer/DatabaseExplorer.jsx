@@ -36,6 +36,15 @@ function DropFolder({ id, children, className = '' }) {
   );
 }
 
+function PersonListDrop({ listId, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `person-list:${listId}` });
+  return (
+    <div ref={setNodeRef} className={isOver ? 'bg-amber-500/15 ring-1 ring-inset ring-amber-500/60' : ''}>
+      {children}
+    </div>
+  );
+}
+
 function FolderTreeNode({ folder, index, stats, expanded, onToggle, selectedId, onSelect, level = 0 }) {
   const children = index.childrenByParent.get(folder.id) ?? [];
   const isExpanded = expanded.has(folder.id);
@@ -390,7 +399,9 @@ export default function DatabaseExplorer({
                   <DragItem id={`db-drag-folder-row:${item.id}`} data={{ type: 'database-folder', folderId: item.id }}>{row}</DragItem>
                 </DropFolder>
               ) : (
-                <DragItem key={item.id} id={`db-drag-list:${item.id}`} data={{ type: 'database-list', listId: item.id, selectedListIds: selectedLists.has(item.id) ? [...selectedLists] : [item.id] }}>{row}</DragItem>
+                <PersonListDrop key={item.id} listId={item.id}>
+                  <DragItem id={`db-drag-list:${item.id}`} data={{ type: 'database-list', listId: item.id, selectedListIds: selectedLists.has(item.id) ? [...selectedLists] : [item.id] }}>{row}</DragItem>
+                </PersonListDrop>
               );
             })}
           </div>
