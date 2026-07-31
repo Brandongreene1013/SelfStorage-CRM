@@ -65,6 +65,7 @@ The handoff collection is now current through Sprint 29:
 - `SPRINT_27_MARKET_INTELLIGENCE_DAILY_BRIEF_HANDOFF.md` documents the current Dashboard market-intelligence providers, CRM-derived active markets, and 6:30 AM ET daily batch.
 - `SPRINT_28_SALESFORCE_IMPORT_STABILIZATION_HANDOFF.md` is the current handoff for the Salesforce screenshot importer: QA'd, hardened (stuck-`analyzing` timeout fix), and **dark-launched** — it stays invisible/inert in production until Brandon runs the migration and sets `SALESFORCE_SCREENSHOT_IMPORT_ENABLED=true`. That doc has the full go-live checklist.
 - `SPRINT_29_TARGETED_CALL_LISTS_HANDOFF.md` documents additive targeted call lists: card checkboxes, bulk add/create/remove actions, Master Database preservation, Call Mode membership support, and the pending membership migration.
+- `SPRINT_30_CORE_CLIENTS_BROKERAGE_CONTINUUM_HANDOFF.md` is the **current** handoff. It documents the connected Master Database → Core Clients → Pipeline model and the 11-stage person-level **Brokerage Continuum** (Research → Cold Call → 1st/2nd Appointment → Exclusive Listing → Market/Sell → Field Offers → Contract → Due Diligence → Close → Post-Close), backed by an immutable audit trail and the `change_brokerage_continuum_stage` RPC — the ONLY supported way to change stage (a direct UPDATE to continuum columns is rejected by a DB trigger). Migrations `sql/core_clients_pipeline_migration.sql` + `sql/brokerage_continuum_migration.sql` are assumed run in live Supabase.
 
 Older sprint docs from Sprint 1-19 remain at repo root.
 
@@ -317,4 +318,4 @@ paths were already safe.
 ## Opening Prompt Suggestion
 For a future coding session, say:
 
-`Read AGENTS.md, CODEX_ONBOARDING.md, CLAUDE.md, NEXT_SESSION_HANDOFF.md, and SPRINT_HANDOFF_INDEX.md, then work from the relevant sprint handoff for this task.`
+`Read AGENTS.md, CODEX_ONBOARDING.md, CLAUDE.md, NEXT_SESSION_HANDOFF.md, SPRINT_HANDOFF_INDEX.md, and SPRINT_30_CORE_CLIENTS_BROKERAGE_CONTINUUM_HANDOFF.md (the current sprint), then work from the relevant sprint handoff for this task.`
