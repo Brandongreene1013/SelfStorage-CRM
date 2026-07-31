@@ -5,7 +5,7 @@ import DuplicateReview from './DuplicateReview';
 import { findDuplicateGroups } from '../lib/duplicateReview';
 import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
 import { buildWhitepagesLink, normalizeLinkedinUrl } from '../lib/researchLinks';
-import { buildRelatedOwnerCandidates, buildSharedContactInfoIndex, normalizePropertyAddress, subjectPropertyPayload } from '../lib/ownerRadar';
+import { buildRelatedOwnerCandidates, buildSharedContactInfoIndex, isSharedEmail, isSharedPhone, normalizePropertyAddress, subjectPropertyPayload } from '../lib/ownerRadar';
 import { LastActionLine } from './ActionLog';
 import ActionCenterModal from './ActionCenterModal';
 import ClientCard from './ClientCard';
@@ -2110,6 +2110,185 @@ export function ListSidebarItem({ list: l, count, isActive, onSelect, onRename, 
 // localStorage, so a page reload or Vercel redeploy mid-call-block no longer
 // loses his place. The picker offers "Resume call session: 37 of 212" and
 // validates against the live queue before resuming (never forces it).
+// ── Import History panel — the sidebar card moved here so the nav stays
+// compact. Shows EVERY imported list (the old card showed only the last 5)
+// with the same Open / Call actions.
+function ImportHistoryPanel({ lists, contacts, masterListId, onOpenList, onStartCall, onExit }) {
+  const history = useMemo(() =>
+    [...lists]
+      .filter(l => l.id !== masterListId)
+      .sort((a, b) => String(b.importedAt || '').localeCompare(String(a.importedAt || ''))),
+    [lists, masterListId]);
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+        <div>
+          <h2 className="text-sm font-bold text-white">Import History</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Every imported list, newest first. Open a list or jump straight into a call session.</p>
+        </div>
+        <button
+          onClick={onExit}
+          className="text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-lg transition-all"
+        >
+          Back
+        </button>
+      </div>
+      {history.length === 0 ? (
+        <EmptyState icon="⬇" title="No imports yet" message="Imported lists will appear here." />
+      ) : (
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+          {history.map(l => {
+            const count = l.importRowCount || contacts.filter(c => contactInList(c, l.id)).length;
+            const ready = l.readyToCallCount || contacts.filter(c => contactInList(c, l.id) && ['fresh', 'callback', 'no_answer', 'voicemail'].includes(c.status)).length;
+            return (
+              <div key={`import-${l.id}`} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-100 truncate">{l.name}</p>
+                  <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                    <SourceBadge source={l.source} />
+                    {l.importedAt && <span className="text-[11px] text-slate-600">{l.importedAt}</span>}
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500 tabular-nums">
+                    {count} imported &middot; {ready} workable
+                    {l.duplicateSkippedCount ? ` | ${l.duplicateSkippedCount} skipped` : ''}
+                    {l.mergedDuplicateCount ? ` | ${l.mergedDuplicateCount} appended` : ''}
+                  </p>
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => onOpenList(l.id)}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold px-2 py-1.5 rounded-lg text-[11px] transition-all"
+                  >
+                    Open
+                  </button>
+                  <button
+                    onClick={() => onStartCall(l.id)}
+                    disabled={ready === 0}
+                    className={`flex-1 border font-semibold px-2 py-1.5 rounded-lg text-[11px] transition-all ${
+                      ready > 0
+                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 hover:bg-amber-500/25'
+                        : 'bg-slate-800 border-slate-700 text-slate-600 cursor-not-allowed'
+                    }`}
+                  >
+                    Call
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Data Health panel — cleanup workbench grounded in real gaps in the data:
+// missing phones/emails and shared "junk" contact info (placeholder emails or
+// catch-all numbers reused across many distinct owners — the same index that
+// powers duplicate/related-owner matching). Read-only surface: clicking a row
+// opens the contact so fixes happen at the source record.
+const DATA_HEALTH_ROW_LIMIT = 150;
+function DataHealthPanel({ contacts, sharedContactInfo, onOpenContact, onExit }) {
+  const buckets = useMemo(() => {
+    const missingPhone = [], missingEmail = [], sharedEmail = [], sharedPhone = [];
+    for (const c of contacts) {
+      const phones = [c.phone, ...(c.alternatePhones ?? []).map(p => p?.phone)].filter(Boolean);
+      if (phones.length === 0) missingPhone.push(c);
+      if (!c.email) missingEmail.push(c);
+      if (c.email && isSharedEmail(sharedContactInfo, c.email)) sharedEmail.push(c);
+      if (phones.some(p => isSharedPhone(sharedContactInfo, p))) sharedPhone.push(c);
+    }
+    return { missingPhone, missingEmail, sharedEmail, sharedPhone };
+  }, [contacts, sharedContactInfo]);
+
+  const TILE_DEFS = [
+    { key: 'sharedEmail', label: 'Junk / Shared Emails', hint: 'Same email on 3+ distinct owners — likely a placeholder or scraped catch-all.', tone: 'amber' },
+    { key: 'sharedPhone', label: 'Shared Phones', hint: 'Same number on 3+ distinct owners — verify before trusting it.', tone: 'amber' },
+    { key: 'missingPhone', label: 'Missing Phone', hint: 'No number on file — uncallable until sourced.', tone: 'slate' },
+    { key: 'missingEmail', label: 'Missing Email', hint: 'No email on file.', tone: 'slate' },
+  ];
+  const [activeBucket, setActiveBucket] = useState('sharedEmail');
+  const rows = buckets[activeBucket] ?? [];
+  const activeDef = TILE_DEFS.find(t => t.key === activeBucket);
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+        <div>
+          <h2 className="text-sm font-bold text-white">Data Health</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Contact-info gaps and junk values across all {contacts.length.toLocaleString()} contacts. Click a row to fix it at the source.
+          </p>
+        </div>
+        <button
+          onClick={onExit}
+          className="text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-1.5 rounded-lg transition-all"
+        >
+          Back
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-4">
+        {TILE_DEFS.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setActiveBucket(t.key)}
+            className={`rounded-xl border px-3 py-2.5 text-left transition-all ${
+              activeBucket === t.key
+                ? 'border-amber-500/60 bg-amber-500/10'
+                : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+            }`}
+          >
+            <p className={`text-lg font-bold tabular-nums ${t.tone === 'amber' ? 'text-amber-400' : 'text-slate-200'}`}>
+              {buckets[t.key].length.toLocaleString()}
+            </p>
+            <p className="text-[11px] font-semibold text-slate-400">{t.label}</p>
+          </button>
+        ))}
+      </div>
+
+      {activeDef && (
+        <p className="px-4 pb-2 text-[11px] text-slate-500">{activeDef.hint}</p>
+      )}
+
+      {rows.length === 0 ? (
+        <EmptyState icon="✅" title="Nothing here" message="No contacts in this bucket — clean." />
+      ) : (
+        <div className="divide-y divide-slate-800/70 border-t border-slate-800">
+          {rows.slice(0, DATA_HEALTH_ROW_LIMIT).map(c => (
+            <button
+              key={`health-${activeBucket}-${c.id}`}
+              onClick={() => onOpenContact(c)}
+              className="w-full px-4 py-2.5 text-left hover:bg-slate-800/60 transition-all flex items-center justify-between gap-3"
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-slate-200 truncate">
+                  {contactDisplayName(c)}
+                </span>
+                <span className="block text-[11px] text-slate-500 truncate">
+                  {[c.facilityName, c.address].filter(Boolean).join(' · ') || 'No facility on record'}
+                </span>
+              </span>
+              <span className="shrink-0 text-[11px] text-slate-500 font-mono">
+                {activeBucket === 'sharedEmail' ? c.email
+                  : activeBucket === 'sharedPhone' ? (c.phone || (c.alternatePhones ?? []).map(p => p?.phone).find(Boolean) || '')
+                  : activeBucket === 'missingPhone' ? (c.email || 'no phone')
+                  : (c.phone || 'no email')}
+              </span>
+            </button>
+          ))}
+          {rows.length > DATA_HEALTH_ROW_LIMIT && (
+            <p className="px-4 py-2.5 text-[11px] text-slate-600">
+              Showing first {DATA_HEALTH_ROW_LIMIT} of {rows.length.toLocaleString()} — work these down and refresh.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const CALL_POSITIONS_KEY = 'storageHero.callQueuePositions';
 const CALL_SESSION_KEY = 'storageHero.callSession';
 // Sprint 22 — per-list location-sort anchors: { [listId]: { label, coords: [lat, lng] } }
@@ -3067,12 +3246,18 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     [contacts, sharedContactInfo, dismissedDuplicateKeys]
   );
 
-  const importHistory = useMemo(() => {
-    return [...lists]
-      .filter(l => l.id !== masterListId)
-      .sort((a, b) => String(b.importedAt || '').localeCompare(String(a.importedAt || '')))
-      .slice(0, 5);
-  }, [lists, masterListId]);
+  // Import history moved out of the always-on sidebar card into its own view
+  // (subView 'imports') — the sidebar only needs the count for the nav badge.
+  const importListCount = useMemo(
+    () => lists.filter(l => l.id !== masterListId).length,
+    [lists, masterListId]
+  );
+  // Data-health badge: junk shared emails are the actionable signal (backlog
+  // item — placeholder/scraped emails fixed at the source record).
+  const dataHealthBadge = useMemo(
+    () => contacts.filter(c => c.email && isSharedEmail(sharedContactInfo, c.email)).length,
+    [contacts, sharedContactInfo]
+  );
 
   const activeListLabel = activeListId === null ? 'Active List'
     : activeListId === masterListId ? 'Master Database'
@@ -3490,56 +3675,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           />
         )}
 
-        {importHistory.length > 0 && (
-          <div className={`${subView === 'explorer' ? 'hidden md:block' : ''} bg-slate-900 border border-slate-800 rounded-xl overflow-hidden`}>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 py-2.5 border-b border-slate-800">
-              Import History
-            </p>
-            <div className="divide-y divide-slate-800/70">
-              {importHistory.map(l => {
-                const count = l.importRowCount || contacts.filter(c => contactInList(c, l.id)).length;
-                const ready = l.readyToCallCount || contacts.filter(c => contactInList(c, l.id) && ['fresh', 'callback', 'no_answer', 'voicemail'].includes(c.status)).length;
-                return (
-                  <div key={`history-${l.id}`} className="px-3 py-2.5 space-y-2">
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-200 truncate">{l.name}</p>
-                      <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                        <SourceBadge source={l.source} />
-                        {l.importedAt && <span className="text-[11px] text-slate-600">{l.importedAt}</span>}
-                      </div>
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        {count} imported &middot; {ready} workable
-                        {l.duplicateSkippedCount ? ` | ${l.duplicateSkippedCount} skipped` : ''}
-                        {l.mergedDuplicateCount ? ` | ${l.mergedDuplicateCount} appended` : ''}
-                      </p>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => { setActiveListId(l.id); setSubView('contacts'); }}
-                        className="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-semibold px-2 py-1.5 rounded-lg text-[11px] transition-all"
-                      >
-                        Open
-                      </button>
-                      <button
-                        onClick={() => startImportedCallSession(l.id)}
-                        disabled={ready === 0}
-                        className={`flex-1 border font-semibold px-2 py-1.5 rounded-lg text-[11px] transition-all ${
-                          ready > 0
-                            ? 'bg-amber-500/15 border-amber-500/40 text-amber-400 hover:bg-amber-500/25'
-                            : 'bg-slate-800 border-slate-700 text-slate-600 cursor-not-allowed'
-                        }`}
-                      >
-                        Call
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Other views */}
+        {/* Other views — Import History lives in here now (subView 'imports')
+             instead of an always-expanded sidebar card. */}
         <div className={`${subView === 'explorer' ? 'hidden md:block' : ''} bg-slate-900 border border-slate-800 rounded-xl overflow-hidden`}>
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest px-3 py-2.5 border-b border-slate-800">
             Views
@@ -3548,6 +3685,8 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             { key: 'callQueue',  label: 'Call Mode', badge: todayCallbackQueue.length + overdueCallbackQueue.length + allFutureCallbackQueue.length },
             { key: 'ownership',  label: 'Owners / Properties', badge: ownershipApi.groups.length },
             { key: 'duplicates', label: '🧹 Duplicate Review', badge: duplicateGroupCount, badgeTone: 'amber' },
+            { key: 'imports',    label: '⬇ Import History', badge: importListCount },
+            { key: 'dataHealth', label: '🩺 Data Health', badge: dataHealthBadge, badgeTone: 'amber' },
             { key: 'markets',    label: '🗺 Markets',    badge: null },
           ].map(t => (
             <button
@@ -3625,7 +3764,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           />
         )}
 
-        {activeListId === null && subView !== 'explorer' && subView !== 'callQueue' && subView !== 'duplicates' && subView !== 'ownership' && (
+        {activeListId === null && !['explorer', 'callQueue', 'duplicates', 'ownership', 'imports', 'dataHealth'].includes(subView) && (
           <EmptyState
             icon="📋"
             title="No list selected"
@@ -3649,6 +3788,28 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             onRestoreGroup={restoreDuplicateGroup}
             dismissals={duplicateDismissals}
             dismissalStorage={dismissalStorage}
+          />
+        )}
+
+        {/* ── Import History — full list of imports, moved out of the sidebar. ── */}
+        {subView === 'imports' && (
+          <ImportHistoryPanel
+            lists={lists}
+            contacts={contacts}
+            masterListId={masterListId}
+            onOpenList={(listId) => { setActiveListId(listId); setSubView('contacts'); setContactPage(1); }}
+            onStartCall={startImportedCallSession}
+            onExit={() => setSubView('explorer')}
+          />
+        )}
+
+        {/* ── Data Health — contact-info gap / junk-value cleanup workbench. ── */}
+        {subView === 'dataHealth' && (
+          <DataHealthPanel
+            contacts={contacts}
+            sharedContactInfo={sharedContactInfo}
+            onOpenContact={(c) => setOpenContact(c)}
+            onExit={() => setSubView('explorer')}
           />
         )}
 
