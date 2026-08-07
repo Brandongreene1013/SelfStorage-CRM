@@ -25,7 +25,7 @@ import { SearchToolbar, FilterPills, PageHeader, Button } from './components/ui'
 import { downloadCrmBackup } from './lib/crmBackupExport';
 import { buildCommissionSummary, formatMoney } from './lib/dealValue';
 import { isMeaningfulOwnerActivity } from './lib/relationshipWorkspace';
-import { withCanonicalContact } from './lib/pipelineOpportunity';
+import { isActivePipelineOpportunity, withCanonicalContact } from './lib/pipelineOpportunity';
 import './index.css';
 
 const VIEWS = ['Dashboard', 'Pipeline', 'Core Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
@@ -100,13 +100,17 @@ export default function App() {
   const [showSystemHealth, setShowSystemHealth] = useState(false);
   const mailerApi = useMailerLists(); // mailer lists — shared so the ✉️ buttons and the Mailers tab stay in sync
 
-  const pipelineOpportunities = useMemo(() => {
+  const allPipelineOpportunities = useMemo(() => {
     const contactsById = new Map(db.contacts.map(contact => [contact.id, contact]));
     return clients.map(opportunity => withCanonicalContact(
       opportunity,
       contactsById.get(opportunity.contactId),
     ));
   }, [clients, db.contacts]);
+  const pipelineOpportunities = useMemo(
+    () => allPipelineOpportunities.filter(isActivePipelineOpportunity),
+    [allPipelineOpportunities],
+  );
 
   const [view, setView] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -197,21 +201,11 @@ export default function App() {
       : result;
   }, [db, handleMeaningfulContact]);
 
-  // ── Move a Client → Master Database (button on the client card) ──
+  // ── Archive a Pipeline opportunity without changing the canonical person ──
   const handleClientToDatabase = useCallback(async (client) => {
     if (!client) return;
     let contactId = client.contactId;
-    if (contactId) {
-      const result = await db.updateContact(contactId, {
-        ...contactFieldsFromClient(client),
-        status: 'conversation',
-      });
-      if (result?.error) {
-        alert(result.error);
-        return;
-      }
-      if (db.masterListId) await db.moveContactToList(contactId, db.masterListId);
-    } else {
+    if (!contactId) {
       const existingMaster = db.contacts.find(contact =>
         contact.listId === db.masterListId &&
         contact.ownerName === client.name &&
@@ -231,8 +225,7 @@ export default function App() {
     const result = await updateClient(client.id, {
       ...client,
       contactId: contactId ?? client.contactId ?? null,
-      stageId: 10,
-      status: 'conversation',
+      archivedAt: new Date().toISOString(),
     });
     if (result?.error) alert(result.error);
   }, [db, updateClient]);
