@@ -26,6 +26,8 @@ import { downloadCrmBackup } from './lib/crmBackupExport';
 import { buildCommissionSummary, formatMoney } from './lib/dealValue';
 import { isMeaningfulOwnerActivity } from './lib/relationshipWorkspace';
 import { isActivePipelineOpportunity, withCanonicalContact } from './lib/pipelineOpportunity';
+import { popCrmView, pushCrmView } from './lib/crmNavigation';
+import { useCrmBackHandler, useCrmNavigation } from './navigation/useCrmNavigation';
 import './index.css';
 
 const VIEWS = ['Dashboard', 'Pipeline', 'Core Clients', 'Database', 'Mailers', 'Analyst', 'Calendar'];
@@ -89,6 +91,7 @@ function PipelineValueHeader({ clients }) {
 }
 
 export default function App() {
+  const { goBack, canGoBack, backLabel } = useCrmNavigation();
   const { clients, dealValueMigrationNeeded, pipelineStageRpcStatus, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog } = useCRM();
   const db = useDatabase(); // shared Database state (lifted so contacts can move to/from Clients)
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
@@ -115,6 +118,23 @@ export default function App() {
   const [view, setView] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.has('dbFolder') || params.has('dbList') ? 'Database' : 'Dashboard';
+  });
+  const [viewHistory, setViewHistory] = useState([]);
+  const navigateToView = useCallback((nextView) => {
+    if (nextView === view) return;
+    setViewHistory(history => pushCrmView(history, view, nextView));
+    setView(nextView);
+  }, [view]);
+  const navigateBackView = useCallback(() => {
+    const destination = popCrmView(viewHistory);
+    setViewHistory(destination.history);
+    setView(destination.view);
+  }, [viewHistory]);
+  useCrmBackHandler({
+    active: viewHistory.length > 0 || view !== 'Dashboard',
+    onBack: navigateBackView,
+    label: viewHistory.length > 0 ? `Back to ${viewHistory.at(-1)}` : 'Back to Dashboard',
+    priority: 10,
   });
   const [coreClientTarget, setCoreClientTarget] = useState(null);
   const [pipelineTarget, setPipelineTarget] = useState(null);
@@ -242,24 +262,24 @@ export default function App() {
     // straight into an ambiguous All Contacts session. When Dashboard already
     // knows the exact callback bucket, it can pass the queue key through.
     setDbEntryRequest({ subView: 'callQueue', queueSource });
-    setView('Database');
-  }, []);
+    navigateToView('Database');
+  }, [navigateToView]);
 
   const handleOpenCallQueue = useCallback((queueKey) => {
     setDbEntryRequest({ subView: 'callQueue', queueKey });
-    setView('Database');
-  }, []);
+    navigateToView('Database');
+  }, [navigateToView]);
 
   const handleOpenDatabaseFilter = useCallback((statusFilter = 'all') => {
     setDbEntryRequest({ subView: 'contacts', listId: 'all', statusFilter });
-    setView('Database');
-  }, []);
+    navigateToView('Database');
+  }, [navigateToView]);
 
   const handleOpenContact = useCallback((contact) => {
     if (!contact) return;
     setDbEntryRequest({ openContactId: contact.id });
-    setView('Database');
-  }, []);
+    navigateToView('Database');
+  }, [navigateToView]);
 
   const handleOpenImportedFacility = useCallback(async (result) => {
     await db.reload?.();
@@ -270,8 +290,8 @@ export default function App() {
       search: result?.facilityName || '',
       openContactId: contactIds[0] || null,
     });
-    setView('Database');
-  }, [db]);
+    navigateToView('Database');
+  }, [db, navigateToView]);
 
   const handleDownloadBackup = useCallback(async () => {
     setBackupStatus('exporting');
@@ -345,6 +365,17 @@ export default function App() {
       {/* Header — sticky app shell */}
       <header className="sticky top-0 z-30 bg-slate-900/80 supports-[backdrop-filter]:bg-slate-900/65 backdrop-blur-xl border-b border-white/[0.06] shadow-[0_1px_0_0_rgba(255,255,255,0.03),0_8px_24px_-12px_rgba(0,0,0,0.6)] px-4 sm:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={!canGoBack}
+            aria-label={backLabel}
+            title={`${backLabel} (Alt + Left Arrow)`}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-950/70 px-2.5 text-xs font-bold text-slate-300 shadow-sm transition-all hover:border-amber-500/50 hover:text-amber-300 disabled:cursor-not-allowed disabled:border-slate-800 disabled:text-slate-700"
+          >
+            <span aria-hidden="true" className="text-base leading-none">←</span>
+            <span className="hidden sm:inline">Back</span>
+          </button>
           {/* Storage Hunters logo — Superman-inspired shield */}
           <div className="w-9 h-9 flex-shrink-0" style={{ filter: 'drop-shadow(0 2px 8px rgba(245,158,11,0.35))' }}>
             <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
@@ -371,7 +402,7 @@ export default function App() {
           {VIEWS.map(v => (
             <button
               key={v}
-              onClick={() => setView(v)}
+              onClick={() => navigateToView(v)}
               aria-current={view === v ? 'page' : undefined}
               className={`relative px-3.5 py-1.5 rounded-lg text-[13px] font-medium tracking-tight transition-colors duration-150 flex-shrink-0 ${
                 view === v
@@ -450,7 +481,7 @@ export default function App() {
             meetings={meetings}
             calendarEvents={calendarEvents}
             masterListId={db.masterListId}
-            onNavigateCalendar={() => setView('Calendar')}
+            onNavigateCalendar={() => navigateToView('Calendar')}
             onStartCallMode={handleStartCallMode}
             onOpenCallQueue={handleOpenCallQueue}
             onOpenDatabaseFilter={handleOpenDatabaseFilter}
@@ -462,7 +493,7 @@ export default function App() {
             dealValueMigrationNeeded={dealValueMigrationNeeded}
             analyticsMigrationNeeded={db.analyticsMigrationNeeded}
             coreClients={coreApi.activeCoreClients}
-            onOpenCoreClients={() => setView('Core Clients')}
+            onOpenCoreClients={() => navigateToView('Core Clients')}
             taskApi={taskApi}
             review={{
               items: reviewItems,
