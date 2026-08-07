@@ -234,16 +234,16 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
         </>
       )}
 
-      {/* Move out of the pipeline → keep as a Master Database contact */}
+      {/* Archive only the opportunity; the canonical person stays untouched. */}
       {showDetails && onMoveToDatabase && (
         <button
           onClick={() => {
-            if (confirm(`Archive "${client.name}" from the active pipeline and keep the owner in the Master Database?`)) onMoveToDatabase(client);
+            if (confirm(`Remove "${client.name}" from the active pipeline? Their contact, lists, properties, tasks, and activity will stay unchanged.`)) onMoveToDatabase(client);
           }}
           className="mt-2 w-full text-xs font-semibold text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 rounded-lg px-3 py-1.5 transition-all"
-          title="Keeps the linked owner/contact record and moves this deal to Post-Close"
+          title="Archives only this pipeline opportunity; it does not mark the deal Post-Close"
         >
-          ⤳ Move to Master Database
+          ⤳ Remove from Pipeline
         </button>
       )}
     </div>

@@ -113,4 +113,3 @@ comment on column public.clients.property_id is
   'Optional link to the specific property represented by this Pipeline opportunity. The same contact may therefore have several opportunities at different stages.';
 comment on table public.pipeline_stage_history is
   'Append-only audit trail for every Pipeline stage transition.';
-

@@ -29,3 +29,6 @@ backups/
 
 # QA scratch output (screenshots/PDFs from doc generation checks)
 .docx-qa/
+
+# Local session artifacts (handoff bundles, exports)
+outputs/

@@ -44,6 +44,10 @@ export function dbToPipelineOpportunity(row) {
   };
 }
 
+export function isActivePipelineOpportunity(opportunity) {
+  return !opportunity?.archivedAt;
+}
+
 export function withCanonicalContact(opportunity, contact) {
   if (!opportunity || !contact || opportunity.contactId !== contact.id) return opportunity;
   return {

@@ -100,7 +100,7 @@ function DraggableChip({ client, onEdit, onLogAction, onDeleteAction, onMoveToDa
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {onMoveToDatabase && (
-            <MoveMenu label="More" options={[{ label: 'Archive to Master Database', onClick: () => { if (confirm(`Archive "${client.name}" from the active pipeline and keep the owner in the Master Database?`)) onMoveToDatabase(client); } }]} />
+            <MoveMenu label="More" options={[{ label: 'Remove from Pipeline', onClick: () => { if (confirm(`Remove "${client.name}" from the active pipeline? Their contact, lists, properties, tasks, and activity will stay unchanged.`)) onMoveToDatabase(client); } }]} />
           )}
           <button
             onPointerDown={e => e.stopPropagation()}
