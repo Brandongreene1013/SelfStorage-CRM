@@ -1491,31 +1491,76 @@ export function useDatabase() {
     };
   }, [contacts, lists, masterListId]);
 
-  const deleteList = useCallback(async (listId) => {
+  // Deleting a list deletes the people who only ever existed because of that list —
+  // a discarded pull should not leave residue behind in All Contacts / Master Database.
+  // Two kinds of contact survive, because deleting them would destroy work that has
+  // nothing to do with this list:
+  //   • anyone who also belongs to another list (re-homed to that list)
+  //   • anyone backing a Core Client or Pipeline record (re-homed to Master Database).
+  //     core_client_profiles.contact_id cascades on delete and clients.contact_id
+  //     nulls out, so a hard delete here would silently gut a real relationship.
+  // Pass those ids in as protectedContactIds — this hook does not see clients.
+  const deleteList = useCallback(async (listId, { protectedContactIds } = {}) => {
     if (!listId) return { error: 'No list selected.' };
     if (listId === masterListId) return { error: 'The Master Database cannot be deleted.' };
     if (!masterListId) return { error: 'Master Database is not ready. Refresh and try again.' };
 
+    const protectedIds = protectedContactIds instanceof Set
+      ? protectedContactIds
+      : new Set(protectedContactIds ?? []);
+
     const homeContacts = contacts.filter(c => c.listId === listId);
-    if (homeContacts.length) {
-      const contactMove = await supabase.from('contacts')
-        .update({ list_id: masterListId, updated_at: new Date().toISOString() })
-        .eq('list_id', listId);
-      if (contactMove.error) return { error: contactMove.error.message };
+    const deletableIds = [];
+    const rehomeByTarget = new Map(); // destination list id → contact ids
+    for (const contact of homeContacts) {
+      const otherLists = (contact.listIds ?? [contact.listId])
+        .filter(id => id && id !== listId && id !== masterListId);
+      if (protectedIds.has(contact.id) || otherLists.length > 0) {
+        const target = otherLists[0] ?? masterListId;
+        if (!rehomeByTarget.has(target)) rehomeByTarget.set(target, []);
+        rehomeByTarget.get(target).push(contact.id);
+      } else {
+        deletableIds.push(contact.id);
+      }
+    }
+
+    // Re-home the survivors first, so a failure here leaves the list intact.
+    for (const [target, ids] of rehomeByTarget) {
+      const { error } = await supabase.from('contacts')
+        .update({ list_id: target, updated_at: new Date().toISOString() })
+        .in('id', ids);
+      if (error) return { error: error.message };
+    }
+
+    // Then delete the list-only contacts (memberships cascade off contacts.id).
+    const BATCH = 200;
+    for (let i = 0; i < deletableIds.length; i += BATCH) {
+      const { error } = await supabase.from('contacts')
+        .delete()
+        .in('id', deletableIds.slice(i, i + BATCH));
+      if (error) return { error: error.message };
     }
 
     const listDelete = await supabase.from('lists').delete().eq('id', listId);
     if (listDelete.error) return { error: listDelete.error.message };
 
+    const deleted = new Set(deletableIds);
+    const rehomedTo = new Map();
+    for (const [target, ids] of rehomeByTarget) for (const id of ids) rehomedTo.set(id, target);
+
     setLists(prev => prev.filter(l => l.id !== listId));
-    setContacts(prev => prev.map(contact => ({
-      ...contact,
-      listId: contact.listId === listId ? masterListId : contact.listId,
-      listIds: [...new Set((contact.listIds ?? [contact.listId])
-        .filter(id => id !== listId)
-        .concat(contact.listId === listId ? [masterListId] : []))],
-    })));
-    return { ok: true, preservedContacts: homeContacts.length };
+    setContacts(prev => prev.filter(c => !deleted.has(c.id)).map(contact => {
+      const rehomed = rehomedTo.get(contact.id);
+      if (!rehomed && !(contact.listIds ?? []).includes(listId)) return contact;
+      return {
+        ...contact,
+        listId: rehomed ?? contact.listId,
+        listIds: [...new Set((contact.listIds ?? [contact.listId])
+          .filter(id => id && id !== listId)
+          .concat(rehomed ? [rehomed] : []))],
+      };
+    }));
+    return { ok: true, deletedContacts: deletableIds.length, preservedContacts: rehomedTo.size };
   }, [contacts, masterListId]);
 
   const renameList = useCallback(async (listId, newName) => {
@@ -1594,6 +1639,32 @@ export function useDatabase() {
       return { ok: true };
     }
     return { error: error.message };
+  }, []);
+
+  // Batched permanent delete for bulk selections (select-all can be thousands of rows,
+  // so this must not be one request per person).
+  const deleteContacts = useCallback(async (contactIds) => {
+    const ids = [...new Set((contactIds ?? []).filter(Boolean))];
+    if (ids.length === 0) return { error: 'Select at least one person.' };
+
+    const BATCH = 200;
+    const removed = [];
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const slice = ids.slice(i, i + BATCH);
+      const { error } = await supabase.from('contacts').delete().in('id', slice);
+      if (error) {
+        // Keep whatever already went through reflected in the UI.
+        if (removed.length) {
+          const gone = new Set(removed);
+          setContacts(prev => prev.filter(c => !gone.has(c.id)));
+        }
+        return { error: error.message, deletedCount: removed.length };
+      }
+      removed.push(...slice);
+    }
+    const gone = new Set(removed);
+    setContacts(prev => prev.filter(c => !gone.has(c.id)));
+    return { ok: true, deletedCount: removed.length };
   }, []);
 
   // Same-owner radar: fold `weakerId` into `masterId` as the same owner —
@@ -1990,6 +2061,7 @@ export function useDatabase() {
     deleteList,
     renameList,
     deleteContact,
+    deleteContacts,
     addToMasterDB,
     logContactAction,
     deleteContactAction,

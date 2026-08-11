@@ -2682,7 +2682,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     importList, importIntoList, mergeDuplicateContact, moveContactToList, addContactsToList,
     removeContactsFromList, createList, addContact, listMembershipMigrationNeeded,
     updateContactStatus,
-    updateContactNotes, updateContact, deleteList, renameList, deleteContact,
+    updateContactNotes, updateContact, deleteList, renameList, deleteContact, deleteContacts,
     addToMasterDB, logContactAction: persistContactAction, deleteContactAction, deleteContactCallHistory,
     duplicateDismissals, dismissedDuplicateKeys, dismissalStorage, dismissDuplicateGroup, restoreDuplicateGroup,
     applyListFolderChanges, applyListArchiveChange,
@@ -2820,14 +2820,33 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   async function handleDeleteList(listId) {
     if (!listId || listId === masterListId) return;
     const list = lists.find(l => l.id === listId);
-    const count = contacts.filter(c => contactInList(c, listId)).length;
+
+    // Anyone backing a Core Client or Pipeline record survives the delete — the
+    // contact row is what those records hang off of.
+    const protectedContactIds = new Set([
+      ...(coreApi?.coreClients ?? []).map(profile => profile.contactId),
+      ...clients.map(client => client.contactId),
+    ].filter(Boolean));
+
+    const homed = contacts.filter(c => c.listId === listId);
+    const alsoElsewhere = homed.filter(c => (c.listIds ?? [c.listId])
+      .some(id => id && id !== listId && id !== masterListId)).length;
+    const keptForClients = homed.filter(c => protectedContactIds.has(c.id)
+      && !(c.listIds ?? [c.listId]).some(id => id && id !== listId && id !== masterListId)).length;
+    const willDelete = homed.length - alsoElsewhere - keptForClients;
+    const kept = alsoElsewhere + keptForClients;
+
     const ok = confirm(
       `Delete the list "${list?.name ?? 'this list'}"?\n\n` +
-      `${count} contact${count === 1 ? '' : 's'} will be removed from this list, but their CRM records will remain in the Master Database.`
+      `${willDelete} contact${willDelete === 1 ? '' : 's'} will be permanently deleted from the CRM.` +
+      (kept > 0
+        ? `\n${kept} will be kept${keptForClients > 0 ? ' (in a client or pipeline record' : ' (also on another list'}${keptForClients > 0 && alsoElsewhere > 0 ? ', or on another list' : ''}).`
+        : '') +
+      `\n\nThis cannot be undone.`
     );
     if (!ok) return;
 
-    const result = await deleteList(listId);
+    const result = await deleteList(listId, { protectedContactIds });
     if (result?.error) {
       alert(`Could not delete list: ${result.error}`);
       return;
@@ -2869,6 +2888,47 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     }
     setBulkStatus(`${ids.length} ${ids.length === 1 ? 'person' : 'people'} removed from this list and kept in Master Database.`);
     setSelectedContactIds(new Set());
+  }
+
+  // Permanently remove selected people from the CRM — the cleanup path for contacts
+  // stranded in Master Database by an earlier list deletion. Core Client / Pipeline
+  // records hang off contacts.id, so those people are refused, not silently deleted.
+  async function deleteSelectedContacts() {
+    const ids = [...selectedContactIds];
+    if (ids.length === 0) return;
+
+    const linkedToRecords = new Set([
+      ...(coreApi?.coreClients ?? []).map(profile => profile.contactId),
+      ...clients.map(client => client.contactId),
+    ].filter(Boolean));
+    const blocked = ids.filter(id => linkedToRecords.has(id));
+    const deletable = ids.filter(id => !linkedToRecords.has(id));
+
+    if (deletable.length === 0) {
+      setBulkStatus(`Could not delete: ${blocked.length === 1 ? 'that person is' : 'those people are'} attached to a client or pipeline record. Remove the record first.`);
+      return;
+    }
+
+    const ok = confirm(
+      `Permanently delete ${deletable.length} ${deletable.length === 1 ? 'person' : 'people'} from the CRM?\n\n` +
+      (blocked.length > 0
+        ? `${blocked.length} of the selected ${blocked.length === 1 ? 'person is' : 'people are'} attached to a client or pipeline record and will be skipped.\n\n`
+        : '') +
+      `Call history and notes go with them. This cannot be undone.`
+    );
+    if (!ok) return;
+
+    const result = await deleteContacts(deletable);
+    if (result?.error) {
+      setBulkStatus(`Could not delete every person: ${result.error}`);
+      setSelectedContactIds(new Set());
+      return;
+    }
+    setSelectedContactIds(new Set());
+    setBulkStatus(
+      `${result.deletedCount} ${result.deletedCount === 1 ? 'person' : 'people'} permanently deleted.` +
+      (blocked.length > 0 ? ` ${blocked.length} skipped (attached to a client or pipeline record).` : '')
+    );
   }
 
   async function createTargetedList() {
@@ -4122,6 +4182,13 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
                       Remove from this list
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={deleteSelectedContacts}
+                    className="rounded-lg border border-red-600/50 bg-red-600/20 px-3 py-2 text-xs font-bold text-red-300 transition-all hover:bg-red-600/30"
+                  >
+                    Delete permanently
+                  </button>
                   <button
                     type="button"
                     onClick={() => { setSelectedContactIds(new Set()); setBulkStatus(''); }}
