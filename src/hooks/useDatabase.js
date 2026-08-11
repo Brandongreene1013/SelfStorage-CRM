@@ -1497,8 +1497,8 @@ export function useDatabase() {
   // nothing to do with this list:
   //   • anyone who also belongs to another list (re-homed to that list)
   //   • anyone backing a Core Client or Pipeline record (re-homed to Master Database).
-  //     core_client_profiles.contact_id cascades on delete and clients.contact_id
-  //     nulls out, so a hard delete here would silently gut a real relationship.
+  //     core_clients.contact_id cascades on delete and clients.contact_id nulls out,
+  //     so a hard delete here would silently gut a real relationship.
   // Pass those ids in as protectedContactIds — this hook does not see clients.
   const deleteList = useCallback(async (listId, { protectedContactIds } = {}) => {
     if (!listId) return { error: 'No list selected.' };
