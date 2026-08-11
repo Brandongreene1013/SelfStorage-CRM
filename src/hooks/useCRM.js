@@ -129,6 +129,7 @@ export function useCRM() {
     if (data.nextActionDate !== undefined) db.next_action_date = data.nextActionDate;
     if (data.nextActionNote !== undefined) db.next_action_note = data.nextActionNote;
     if (data.leadTemp !== undefined) db.lead_temp = data.leadTemp;
+    if (data.tractiqSent !== undefined) db.tractiq_sent = data.tractiqSent;
     if (data.actionLog !== undefined) db.action_log = data.actionLog;
     return db;
   }
@@ -411,6 +412,7 @@ export function useCRM() {
     if (actionFields.nextActionDate !== undefined) db.next_action_date = actionFields.nextActionDate;
     if (actionFields.nextActionNote !== undefined) db.next_action_note = actionFields.nextActionNote;
     if (actionFields.leadTemp       !== undefined) db.lead_temp        = actionFields.leadTemp;
+    if (actionFields.tractiqSent    !== undefined) db.tractiq_sent     = actionFields.tractiqSent;
     if (actionFields.ownershipGroupId !== undefined) db.ownership_group_id = actionFields.ownershipGroupId || null;
     db.updated_at = new Date().toISOString();
 

@@ -5,6 +5,7 @@ import ActionCenterModal from './ActionCenterModal';
 import EngagementPanel from './EngagementPanel';
 import { AddToMailerButton } from './MailerListPicker';
 import OwnershipLinksPanel from './OwnershipLinksPanel';
+import TractiqToggle from './TractiqToggle';
 import { StatusBadge } from './ui';
 import { getNextOpenTask, legacyActionDefaults, taskEditDefaults } from './tasks';
 
@@ -61,6 +62,11 @@ export default function ClientCard({ client, onEdit, onDelete, onStageChange, on
                 </button>
               );
             })()}
+            <TractiqToggle
+              sent={client.tractiqSent}
+              compact={compact}
+              onToggle={(next) => onSetAction(client.id, { tractiqSent: next })}
+            />
           </div>
           <h3 className="font-bold text-white text-sm mt-1 truncate">{client.name}</h3>
           {client.age && (

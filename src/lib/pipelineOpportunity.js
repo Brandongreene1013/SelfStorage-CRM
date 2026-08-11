@@ -30,6 +30,7 @@ export function dbToPipelineOpportunity(row) {
     nextActionDate: row.next_action_date ?? '',
     nextActionNote: row.next_action_note ?? '',
     leadTemp: row.lead_temp ?? '',
+    tractiqSent: row.tractiq_sent ?? false,
     actionLog: row.action_log ?? [],
     ownershipGroupId: row.ownership_group_id ?? null,
     propertyId: row.property_id ?? null,
