@@ -4,7 +4,7 @@ import { buildContactOutcomeFields } from '../lib/contactMutations';
 import { selectAllRows } from '../lib/selectAllRows';
 import { buildMergePlan } from '../lib/duplicateReview';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
-import { contactInList, originatingListIds } from '../lib/listMemberships';
+import { contactInList, originatingListIds, planListDeletion } from '../lib/listMemberships';
 import {
   buildCaptureLogEntries,
   hasMeaningfulOwnerName,
@@ -1505,23 +1505,14 @@ export function useDatabase() {
     if (listId === masterListId) return { error: 'The Master Database cannot be deleted.' };
     if (!masterListId) return { error: 'Master Database is not ready. Refresh and try again.' };
 
-    const protectedIds = protectedContactIds instanceof Set
-      ? protectedContactIds
-      : new Set(protectedContactIds ?? []);
-
-    const homeContacts = contacts.filter(c => c.listId === listId);
-    const deletableIds = [];
+    // The delete-vs-rehome decision lives in a pure, tested planner so the
+    // "a deleted list never dumps its contacts into Master" contract can't
+    // silently regress. See planListDeletion in lib/listMemberships.js.
+    const { deletableIds, rehome } = planListDeletion(contacts, listId, masterListId, protectedContactIds);
     const rehomeByTarget = new Map(); // destination list id → contact ids
-    for (const contact of homeContacts) {
-      const otherLists = (contact.listIds ?? [contact.listId])
-        .filter(id => id && id !== listId && id !== masterListId);
-      if (protectedIds.has(contact.id) || otherLists.length > 0) {
-        const target = otherLists[0] ?? masterListId;
-        if (!rehomeByTarget.has(target)) rehomeByTarget.set(target, []);
-        rehomeByTarget.get(target).push(contact.id);
-      } else {
-        deletableIds.push(contact.id);
-      }
+    for (const { id, target } of rehome) {
+      if (!rehomeByTarget.has(target)) rehomeByTarget.set(target, []);
+      rehomeByTarget.get(target).push(id);
     }
 
     // Re-home the survivors first, so a failure here leaves the list intact.
