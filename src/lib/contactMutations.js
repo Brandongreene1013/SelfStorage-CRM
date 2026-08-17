@@ -1,6 +1,8 @@
+import { localDateValue } from './activityDates.js';
+
 export function buildContactOutcomeFields(contact, status, callNote, activityDate, options = {}) {
   if (!contact) return null;
-  const date = activityDate || new Date().toISOString().slice(0, 10);
+  const date = activityDate || localDateValue();
   const fields = {
     status,
     callHistory: [

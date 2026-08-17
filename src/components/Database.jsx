@@ -34,6 +34,7 @@ import { RelatedTasks, TaskModal, getNextOpenTask, dueMeta, legacyActionDefaults
 import { loadGeoData, resolveAnchor, contactDistanceMiles, PRESET_ANCHORS } from '../lib/geo';
 import { createActivityEventId, buildActivityAnalytics, easternToday } from '../lib/activityAnalytics';
 import { EVENT_META, eventTimeLabel } from '../lib/activityLog';
+import { activityTimestamps, addLocalDays, formatActivityDate, localDateValue } from '../lib/activityDates';
 import { sortDatabaseContacts } from '../lib/databaseSort';
 import { contactInList, originatingListIds } from '../lib/listMemberships';
 import { callModeContactIndex, callModeTarget, createCallModeSession, removeCallModeSessionContact, resolveCallModeContact } from '../lib/callModeSession';
@@ -89,6 +90,29 @@ const DATABASE_SORT_OPTIONS = [
   { value: 'owner_az', label: 'Owner name A–Z' },
   { value: 'facility_az', label: 'Facility name A–Z' },
 ];
+
+function DatabasePresenceFlags({ inMaster, inCore, className = '' }) {
+  const flags = [
+    { label: 'Master', active: inMaster, title: inMaster ? 'Exists in Master Database' : 'Not in Master Database' },
+    { label: 'Core', active: inCore, title: inCore ? 'Active Core Client' : 'Not an active Core Client' },
+  ];
+  return (
+    <div className={`flex flex-wrap items-center gap-1.5 ${className}`} aria-label="CRM database presence">
+      {flags.map(flag => (
+        <span
+          key={flag.label}
+          title={flag.title}
+          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-bold ${flag.active
+            ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300'
+            : 'border-red-500/30 bg-red-500/10 text-red-300'}`}
+        >
+          <span aria-hidden="true">{flag.active ? '●' : '○'}</span>
+          {flag.label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 const SOURCE_COLORS = {
   'Internal DB': 'bg-blue-600/20 text-blue-400 border-blue-600/30',
@@ -1085,7 +1109,7 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
   const [notes, setNotes]           = useState(contact.notes ?? '');
   const [noteError, setNoteError]   = useState(null);
   const [callbackDate, setCallbackDate] = useState(contact.callbackDate ?? '');
-  const [activityDate, setActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [activityDate, setActivityDate] = useState(localDateValue);
   // Conversation and appointment can still offer a follow-up. Call Back creates
   // its dated task immediately so the action and task cannot drift apart.
   const [taskPrompt, setTaskPrompt] = useState(null); // 'suggest' | 'open' | null
@@ -1106,6 +1130,19 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
   async function saveNotes() {
     const result = await onNotesChange(contact.id, notes);
     setNoteError(result?.error ?? null);
+    if (!result?.error && notes.trim() !== (contact.notes ?? '').trim()) {
+      const logResult = await onLogAction(contact.id, {
+        eventId: createActivityEventId(),
+        type: 'note',
+        priority: 'normal',
+        note: notes.trim(),
+        ...activityTimestamps(activityDate),
+      });
+      if (logResult?.error) {
+        setNoteError(`Note text saved, but its dated activity could not be logged: ${logResult.error}`);
+        return logResult;
+      }
+    }
     return result ?? { ok: true };
   }
 
@@ -1131,10 +1168,9 @@ function ContactDetailModal({ contact, lists = [], allContacts = [], onClose, on
     const actionEntry = {
       eventId: createActivityEventId(),
       type: status,
-      date: activityDate,
       priority: 'normal',
       note: loggedNotes.trim(),
-      at: new Date().toISOString(),
+      ...activityTimestamps(activityDate),
     };
     try {
       const result = await onStatusChange(contact.id, status, loggedNotes, activityDate, {
@@ -1593,6 +1629,10 @@ function PropertyCard({ contact, onClick, onAddToMasterDB, onSetAction, onLogAct
           {coreClient?.status === 'active' && (
             <StatusBadge variant="amber" pill={false} className="font-bold">Core Client</StatusBadge>
           )}
+          <DatabasePresenceFlags
+            inMaster={contactInList(contact, masterListId)}
+            inCore={coreClient?.status === 'active'}
+          />
           {pipelineRecords.length > 0 && (
             <StatusBadge variant="green" pill={false} className="font-bold">
               Pipeline · {pipelineRecords.length}
@@ -3067,7 +3107,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
   const [callQueueIndex, setCallQueueIndex] = useState(0);
   const [callNote, setCallNote]       = useState('');
   const [callbackDate, setCallbackDate] = useState('');
-  const [callActivityDate, setCallActivityDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [callActivityDate, setCallActivityDate] = useState(localDateValue);
   // null = show the queue picker; otherwise one of QUEUE_DEFS' keys below
   const [callQueueSource, setCallQueueSource] = useState(null);
 
@@ -3526,10 +3566,9 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     const actionEntry = {
       eventId: createActivityEventId(),
       type: status,
-      date: activityDate || new Date().toISOString().slice(0, 10),
       priority: 'normal',
       note: loggedNote.trim(),
-      at: new Date().toISOString(),
+      ...activityTimestamps(activityDate),
     };
     const outcomeResult = await updateContactStatus(contact.id, status, loggedNote, activityDate, {
       actionEntry,
@@ -3568,7 +3607,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
       status,
       notes: options?.notes ?? prev.notes,
       callbackDate: options?.callbackDate ?? prev.callbackDate,
-      lastCalled: activityDate || new Date().toISOString().slice(0,10),
+      lastCalled: activityDate || localDateValue(),
       actionLog: options?.actionEntry ? [...(prev.actionLog ?? []), options.actionEntry] : prev.actionLog,
     } : prev);
     return result;
@@ -3959,6 +3998,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               onPromote={onContactToClients}
               onMoveToMaster={(contactId) => moveContactToList(contactId, masterListId)}
               masterListId={masterListId}
+              activeCoreContactIds={activeCoreContactIds}
               contacts={contacts}
               taskApi={taskApi}
               ownershipApi={ownershipApi}
@@ -4509,9 +4549,7 @@ const CALLBACK_PRESETS = [
 ];
 
 function datePlusDays(days) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return addLocalDays(days);
 }
 
 // Sprint 20 — click-to-edit for the big header fields (owner name / facility)
@@ -4786,7 +4824,7 @@ function DialTallyMarks({ count }) {
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onRemoveFromList, sourceListId, sourceListName, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, sharedContactInfo, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onRemoveFromList, sourceListId, sourceListName, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, activeCoreContactIds, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, sharedContactInfo, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
   // Freeze the queue by contact ID for the lifetime of this Call Mode session.
   // Outcomes and list moves mutate the live queue; resolving by its changing
   // array index can silently put the controls on a different person.
@@ -4822,7 +4860,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const noteSaved = noteSavedFor === current?.id;
   const noteErr = noteSaveError?.contactId === current?.id ? noteSaveError.message : null;
   const activePostOutcome = postOutcome;
-  const masterStatus = current?.listId === masterListId ? 'in' : movedMasterId === current?.id ? 'moved' : 'available';
+  const masterStatus = contactInList(current, masterListId) ? 'in' : movedMasterId === current?.id ? 'moved' : 'available';
   const relatedOwnerCandidates = buildRelatedOwnerCandidates(current, contacts, masterListId, { dismissedKeys: dismissedDuplicateKeys, sharedContactInfo });
 
   // Today's logged activity for the live "Today" rail panel — recomputed only
@@ -4849,7 +4887,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     setDismissingCandidateId(null);
   }
 
-  async function saveNotes() {
+  async function saveNotes(logActivity = true) {
     if (!current) return { ok: true };
     const result = await onSaveNotes(current.id, noteText);
     if (result?.error) {
@@ -4859,6 +4897,21 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
       return result;
     }
     setNoteSaveError(null);
+    if (logActivity && noteText.trim() !== contactNote.trim() && onLogAction) {
+      const logResult = await onLogAction(current.id, {
+        eventId: createActivityEventId(),
+        type: 'note',
+        priority: 'normal',
+        note: noteText.trim(),
+        ...activityTimestamps(activityDate),
+      });
+      if (logResult?.error) {
+        const message = `Note text saved, but its dated activity could not be logged: ${logResult.error}`;
+        setNoteSaveError({ contactId: current.id, message });
+        setNoteSavedFor(null);
+        return { error: message };
+      }
+    }
     setNoteSavedFor(current.id);
     setTimeout(() => setNoteSavedFor(null), 1800);
     return { ok: true };
@@ -4873,10 +4926,9 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
       const result = await onLogAction(lockedContactId, {
         eventId: createActivityEventId(),
         type: 'dial',
-        date: activityDate || easternToday(),
         priority: 'normal',
         note: '',
-        at: new Date().toISOString(),
+        ...activityTimestamps(activityDate || easternToday()),
       });
       if (result?.error) setDialError(result.error);
     } finally {
@@ -4902,7 +4954,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     if (!current || activePostOutcome || postOutcomeSaving || dialSaving) return;
     // Don't advance past a note that failed to save, or the broker loses it.
     if (hasNoteChanges) {
-      const result = await saveNotes();
+      const result = await saveNotes(false);
       if (result?.error) return;
     }
     selectSessionIndex(Math.min(sessionQueue.length - 1, Math.max(0, index + delta)));
@@ -5240,6 +5292,10 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   </span>
                 )}
                 <SourceBadge source={current.source} />
+                <DatabasePresenceFlags
+                  inMaster={contactInList(current, masterListId)}
+                  inCore={activeCoreContactIds?.has(current.id)}
+                />
                 {current.isDeceased && (
                   <span className="text-xs font-bold text-red-300 bg-red-500/10 border border-red-500/35 px-2 py-0.5 rounded-md">Deceased</span>
                 )}
@@ -5400,7 +5456,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                 <input type="date" value={callbackDate} onChange={e => setCallbackDate(e.target.value)}
                   className="bg-slate-800 border border-amber-500/50 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500" />
               </div>
-              <button onClick={saveNotes} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all">Save Note</button>
+              <button onClick={() => saveNotes(true)} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-all">Save Dated Note</button>
               <button onClick={() => go(-1)} disabled={index === 0 || dialSaving || !!activePostOutcome} className="text-sm text-slate-400 hover:text-white disabled:text-slate-700 transition-all font-semibold px-2 py-2">Previous</button>
               <button onClick={() => go(1)} disabled={index >= sessionQueue.length - 1 || dialSaving || !!activePostOutcome} className="text-sm text-amber-400 hover:text-amber-300 disabled:text-slate-700 transition-all font-semibold px-2 py-2 whitespace-nowrap">Next Contact</button>
               {sourceListId && (
@@ -5756,7 +5812,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                       <div className="min-w-0 flex-1">
                         <p className="font-bold text-slate-300">{action?.label ?? eventPresentation?.label ?? entry.type ?? 'Action'}</p>
                         {entry.note && <p className="mt-0.5 break-words text-slate-500">{entry.note}</p>}
-                        {entry.date && <p className="mt-0.5 text-slate-600">{entry.date}</p>}
+                        {entry.date && <p className="mt-0.5 text-slate-600">{formatActivityDate(entry.date)}{eventTimeLabel(entry.at) ? ` · ${eventTimeLabel(entry.at)}` : ''}</p>}
                       </div>
                       {onDeleteAction && (
                         <button type="button" onClick={() => onDeleteAction(current.id, index)}
@@ -5782,7 +5838,7 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-bold text-slate-300">{STATUS_LABELS[h.outcome] ?? h.outcome}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-600">{h.date}</span>
+                        <span className="text-slate-600">{formatActivityDate(h.date)}</span>
                         {onDeleteCallHistory && (
                           <button
                             onClick={() => handleDeleteCallHistory(index)}

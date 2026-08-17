@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { TASK_PRIORITIES, TASK_QUICK_PICKS, TASK_TYPES } from '../data/constants';
 import ModalLayout from './ui/ModalLayout';
 import { createActivityEventId } from '../lib/activityAnalytics';
+import { activityTimestamps, addLocalDays, localDateValue } from '../lib/activityDates';
 
 const ACTIVITY_OPTIONS = [
   { value: 'call', label: 'Call / call notes' },
@@ -34,9 +35,7 @@ const ACTIVITY_OPTIONS = [
 const ACTIVITY_LABELS = Object.fromEntries(ACTIVITY_OPTIONS.map(option => [option.value, option.label]));
 
 function plusDays(days) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return addLocalDays(days);
 }
 
 function saveError(result, fallback) {
@@ -66,7 +65,7 @@ export default function ActionCenterModal({
   const [activitySaved, setActivitySaved] = useState(false);
 
   const [logType, setLogType] = useState('call');
-  const [logDate, setLogDate] = useState(new Date().toISOString().slice(0, 10));
+  const [logDate, setLogDate] = useState(localDateValue);
   const [logNote, setLogNote] = useState('');
 
   const [title, setTitle] = useState(taskDefaults.title ?? '');
@@ -103,10 +102,9 @@ export default function ActionCenterModal({
         const result = await onLogAction({
           eventId: createActivityEventId(),
           type: logType,
-          date: logDate,
           priority: 'normal',
           note: logNote.trim(),
-          at: new Date().toISOString(),
+          ...activityTimestamps(logDate),
         });
         const message = saveError(result, 'Could not save this activity.');
         if (message) {
