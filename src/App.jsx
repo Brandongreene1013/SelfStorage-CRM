@@ -92,7 +92,7 @@ function PipelineValueHeader({ clients }) {
 
 export default function App() {
   const { goBack, canGoBack, backLabel } = useCrmNavigation();
-  const { clients, dealValueMigrationNeeded, pipelineStageRpcStatus, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog } = useCRM();
+  const { clients, dealValueMigrationNeeded, pipelineStageRpcStatus, reload: reloadClients, addClient, updateClient, deleteClient, moveClientToStage, setClientAction, logClientAction, deleteClientAction, mutateClientLog } = useCRM();
   const db = useDatabase(); // shared Database state (lifted so contacts can move to/from Clients)
   const { meetings, addMeeting, updateMeeting, deleteMeeting } = useMeetings();
   const { calendarEvents } = useCalendarEvents();
@@ -545,6 +545,7 @@ export default function App() {
               onSetAction: setClientAction,
               onLogAction: logClientAction,
               onDeleteAction: deleteClientAction,
+              reload: reloadClients,
               mailerApi,
             }}
             taskApi={taskApi}

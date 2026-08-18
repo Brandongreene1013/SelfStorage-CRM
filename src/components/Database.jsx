@@ -497,21 +497,19 @@ function DeleteContactConfirmModal({ contact, openTaskCount = 0, onConfirm, onCl
   return (
     <ModalLayout onClose={onClose} size="sm" className="p-6 text-center">
       <div className="text-4xl mb-3">Delete</div>
-      <h2 className="text-lg font-bold text-white mb-1">Delete Contact?</h2>
+      <h2 className="text-lg font-bold text-white mb-1">Delete from CRM?</h2>
       <p className="text-slate-400 text-sm mb-3">
-        Delete <span className="text-white font-semibold">{contactDisplayName(contact)}</span> from the database? This cannot be undone.
+        Permanently delete <span className="text-white font-semibold">{contactDisplayName(contact)}</span> from the entire CRM? This cannot be undone.
       </p>
-      {openTaskCount > 0 && (
-        <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 mb-4">
-          {openTaskCount} open related task{openTaskCount === 1 ? '' : 's'} will remain in Tasks and may need cleanup.
-        </p>
-      )}
+      <p className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 mb-4">
+        Their contact record, call history, notes, {openTaskCount > 0 ? `${openTaskCount} open task${openTaskCount === 1 ? '' : 's'}, ` : ''}list and mailer memberships, Core Client profile, and linked Pipeline opportunities will be erased.
+      </p>
       <div className="flex gap-3">
         <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white transition-all text-sm font-semibold">
           Cancel
         </button>
         <button onClick={onConfirm} className="flex-1 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-sm transition-all">
-          Delete
+          Delete from CRM
         </button>
       </div>
     </ModalLayout>
@@ -2937,38 +2935,38 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
     const ids = [...selectedContactIds];
     if (ids.length === 0) return;
 
-    const linkedToRecords = new Set([
-      ...(coreApi?.coreClients ?? []).map(profile => profile.contactId),
-      ...clients.map(client => client.contactId),
-    ].filter(Boolean));
-    const blocked = ids.filter(id => linkedToRecords.has(id));
-    const deletable = ids.filter(id => !linkedToRecords.has(id));
-
-    if (deletable.length === 0) {
-      setBulkStatus(`Could not delete: ${blocked.length === 1 ? 'that person is' : 'those people are'} attached to a client or pipeline record. Remove the record first.`);
-      return;
-    }
-
     const ok = confirm(
-      `Permanently delete ${deletable.length} ${deletable.length === 1 ? 'person' : 'people'} from the CRM?\n\n` +
-      (blocked.length > 0
-        ? `${blocked.length} of the selected ${blocked.length === 1 ? 'person is' : 'people are'} attached to a client or pipeline record and will be skipped.\n\n`
-        : '') +
-      `Call history and notes go with them. This cannot be undone.`
+      `Permanently delete ${ids.length} ${ids.length === 1 ? 'person' : 'people'} from the entire CRM?\n\n` +
+      `Contact records, call history, notes, tasks, list and mailer memberships, Core Client profiles, and linked Pipeline opportunities will be erased.\n\nThis cannot be undone.`
     );
     if (!ok) return;
 
-    const result = await deleteContacts(deletable);
+    const result = await deleteContacts(ids);
     if (result?.error) {
       setBulkStatus(`Could not delete every person: ${result.error}`);
       setSelectedContactIds(new Set());
       return;
     }
+    await Promise.allSettled([
+      clientHandlers.reload?.(),
+      coreApi?.reload?.(),
+      taskApi?.reload?.(),
+      mailerApi?.reload?.(),
+    ].filter(Boolean));
     setSelectedContactIds(new Set());
-    setBulkStatus(
-      `${result.deletedCount} ${result.deletedCount === 1 ? 'person' : 'people'} permanently deleted.` +
-      (blocked.length > 0 ? ` ${blocked.length} skipped (attached to a client or pipeline record).` : '')
-    );
+    setBulkStatus(`${result.deletedCount} ${result.deletedCount === 1 ? 'person' : 'people'} permanently deleted from the CRM.`);
+  }
+
+  async function deleteContactFromCrm(contactId) {
+    const result = await deleteContact(contactId);
+    if (result?.error) return result;
+    await Promise.allSettled([
+      clientHandlers.reload?.(),
+      coreApi?.reload?.(),
+      taskApi?.reload?.(),
+      mailerApi?.reload?.(),
+    ].filter(Boolean));
+    return result;
   }
 
   async function createTargetedList() {
@@ -3912,7 +3910,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
             lists={lists}
             taskApi={taskApi}
             onMerge={mergeDuplicateContact}
-            onDelete={deleteContact}
+            onDelete={deleteContactFromCrm}
             onOpenContact={(c) => setOpenContact(c)}
             onExit={() => setSubView('contacts')}
             dismissedKeys={dismissedDuplicateKeys}
@@ -3982,7 +3980,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               onOutcome={handleCallOutcome}
               onSaveNotes={updateContactNotes}
               onUpdateContact={updateContact}
-              onDeleteContact={deleteContact}
+              onDeleteContact={deleteContactFromCrm}
               onRemoveFromList={removeContactsFromList}
               sourceListId={callQueueSource === 'activeList'
                 && activeListId !== masterListId
@@ -4371,7 +4369,15 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
           onStatusChange={handleStatusChangeFromModal}
           onNotesChange={updateContactNotes}
           onUpdate={updateContact}
-          onDelete={(id) => { deleteContact(id); setOpenContact(null); }}
+          onDelete={async (id) => {
+            const result = await deleteContactFromCrm(id);
+            if (result?.error) {
+              alert('Could not delete contact: ' + result.error);
+              return result;
+            }
+            setOpenContact(null);
+            return result;
+          }}
           onLogAction={logContactAction}
           onDeleteAction={deleteContactAction}
           onDeleteCallHistory={deleteContactCallHistory}

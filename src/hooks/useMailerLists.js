@@ -42,22 +42,25 @@ export function useMailerLists() {
   const [tablesMissing, setTablesMissing] = useState(false);
   const [sentTrackingMissing, setSentTrackingMissing] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const [listsRes, membersRes, sentTrackingRes] = await Promise.all([
-        selectAllRows(() => supabase.from('mailer_lists').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
-        selectAllRows(() => supabase.from('mailer_list_members').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
-        supabase.from('mailer_list_members').select('sent_at').limit(1),
-      ]);
-      if (isMissingTableError(listsRes.error) || isMissingTableError(membersRes.error)) {
-        setTablesMissing(true);
-        return;
-      }
-      if (!listsRes.error && listsRes.data) setMailerLists(listsRes.data.map(dbToList));
-      if (!membersRes.error && membersRes.data) setMembers(membersRes.data.map(dbToMember));
-      if (isMissingSentTrackingError(sentTrackingRes.error)) setSentTrackingMissing(true);
-    })();
+  const loadMailerLists = useCallback(async () => {
+    const [listsRes, membersRes, sentTrackingRes] = await Promise.all([
+      selectAllRows(() => supabase.from('mailer_lists').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
+      selectAllRows(() => supabase.from('mailer_list_members').select('*').order('created_at', { ascending: true }).order('id', { ascending: true })),
+      supabase.from('mailer_list_members').select('sent_at').limit(1),
+    ]);
+    if (isMissingTableError(listsRes.error) || isMissingTableError(membersRes.error)) {
+      setTablesMissing(true);
+      return;
+    }
+    setTablesMissing(false);
+    if (!listsRes.error && listsRes.data) setMailerLists(listsRes.data.map(dbToList));
+    if (!membersRes.error && membersRes.data) setMembers(membersRes.data.map(dbToMember));
+    setSentTrackingMissing(isMissingSentTrackingError(sentTrackingRes.error));
   }, []);
+
+  useEffect(() => {
+    loadMailerLists();
+  }, [loadMailerLists]);
 
   const createList = useCallback(async (name) => {
     const trimmed = (name ?? '').trim();
@@ -166,6 +169,7 @@ export function useMailerLists() {
     memberCounts,
     tablesMissing,
     sentTrackingMissing,
+    reload: loadMailerLists,
     createList,
     renameList,
     deleteList,

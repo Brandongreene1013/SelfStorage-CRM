@@ -4,6 +4,7 @@ import { buildContactOutcomeFields } from '../lib/contactMutations';
 import { selectAllRows } from '../lib/selectAllRows';
 import { buildMergePlan } from '../lib/duplicateReview';
 import { normalizeMailingAddresses } from '../lib/mailingAddresses';
+import { deleteContactsFromCrm } from '../lib/contactDeletion';
 import { contactInList, originatingListIds, planListDeletion } from '../lib/listMemberships';
 import {
   buildCaptureLogEntries,
@@ -1624,12 +1625,12 @@ export function useDatabase() {
   }, []);
 
   const deleteContact = useCallback(async (contactId) => {
-    const { error } = await supabase.from('contacts').delete().eq('id', contactId);
-    if (!error) {
+    const result = await deleteContactsFromCrm(supabase, [contactId]);
+    if (!result.error) {
       setContacts(prev => prev.filter(c => c.id !== contactId));
-      return { ok: true };
+      return result;
     }
-    return { error: error.message };
+    return result;
   }, []);
 
   // Batched permanent delete for bulk selections (select-all can be thousands of rows,
@@ -1637,25 +1638,10 @@ export function useDatabase() {
   const deleteContacts = useCallback(async (contactIds) => {
     const ids = [...new Set((contactIds ?? []).filter(Boolean))];
     if (ids.length === 0) return { error: 'Select at least one person.' };
-
-    const BATCH = 200;
-    const removed = [];
-    for (let i = 0; i < ids.length; i += BATCH) {
-      const slice = ids.slice(i, i + BATCH);
-      const { error } = await supabase.from('contacts').delete().in('id', slice);
-      if (error) {
-        // Keep whatever already went through reflected in the UI.
-        if (removed.length) {
-          const gone = new Set(removed);
-          setContacts(prev => prev.filter(c => !gone.has(c.id)));
-        }
-        return { error: error.message, deletedCount: removed.length };
-      }
-      removed.push(...slice);
-    }
-    const gone = new Set(removed);
+    const result = await deleteContactsFromCrm(supabase, ids);
+    const gone = new Set(result.error ? ids.slice(0, result.deletedCount ?? 0) : ids);
     setContacts(prev => prev.filter(c => !gone.has(c.id)));
-    return { ok: true, deletedCount: removed.length };
+    return result;
   }, []);
 
   // Same-owner radar: fold `weakerId` into `masterId` as the same owner —
