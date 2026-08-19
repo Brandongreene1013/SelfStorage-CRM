@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, useDroppable } from '@dnd-kit/core';
 import ImportListModal from './ImportListModal';
 import DuplicateReview from './DuplicateReview';
-import { findDuplicateGroups } from '../lib/duplicateReview';
+import { findDuplicateGroups, keepScore, keepSignals, isProtectedRecord } from '../lib/duplicateReview';
 import { OwnerResearchPanel, ResearchStrip } from './ResearchLinks';
 import { buildWhitepagesLink, normalizeLinkedinUrl } from '../lib/researchLinks';
 import { buildRelatedOwnerCandidates, buildSharedContactInfoIndex, isSharedEmail, isSharedPhone, normalizePropertyAddress, subjectPropertyPayload } from '../lib/ownerRadar';
@@ -2717,7 +2717,7 @@ function CallModeQueuePicker({
 export default function Database({ onCallLogged, db, onContactToClients, clients = [], clientHandlers = {}, taskApi, ownershipApi, coreApi, onAddToCoreClients, onAddToPipeline, contactActionLogger, onMeaningfulContact, mailerApi, entryRequest, onEntryConsumed }) {
   const {
     lists, contacts, masterListId,
-    importList, importIntoList, mergeDuplicateContact, moveContactToList, addContactsToList,
+    importList, importIntoList, mergeDuplicateContact, mergeSpouseContact, moveContactToList, addContactsToList,
     removeContactsFromList, createList, addContact, listMembershipMigrationNeeded,
     updateContactStatus,
     updateContactNotes, updateContact, deleteList, renameList, deleteContact, deleteContacts,
@@ -4004,6 +4004,7 @@ export default function Database({ onCallLogged, db, onContactToClients, clients
               dismissedDuplicateKeys={dismissedDuplicateKeys}
               sharedContactInfo={sharedContactInfo}
               onDismissRelatedOwner={dismissDuplicateGroup}
+              onMergeSpouse={mergeSpouseContact}
               queueLabel={activeQueueDef?.label ?? 'Call Mode'}
               queueReasonText={activeQueueDef?.reason ?? ''}
               locationLabel={callQueueSource === 'activeList' ? locationAnchor?.label : null}
@@ -4830,7 +4831,7 @@ function DialTallyMarks({ count }) {
   );
 }
 
-function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onRemoveFromList, sourceListId, sourceListName, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, activeCoreContactIds, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, sharedContactInfo, onDismissRelatedOwner, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
+function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, activityDate, setActivityDate, onOutcome, onSaveNotes, onUpdateContact, onDeleteContact, onRemoveFromList, sourceListId, sourceListName, onLogAction, onDeleteAction, onDeleteCallHistory, onPromote, onMoveToMaster, masterListId, activeCoreContactIds, contacts = [], taskApi, ownershipApi, mailerApi, dismissedDuplicateKeys, sharedContactInfo, onDismissRelatedOwner, onMergeSpouse, queueLabel, queueReasonText, locationLabel, onExit, onBackToPicker, allContacts = [], onLinkInheritor, onCreateInheritor }) {
   // Freeze the queue by contact ID for the lifetime of this Call Mode session.
   // Outcomes and list moves mutate the live queue; resolving by its changing
   // array index can silently put the controls on a different person.
@@ -4860,6 +4861,9 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
   const [movedMasterId, setMovedMasterId] = useState(null);
   const [propertyAssociation, setPropertyAssociation] = useState({ contactId: null, candidateId: null, status: '', message: '' });
   const [dismissingCandidateId, setDismissingCandidateId] = useState(null);
+  // Spouse-merge (same-owner) flow for the Possible Related Record card.
+  const [spouseMerge, setSpouseMerge] = useState({ contactId: null, candidateId: null, status: '', message: '' });
+  const [confirmSpouseCandidate, setConfirmSpouseCandidate] = useState(null);
   const contactNote = current?.notes ?? '';
   const noteText = noteDraft.contactId === current?.id ? noteDraft.text : contactNote;
   const hasNoteChanges = noteText !== contactNote;
@@ -4891,6 +4895,45 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
     setDismissingCandidateId(candidate.id);
     await onDismissRelatedOwner(pairKey, [current.id, candidate.id], 'Not the same owner (Call Mode)');
     setDismissingCandidateId(null);
+  }
+
+  // "Merge as same owner (spouses)" — fold the two records into one household
+  // contact using the Sprint 11 data-janitor merge. keepScore decides the
+  // survivor so the more-worked record is never the one deleted; a tie keeps
+  // the record being actively worked (current) to preserve call flow.
+  function openTaskCountFor(id) {
+    return taskApi?.getRelatedTasks?.('contact', id)?.length ?? 0;
+  }
+  function spouseSurvivor(candidate) {
+    const currentScore = keepScore(current, { openTaskCount: openTaskCountFor(current.id) });
+    const candidateScore = keepScore(candidate, { openTaskCount: openTaskCountFor(candidate.id) });
+    const keepCurrent = currentScore >= candidateScore;
+    return keepCurrent
+      ? { masterId: current.id, weakerId: candidate.id, keepCurrent }
+      : { masterId: candidate.id, weakerId: current.id, keepCurrent };
+  }
+  async function mergeSpouse(candidate) {
+    if (!current || !onMergeSpouse) return;
+    const { masterId, weakerId, keepCurrent } = spouseSurvivor(candidate);
+    setSpouseMerge({ contactId: current.id, candidateId: candidate.id, status: 'saving', message: 'Merging…' });
+    if (hasNoteChanges) await saveNotes();
+    const nextIndex = Math.max(0, Math.min(index, sessionQueue.length - 2));
+    const result = await onMergeSpouse(masterId, weakerId);
+    setConfirmSpouseCandidate(null);
+    if (result?.error) {
+      setSpouseMerge({ contactId: current.id, candidateId: candidate.id, status: 'error', message: result.error });
+      return;
+    }
+    const phoneNote = result.addedPhones > 0 ? ` · ${result.addedPhones} phone${result.addedPhones === 1 ? '' : 's'} kept as alternate${result.addedPhones === 1 ? '' : 's'}` : '';
+    if (keepCurrent) {
+      setSpouseMerge({ contactId: current.id, candidateId: candidate.id, status: 'success', message: `Merged — ${result.absorbedName} folded into this record${phoneNote}.` });
+    } else {
+      // current was the weaker record; it's now gone — advance the queue to the
+      // survivor's neighbor rather than a deleted row.
+      setSpouseMerge({ contactId: null, candidateId: null, status: '', message: '' });
+      setNoteDraft({ contactId: null, text: '' });
+      selectSessionIndex(nextIndex);
+    }
   }
 
   async function saveNotes(logActivity = true) {
@@ -5689,6 +5732,18 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                   const isDismissing = dismissingCandidateId === candidate.id;
                   const facilityLabel = current.facilityName?.trim() || current.address?.trim() || 'this facility';
                   const ownerLabel = candidate.ownerName || candidate.ownerEntity || 'this owner';
+                  // Spouse-merge: keepScore picks the survivor; surface which record
+                  // is kept, why it's protected, and which is absorbed.
+                  const spouseState = spouseMerge.contactId === current.id && spouseMerge.candidateId === candidate.id ? spouseMerge : null;
+                  const isConfirmingSpouse = confirmSpouseCandidate?.id === candidate.id;
+                  const survivor = onMergeSpouse ? spouseSurvivor(candidate) : null;
+                  const keeperContact = survivor ? (survivor.keepCurrent ? current : candidate) : null;
+                  const absorbedContact = survivor ? (survivor.keepCurrent ? candidate : current) : null;
+                  const keptLabel = survivor ? (survivor.keepCurrent ? 'this call record' : (candidate.ownerName || candidate.ownerEntity || 'the Master DB owner')) : '';
+                  const absorbedLabel = survivor ? (survivor.keepCurrent ? (candidate.ownerName || candidate.ownerEntity || 'the Master DB owner') : 'this call record') : '';
+                  const keeperSignals = keeperContact ? keepSignals(keeperContact, { openTaskCount: openTaskCountFor(keeperContact.id) }) : [];
+                  const absorbedProtected = absorbedContact ? isProtectedRecord(absorbedContact, { openTaskCount: openTaskCountFor(absorbedContact.id) }) : false;
+                  const spouseBusy = spouseState?.status === 'saving';
                   return (
                     <div key={candidate.id} className="bg-slate-950/60 border border-slate-700/80 rounded-lg px-3 py-3">
                       <div className="min-w-0">
@@ -5725,27 +5780,75 @@ function CallQueue({ queue, index, setIndex, callbackDate, setCallbackDate, acti
                         </div>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-2.5 leading-snug">
-                        <span className="font-semibold text-slate-400">Add facility to owner</span> links <span className="text-slate-300">{facilityLabel}</span> as a property under <span className="text-slate-300">{ownerLabel}</span>. This call record stays exactly as it is — nothing is merged or deleted.
+                        <span className="font-semibold text-slate-400">Add facility to owner</span> links <span className="text-slate-300">{facilityLabel}</span> as a property under <span className="text-slate-300">{ownerLabel}</span> — two separate records. <span className="font-semibold text-slate-400">Same owner / spouses</span> combines them into one record.
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <button type="button" onClick={() => addCurrentFacilityToOwner(candidate.id)}
-                          disabled={!current.address?.trim() || state?.status === 'saving' || isDismissing}
+                          disabled={!current.address?.trim() || state?.status === 'saving' || isDismissing || spouseBusy || isConfirmingSpouse}
                           title={!current.address?.trim() ? 'Add a facility address to this record first' : undefined}
                           className="flex-1 sm:flex-none bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-200 font-bold rounded-lg px-3 py-2 text-xs disabled:opacity-40">
                           {state?.status === 'saving' ? 'Adding…' : 'Add facility to owner'}
                         </button>
+                        {onMergeSpouse && (
+                          <button type="button" onClick={() => { setConfirmSpouseCandidate(candidate); setSpouseMerge({ contactId: null, candidateId: null, status: '', message: '' }); }}
+                            disabled={isDismissing || state?.status === 'saving' || spouseBusy || isConfirmingSpouse}
+                            title="Combine these two into one owner record (spouses / same household)"
+                            className="flex-1 sm:flex-none bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-200 font-bold rounded-lg px-3 py-2 text-xs disabled:opacity-40">
+                            Same owner / spouses
+                          </button>
+                        )}
                         {onDismissRelatedOwner && (
                           <button type="button" onClick={() => dismissRelatedOwner(candidate, pairKey)}
-                            disabled={isDismissing || state?.status === 'saving'}
+                            disabled={isDismissing || state?.status === 'saving' || spouseBusy || isConfirmingSpouse}
                             title="Stop suggesting this owner for this record"
                             className="flex-shrink-0 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-slate-200 font-bold rounded-lg px-3 py-2 text-xs disabled:opacity-40">
                             {isDismissing ? 'Dismissing…' : 'Not the same owner'}
                           </button>
                         )}
                       </div>
+
+                      {isConfirmingSpouse && survivor && (
+                        <div className="mt-2.5 bg-emerald-500/5 border border-emerald-500/25 rounded-lg p-3 space-y-2">
+                          <p className="text-xs font-bold text-emerald-300">Combine into one owner record</p>
+                          <p className="text-[11px] text-slate-400 leading-snug">
+                            Keeps <span className="font-semibold text-emerald-300">{keptLabel}</span> and folds <span className="font-semibold text-slate-200">{absorbedLabel}</span> into it. Phones, email, blank fields, notes and call activity are consolidated onto the kept record — nothing populated is overwritten. The absorbed record is then deleted.
+                          </p>
+                          {keeperSignals.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              <span className="text-[10px] text-slate-500 font-semibold">Kept because:</span>
+                              {keeperSignals.map(s => (
+                                <span key={s.label} className={`text-[10px] font-semibold rounded px-1.5 py-0.5 border ${s.protective ? 'bg-emerald-600/15 border-emerald-600/40 text-emerald-300' : 'bg-slate-800 border-slate-600 text-slate-300'}`}>
+                                  {s.protective ? '🛡 ' : ''}{s.label}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {absorbedProtected && (
+                            <p className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1.5 leading-snug">
+                              ⚠ The absorbed record has its own calls/tasks. Its call history is carried over, but double-check before confirming.
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <button type="button" onClick={() => mergeSpouse(candidate)} disabled={spouseBusy}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg px-3 py-2 text-xs disabled:opacity-40">
+                              {spouseBusy ? 'Merging…' : 'Confirm merge'}
+                            </button>
+                            <button type="button" onClick={() => setConfirmSpouseCandidate(null)} disabled={spouseBusy}
+                              className="text-xs font-semibold text-slate-400 hover:text-white px-2 py-2">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {state?.message && (
                         <p className={`text-xs mt-2 font-semibold ${state.status === 'success' ? 'text-green-400' : state.status === 'exists' ? 'text-amber-400' : state.status === 'saving' ? 'text-blue-300' : 'text-red-400'}`}>
                           {state.message}
+                        </p>
+                      )}
+                      {spouseState?.message && (
+                        <p className={`text-xs mt-2 font-semibold ${spouseState.status === 'success' ? 'text-emerald-400' : spouseState.status === 'saving' ? 'text-blue-300' : 'text-red-400'}`}>
+                          {spouseState.message}
                         </p>
                       )}
                     </div>

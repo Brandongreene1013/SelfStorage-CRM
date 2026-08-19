@@ -1664,6 +1664,61 @@ export function useDatabase() {
   }, [contacts, updateContactWithFallback, deleteContact]);
 
   */
+
+  // Spouse / same-owner merge for the Call Mode duplicate finder. Reuses the
+  // Sprint 11 data-janitor intelligence: buildMergePlan fills the keeper's
+  // blanks (never overwrites populated fields), extra phones become alternates,
+  // and notes are appended. Beyond the plan it also (a) preserves the absorbed
+  // spouse's personal name and any distinct address in the notes — fill-blanks
+  // keeps the keeper's name, so the absorbed one would otherwise vanish — and
+  // (b) carries over the absorbed record's call history + action log so logged
+  // dials survive. Then it deletes the absorbed row. The caller picks
+  // master/weaker via keepScore so the more-worked record is always the survivor.
+  const mergeSpouseContact = useCallback(async (masterId, weakerId) => {
+    const master = contacts.find(c => c.id === masterId);
+    const weaker = contacts.find(c => c.id === weakerId);
+    if (!master || !weaker) return { error: 'Contact not found — refresh and try again.' };
+
+    const { updates, addedPhones, filledFields } = buildMergePlan(master, weaker);
+
+    // Preserve the absorbed spouse's identity in the keeper's notes.
+    const absorbedName = (weaker.ownerName || weaker.ownerEntity || '').trim();
+    const noteLines = [];
+    if (absorbedName) noteLines.push(`Spouse / co-owner: ${absorbedName}`);
+    const weakerAddr = (weaker.address || '').trim();
+    const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (weakerAddr && norm(weakerAddr) !== norm(master.address || '') && updates.address === undefined) {
+      noteLines.push(`Spouse address: ${weakerAddr}`);
+    }
+    if (noteLines.length) {
+      updates.notes = [updates.notes ?? master.notes ?? '', noteLines.join('\n')].filter(Boolean).join('\n');
+    }
+
+    // Carry over activity so the absorbed person's calls aren't lost on delete.
+    const mergedHistory = mergeCallHistories(master.callHistory, weaker.callHistory);
+    if (mergedHistory.length !== (master.callHistory?.length ?? 0)) updates.callHistory = mergedHistory;
+    const weakerLog = weaker.actionLog ?? [];
+    if (weakerLog.length) updates.actionLog = [...(master.actionLog ?? []), ...weakerLog];
+
+    const res = await updateContactWithFallback(masterId, updates);
+    if (res.error && isMissingColumnError(res.error, 'alternate_phones')) {
+      return { error: 'Run sql/contact_alternate_phones_migration.sql in Supabase, then retry the merge.' };
+    }
+    if (res.error) return { error: res.error.message };
+
+    const del = await deleteContact(weakerId);
+    if (del.error) return { error: `Merged, but the old record could not be deleted: ${del.error}` };
+
+    return {
+      ok: true,
+      addedPhones,
+      filledFields,
+      keptId: masterId,
+      absorbedId: weakerId,
+      absorbedName: absorbedName || 'the other record',
+      keptName: master.ownerName || master.ownerEntity || master.facilityName || 'owner',
+    };
+  }, [contacts, updateContactWithFallback, deleteContact]);
   const updateContact = useCallback(async (contactId, fields) => {
     const existing = contacts.find(contact => contact.id === contactId);
     const persistedFields = { ...fields };
@@ -2018,6 +2073,7 @@ export function useDatabase() {
     importList,
     importIntoList,
     mergeDuplicateContact,
+    mergeSpouseContact,
     duplicateDismissals,
     dismissedDuplicateKeys,
     dismissalStorage,
